@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostNet - Decentralized Shadow Layer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Rajdhani:wght@400;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="glass-sidebar">
+            <div class="brand">
+                <div class="logo-icon">▲</div>
+            </div>
+            <nav class="main-nav">
+                <button class="nav-item active" data-tab="network" title="Network Mesh">
+                    <span class="icon">◎</span>
+                </button>
+                <button class="nav-item" data-tab="chat" title="Encrypted Comms">
+                    <span class="icon">◈</span>
+                </button>
+                <button class="nav-item" data-tab="bluetooth" title="Local Mesh">
+                    <span class="icon">ᛒ</span>
+                </button>
+                <button class="nav-item" data-tab="vault" title="Secure Vault">
+                    <span class="icon">▤</span>
+                </button>
+                <button class="nav-item" data-tab="browser" title="Shadow Web">
+                    <span class="icon">⚛</span>
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="status-dot online"></div>
+            </div>
+        </aside>
+
+        <!-- Main Dashboard Area -->
+        <main class="main-dashboard">
+
+            <!-- Top Header -->
+            <header class="glass-header">
+                <div class="breadcrumbs">
+                    <span class="crumb-root">GHOSTNET</span>
+                    <span class="crumb-sep">/</span>
+                    <span class="crumb-active" id="page-title">DASHBOARD</span>
+                </div>
+                <div class="header-stats">
+                    <div class="stat-pill">
+                        <span class="label">NODES</span>
+                        <span class="value neon-cyan">842</span>
+                    </div>
+                    <div class="stat-pill">
+                        <span class="label">ENCRYPTION</span>
+                        <span class="value neon-purple">AES-256-GCM</span>
+                    </div>
+                    <div class="stat-pill wallet">
+                        <span class="label">CREDITS</span>
+                        <span class="value neon-gold">₲ 4,290.50</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Dynamic Content Area -->
+            <div class="content-wrapper">
+
+                <!-- NETWORK DASHBOARD (Default) -->
+                <section id="network-tab" class="view-panel active">
+                    <div class="dashboard-grid">
+                        <!-- Main Map Card -->
+                        <div class="glass-card large-map">
+                            <div class="card-header">
+                                <h3>GLOBAL_MESH_TOPOLOGY</h3>
+                                <div class="live-indicator">LIVE</div>
+                            </div>
+                            <div class="canvas-wrapper">
+                                <canvas id="network-canvas"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Side Stats Column -->
+                        <div class="glass-card stats-col">
+                            <div class="card-header">
+                                <h3>TRAFFIC_FLOW</h3>
+                            </div>
+                            <div class="metric-row">
+                                <label>Inbound</label>
+                                <div class="bar-container">
+                                    <div class="bar-fill cyan" style="width: 75%"></div>
+                                </div>
+                                <span>42 MB/s</span>
+                            </div>
+                            <div class="metric-row">
+                                <label>Outbound</label>
+                                <div class="bar-container">
+                                    <div class="bar-fill purple" style="width: 40%"></div>
+                                </div>
+                                <span>18 MB/s</span>
+                            </div>
+                            <div class="terminal-box">
+                                <div class="card-header">
+                                    <h3>SYSTEM_LOG</h3>
+                                </div>
+                                <ul id="network-logs" class="log-list">
+                                    <li>> System Initialized.</li>
+                                    <li>> Mesh synced.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- BLE MESH TAB -->
+                <section id="bluetooth-tab" class="view-panel">
+                    <div class="glass-card full-height">
+                        <div class="card-header">
+                            <h3>OFF_GRID_LOCAL_MESH</h3>
+                            <div class="controls mesh-controls">
+                                <button class="btn-text">BROADCAST_BEACON</button>
+                            </div>
+                        </div>
+                        <div class="split-view">
+                            <div class="radar-section">
+                                <div class="radar-visual">
+                                    <div class="sweep-line"></div>
+                                    <div class="radar-grid"></div>
+                                </div>
+                            </div>
+                            <div class="device-list-section">
+                                <h4>DETECTED_NODES</h4>
+                                <div class="mesh-device-list">
+                                    <div class="empty-message">SCANNING_LOCAL_FREQUENCIES...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- VAULT TAB -->
+                <section id="vault-tab" class="view-panel">
+                    <div class="dashboard-grid equal-split">
+
+                        <!-- Upload Area -->
+                        <div class="glass-card upload-section" id="vault-dropzone">
+                            <div class="drag-overlay">
+                                <div class="icon-circle">⭳</div>
+                                <h2>DECENTRALIZED STORAGE</h2>
+                                <p>Drag & Drop or Select to Shard & Encrypt</p>
+                                <input type="file" id="real-file-input" hidden>
+                                <div class="action-buttons">
+                                    <button class="btn-glass" id="btn-select-file">SELECT FILE</button>
+                                    <button class="btn-glass" id="btn-record-voice">RECORD AUDIO</button>
+                                </div>
+                            </div>
+
+                            <!-- Audio Preview Hidden -->
+                            <div id="audio-preview-container" style="display:none; text-align:center; padding:2rem;">
+                                <p>AUDIO CAPTURED</p>
+                                <audio id="audio-playback" controls style="width:100%; margin:1rem 0;"></audio>
+                                <button class="btn-glass" id="btn-upload-voice">ENCRYPT & UPLOAD</button>
+                            </div>
+
+                            <div class="upload-progress-container" id="upload-progress" style="display: none;">
+                                <div class="p-header">
+                                    <span id="uploading-filename">file.dat</span>
+                                    <span>ENCRYPTING...</span>
+                                </div>
+                                <div class="p-bar">
+                                    <div class="p-fill" id="upload-bar"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- File List -->
+                        <div class="glass-card file-browser">
+                            <div class="card-header">
+                                <h3>ENCRYPTED_SHARDS</h3>
+                                <span>IPFS://GHOST</span>
+                            </div>
+                            <div class="file-list header-row">
+                                <span>FILENAME</span>
+                                <span>TYPE</span>
+                                <span>NODES</span>
+                                <span>STATUS</span>
+                            </div>
+                            <div class="file-list-content file-list">
+                                <!-- JS Populated -->
+                                <div class="file-item">
+                                    <span>manifest_v1.pdf</span>
+                                    <span>DOC</span>
+                                    <span>12/12</span>
+                                    <span class="status-ok">SYNCED</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- CHAT & BROWSER PLACEHOLDERS (Simplified) -->
+                <section id="chat-tab" class="view-panel">
+                    <div class="glass-card full-height chat-ui">
+                        <div class="chat-sidebar">
+                            <div class="user-item active">Operative_7</div>
+                            <div class="user-item">Nexus_Core</div>
+                        </div>
+                        <div class="chat-main">
+                            <div id="chat-messages" class="messages-area"></div>
+                            <div class="input-area">
+                                <input type="text" id="msg-input" placeholder="Encrypted Message...">
+                                <button id="send-btn" class="btn-icon">➤</button>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section id="browser-tab" class="view-panel">
+                    <div class="glass-card centered">
+                        <h2>GHOST_BROWSER</h2>
+                        <input type="text" class="browser-input" value="ghost://portal.nexus.onion" readonly>
+                        <div class="loader-circle"></div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Auth Layer as Overlay -->
+    <div id="auth-layer" class="auth-overlay active">
+        <div class="auth-box glass-card">
+            <h1>GHOSTNET</h1>
+            <p>DECENTRALIZED SHADOW LAYER</p>
+            <div class="scanner-line"></div>
+            <div class="auth-status" id="identity-status">VERIFYING BIOMETRICS...</div>
+            <div class="p-bar auth-bar">
+                <div class="p-fill" id="entropy-bar"></div>
+            </div>
+            <button id="connect-btn" class="btn-glass primary" disabled>INITIALIZE UPLINK</button>
+            <div id="auth-console" class="mini-console"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

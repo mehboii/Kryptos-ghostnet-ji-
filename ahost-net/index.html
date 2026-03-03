@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ahost Net | Decentralized Operating Layer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode/build/qrcode.min.js"></script>
+</head>
+
+<body>
+
+    <div id="app">
+
+        <!-- DASHBOARD LAYOUT -->
+        <div id="layout-dashboard" class="layout">
+            <aside class="sidebar">
+                <div class="logo-area">
+                    <div class="logo-mark small">A</div>
+                </div>
+                <nav class="side-nav">
+                    <button class="nav-btn active" data-target="dash-home" onclick="app.navigate('dash-home')">
+                        <i data-lucide="layout-dashboard"></i>
+                    </button>
+                    <button class="nav-btn" data-target="dash-wallet" onclick="app.navigate('dash-wallet')">
+                        <i data-lucide="wallet"></i>
+                    </button>
+                    <button class="nav-btn" data-target="dash-nodes" onclick="app.navigate('dash-nodes')">
+                        <i data-lucide="network"></i>
+                    </button>
+                    <button class="nav-btn" data-target="dash-messages" onclick="app.navigate('dash-messages')">
+                        <i data-lucide="message-square-lock"></i>
+                    </button>
+                    <button class="nav-btn" data-target="dash-storage" onclick="app.navigate('dash-storage')">
+                        <i data-lucide="hard-drive"></i>
+                    </button>
+                    <div class="spacer"></div>
+                    <button class="nav-btn" onclick="app.navigate('dash-settings')">
+                        <i data-lucide="settings"></i>
+                    </button>
+                </nav>
+                <div class="user-profile">
+                    <div class="avatar" id="my-avatar"></div>
+                </div>
+            </aside>
+
+            <div class="dashboard-content">
+                <header class="top-bar">
+                    <div class="header-left">
+                        <h2 id="page-title">Overview</h2>
+                        <div class="node-badge">
+                            <span class="status-dot pulse"></span>
+                            <span class="node-id" id="my-node-id">Initializing...</span>
+                        </div>
+                    </div>
+                    <div class="top-actions">
+                        <div class="privacy-slider-container">
+                            <i data-lucide="shield"></i>
+                            <div class="privacy-slider">
+                                <div class="slider-fill"></div>
+                                <div class="slider-knob"></div>
+                            </div>
+                            <span class="label">MAX PRIVACY</span>
+                        </div>
+                        <button class="btn-icon">
+                            <i data-lucide="bell"></i>
+                            <span class="badge">3</span>
+                        </button>
+                    </div>
+                </header>
+
+                <!-- 1. OVERVIEW -->
+                <main id="dash-home" class="tab-view active">
+                    <div class="grid-stats">
+                        <div class="glass-card stat-card">
+                            <div class="stat-top">
+                                <span class="label">Balance</span>
+                                <i data-lucide="trending-up" class="icon-trend up"></i>
+                            </div>
+                            <div class="value"><span id="overview-balance">0.00</span> <span class="unit">AHT</span>
+                            </div>
+                            <div class="sub">Synced from Ledger</div>
+                        </div>
+                        <div class="glass-card stat-card">
+                            <div class="stat-top">
+                                <span class="label">Active Peers</span>
+                                <span class="status-pill excellent">Strong</span>
+                            </div>
+                            <div class="value"><span id="overview-peers">0</span> <span class="unit">Nodes</span></div>
+                            <div class="sub">Mesh Integrity: 98%</div>
+                        </div>
+                        <div class="glass-card stat-card">
+                            <div class="stat-top">
+                                <span class="label">Storage Rep.</span>
+                            </div>
+                            <div class="value"><span id="overview-storage">0</span> <span class="unit">MB</span></div>
+                            <div class="progress-mini">
+                                <div class="bar" style="width: 42%"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid-main">
+                        <div class="glass-card network-map-card">
+                            <div class="card-head">
+                                <h3>Peer Graph (DHT Overlay)</h3>
+                                <button class="btn-icon-small"><i data-lucide="maximize-2"></i></button>
+                            </div>
+                            <div class="network-canvas-container" id="network-viz">
+                                <!-- Nodes rendered via JS -->
+                            </div>
+                        </div>
+
+                        <div class="glass-card activity-card">
+                            <div class="card-head">
+                                <h3>Signed Events</h3>
+                            </div>
+                            <div class="activity-list" id="overview-activity">
+                                <!-- Populated by JS -->
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- 2. WALLET -->
+                <main id="dash-wallet" class="tab-view hidden">
+                    <div class="wallet-grid">
+                        <div class="glass-card wallet-main">
+                            <div class="wallet-header">
+                                <div class="w-label">Total Balance</div>
+                                <div class="w-amount"><span id="wallet-balance">0.00</span> AHT</div>
+                                <div class="w-hash" id="wallet-address">0x...</div>
+                            </div>
+                            <div class="wallet-actions">
+                                <button class="btn-primary" onclick="app.wallet.openSendModal()">
+                                    <i data-lucide="send"></i> Send
+                                </button>
+                                <button class="btn-glass" onclick="app.wallet.request()">
+                                    <i data-lucide="qr-code"></i> Receive
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="glass-card wallet-history">
+                            <h3>Transaction Ledger (CRDT)</h3>
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Type</th>
+                                        <th>Hash</th>
+                                        <th>Peer</th>
+                                        <th>Time</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="wallet-tx-list">
+                                    <!-- JS -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- 3. NODE CONNECTIONS -->
+                <main id="dash-nodes" class="tab-view hidden">
+                    <div class="glass-card full-height">
+                        <div class="card-head">
+                            <h3>Connected Swarm</h3>
+                            <div class="pills">
+                                <span class="pill active">All Peers</span>
+                                <span class="pill">Bridge Nodes</span>
+                                <span class="pill">Local (BLE)</span>
+                            </div>
+                        </div>
+                        <div class="table-container">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Node ID / Alias</th>
+                                        <th>Transport</th>
+                                        <th>Latency</th>
+                                        <th>Trust Score</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="peer-table-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- 4. ENCRYPTED MESSAGES -->
+                <main id="dash-messages" class="tab-view hidden">
+                    <div class="chat-layout">
+                        <div class="glass-card chat-sidebar">
+                            <div class="search-bar">
+                                <i data-lucide="search"></i>
+                                <input type="text" placeholder="Search Identity...">
+                            </div>
+                            <div class="chat-list" id="chat-contact-list">
+                                <!-- Contacts -->
+                            </div>
+                        </div>
+                        <div class="glass-card chat-view">
+                            <div class="chat-header">
+                                <div class="chat-user-info">
+                                    <div class="avatar small"></div>
+                                    <div class="user-meta">
+                                        <div class="name" id="chat-active-name">Select a contact</div>
+                                        <div class="status" id="chat-active-status">Waiting for handshake...</div>
+                                    </div>
+                                </div>
+                                <div class="chat-actions">
+                                    <i data-lucide="lock" class="encryption-icon"></i>
+                                </div>
+                            </div>
+                            <div class="chat-messages" id="chat-message-area">
+                                <div class="empty-state">
+                                    <i data-lucide="shield-check"></i>
+                                    <p>End-to-End Encrypted via Noise Protocol</p>
+                                </div>
+                            </div>
+                            <div class="chat-input-area">
+                                <input type="text" id="chat-input" placeholder="Type a secure message...">
+                                <button class="btn-primary icon-only" onclick="app.messaging.send()">
+                                    <i data-lucide="send"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </main>
+
+                <!-- 5. STORAGE -->
+                <main id="dash-storage" class="tab-view hidden">
+                    <div class="glass-card full-height">
+                        <div class="card-head">
+                            <h3>Decentralized File System (IPFS)</h3>
+                            <button class="btn-glass small" onclick="document.getElementById('file-upload').click()">
+                                <i data-lucide="upload-cloud"></i> Upload
+                            </button>
+                            <input type="file" id="file-upload" hidden onchange="app.storage.handleUpload(this)">
+                        </div>
+
+                        <div class="storage-metrics">
+                            <div class="s-metric">
+                                <span class="label">Local Hosted</span>
+                                <span class="val">450 MB</span>
+                            </div>
+                            <div class="s-metric">
+                                <span class="label">Network Replicated</span>
+                                <span class="val">2.4 GB</span>
+                            </div>
+                            <div class="s-metric">
+                                <span class="label">Shards</span>
+                                <span class="val">1,204</span>
+                            </div>
+                        </div>
+
+                        <div class="file-grid" id="storage-file-list">
+                            <!-- JS -->
+                        </div>
+                    </div>
+                </main>
+
+                <!-- 6. SETTINGS -->
+                <main id="dash-settings" class="tab-view hidden">
+                    <div class="settings-container">
+
+                        <div class="glass-card setting-group">
+                            <h3><i data-lucide="shield"></i> Privacy & Identity</h3>
+                            <div class="setting-row">
+                                <div class="s-info">
+                                    <div class="s-title">Identity Key</div>
+                                    <div class="s-desc">Your Ed25519 Public Key.</div>
+                                </div>
+                                <div class="key-display">
+                                    <code id="settings-pubkey">...</code>
+                                    <button class="btn-subtle"><i data-lucide="copy"></i></button>
+                                </div>
+                            </div>
+                            <div class="setting-row">
+                                <div class="s-info">
+                                    <div class="s-title">Relay Mode</div>
+                                    <div class="s-desc">Route encrypted traffic for other peers.</div>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="glass-card setting-group">
+                            <h3><i data-lucide="network"></i> Connectivity</h3>
+                            <div class="setting-row">
+                                <div class="s-info">
+                                    <div class="s-title">Bluetooth Mesh</div>
+                                    <div class="s-desc">Use BLE for local discovery.</div>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" checked onchange="app.mesh.toggleBluetooth(this.checked)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="setting-row">
+                                <div class="s-info">
+                                    <div class="s-title">Bridge Mode</div>
+                                    <div class="s-desc">Connect local mesh to global internet.</div>
+                                </div>
+                                <label class="toggle">
+                                    <input type="checkbox" checked>
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                    </div>
+                </main>
+
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Send Modal -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+        <div class="glass-card modal">
+            <h3>Send AHT</h3>
+            <div class="input-group">
+                <label>Recipient ID</label>
+                <input type="text" id="send-recipient" placeholder="Peer Identity Key">
+            </div>
+            <div class="input-group">
+                <label>Amount</label>
+                <input type="number" id="send-amount" placeholder="0.00">
+            </div>
+            <div class="modal-actions">
+                <button class="btn-subtle" onclick="app.closeModal()">Cancel</button>
+                <button class="btn-primary" onclick="app.wallet.confirmSend()">Sign & Broadcast</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+
+</html>

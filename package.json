@@ -1,0 +1,42 @@
+{
+  "name": "ghostnet",
+  "version": "1.0.0",
+  "description": "GhostNet — Decentralized Mesh Network Infrastructure",
+  "type": "module",
+  "scripts": {
+    "start": "node ghostnet-orchestrator.cjs",
+    "start:cloud": "node ghostnet-orchestrator.cjs --mode=cloud",
+    "start:local": "node ghostnet-orchestrator.cjs --mode=local",
+    "start:dev": "node ghostnet-orchestrator.cjs --mode=development",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop all",
+    "pm2:restart": "pm2 restart all",
+    "pm2:logs": "pm2 logs",
+    "pm2:status": "pm2 list",
+    "health": "node ghostnet-orchestrator.cjs --health",
+    "status": "node ghostnet-orchestrator.cjs --status",
+    "stop": "node ghostnet-orchestrator.cjs --stop",
+    "watch": "node ghostnet-watchdog.cjs",
+    "check": "node ghostnet-watchdog.cjs --once",
+    "server": "node ghostnet-server.js",
+    "bridge": "node ghostnet-bridge/bridge.js",
+    "client": "node ghostnet-client/server.js"
+  },
+  "dependencies": {
+    "@abandonware/bleno": "latest",
+    "@abandonware/noble": "^1.9.2-26",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "nodemailer": "^8.0.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.19.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
