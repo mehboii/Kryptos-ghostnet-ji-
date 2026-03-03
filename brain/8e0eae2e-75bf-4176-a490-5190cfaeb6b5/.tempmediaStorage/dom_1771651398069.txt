@@ -1,0 +1,22 @@
+GHOST
+NET
+Home
+Nodes
+Wallet
+Chat
+Vault
+Profile
+MESH CONNECTED
+Light Mode
+Messages
+No conversations yet.
+Your messages
+Send a message to start a chat.
+Send Message
+[0] (680,296)<button class='modal-close'>× />
+New Encrypted Chat
+[1] (500,394)<label class='input-label'>CONTACT NAME />
+[2] (500,447)<input class='modal-input' id='chat-name' placeholder='e.g. Alice' />
+[3] (500,514)<label class='input-label'>NODE ID / PUBLIC KEY />
+[4] (500,567)<input class='modal-input' id='chat-pubkey' placeholder='0x...' />
+[5] (500,671)<button class='btn-primary'>START SESSION />

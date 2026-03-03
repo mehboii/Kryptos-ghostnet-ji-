@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "Complete walkthrough for GhostNet Docker setup — covers all created/modified files, service architecture diagram, PM2-to-Docker mapping, quick start commands, data persistence strategy, and key design decisions.",
+  "updatedAt": "2026-02-28T05:45:31.632833300Z"
+}

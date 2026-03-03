@@ -1,0 +1,124 @@
+# 🐳 GhostNet — Docker Setup
+
+## Files Created
+
+| File | Purpose |
+|------|---------|
+| [Dockerfile](file:///c:/Users/novtw/.gemini/antigravity/scratch/Dockerfile) | Multi-stage build — builds all sub-project dependencies in parallel stages, then assembles a lean production image |
+| [docker-compose.yml](file:///c:/Users/novtw/.gemini/antigravity/scratch/docker-compose.yml) | Orchestrates all 8 services (replaces PM2 `ecosystem.config.cjs`) |
+| [.dockerignore](file:///c:/Users/novtw/.gemini/antigravity/scratch/.dockerignore) | Keeps the build context small by excluding `node_modules`, `.git`, `.env`, `*.sqlite`, logs, test files |
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| [registry.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-bridge/registry.js) | Relay node URLs now configurable via `GHOSTNET_RELAY_NODES` env var (Docker containers use hostnames, not `localhost`) |
+| [.env.example](file:///c:/Users/novtw/.gemini/antigravity/scratch/.env.example) | Added Docker port override documentation |
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Docker Network: ghostnet-network
+        S["ghostnet-server :8080<br/>API + WebSocket + Auth"]
+        B["ghostnet-bridge :3001<br/>Blockchain Bridge"]
+        C["ghostnet-client :3000<br/>UI Server"]
+        M["ghostnet-messages :8090<br/>SQLite Persistence"]
+        R1["ghostnet-relay-1 :8081"]
+        R2["ghostnet-relay-2 :8082"]
+        R3["ghostnet-relay-3 :8083"]
+        REG["ghostnet-registry :9000<br/>Node Discovery"]
+    end
+
+    S --> B
+    S --> M
+    REG --> R1
+    REG --> R2
+    REG --> R3
+
+    U["User Browser"] --> S
+    U --> C
+```
+
+## Service Map (PM2 → Docker)
+
+| PM2 Service | Docker Service | Port | Health Check |
+|-------------|---------------|------|-------------|
+| `ghostnet-server` | `ghostnet-server` | 8080 | `GET /status` |
+| `ghostnet-bridge` | `ghostnet-bridge` | 3001 | `GET /wallet` |
+| `ghostnet-client` | `ghostnet-client` | 3000 | `GET /health` |
+| `ghostnet-messages` | `ghostnet-messages` | 8090 | `GET /users` |
+| `ghostnet-relay-1` | `ghostnet-relay-1` | 8081 | — |
+| `ghostnet-relay-2` | `ghostnet-relay-2` | 8082 | — |
+| `ghostnet-relay-3` | `ghostnet-relay-3` | 8083 | — |
+| `ghostnet-registry` | `ghostnet-registry` | 9000 | — |
+| `ghostnet-ble` | *excluded* | — | N/A (requires host Bluetooth) |
+| `ghostnet-watchdog` | *excluded* | — | Docker handles restarts natively |
+
+> [!NOTE]
+> **BLE** and **Watchdog** services are intentionally excluded — BLE requires direct host Bluetooth hardware access, and Docker's `restart: unless-stopped` + health checks replace the watchdog.
+
+## Quick Start
+
+```bash
+# 1. Build all images
+docker compose build
+
+# 2. Start everything
+docker compose up -d
+
+# 3. Check status
+docker compose ps
+
+# 4. Watch logs
+docker compose logs -f
+
+# 5. Stop everything
+docker compose down
+```
+
+## Useful Commands
+
+```bash
+# Start a single service
+docker compose up -d ghostnet-server
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# View a specific service's logs
+docker compose logs -f ghostnet-server
+
+# Restart a service
+docker compose restart ghostnet-bridge
+
+# Shell into a container
+docker compose exec ghostnet-server sh
+
+# Nuke everything (including volumes/data)
+docker compose down -v
+```
+
+## Data Persistence
+
+| Volume | Mounted To | Contains |
+|--------|-----------|----------|
+| `ghostnet-data` | `/app/data` | General app data |
+| `ghostnet-logs` | `/app/logs` | Service log files |
+| `ghostnet-sqlite` | `/app/ghostnet-messages` | SQLite database |
+| Bind mounts | `./messages.json`, etc. | JSON data files (synced with host) |
+
+> [!IMPORTANT]
+> The JSON data files (`messages.json`, `conversations.json`, `users.json`, `auth-users.json`) are **bind-mounted** from the host, so changes persist and are visible on both sides. The SQLite database lives in a named Docker volume.
+
+## Key Design Decisions
+
+1. **Single Dockerfile, multi-service** — All services share the same image (same Node.js codebase), with the `command` field in `docker-compose.yml` selecting which service to run. This keeps builds fast and images consistent.
+
+2. **Multi-stage builds** — Dependencies for each sub-project (`ghostnet-bridge`, `ghostnet-client`, `relay`) are installed in parallel build stages, then copied into the final image. This means a code change doesn't re-install dependencies.
+
+3. **Non-root user** — The production image runs as `ghostnet:ghostnet`, not `root`.
+
+4. **Tini init** — Proper PID 1 signal handling so `docker stop` cleanly shuts down Node.js processes.
+
+5. **Docker network** — All services communicate via the `ghostnet-network` bridge network using container hostnames (e.g., `http://ghostnet-bridge:3001`).

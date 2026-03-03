@@ -1,0 +1,16 @@
+# Task: Verify New Cryptographic Identity System
+
+## Plan
+1. [ ] Navigate to `http://localhost:8080`.
+2. [ ] Click on the "Profile" tab in the sidebar navigation.
+3. [ ] Verify the UI elements:
+    - [ ] "Node Identity" hero header.
+    - [ ] "GhostNet" title.
+    - [ ] "Create New Identity" button.
+    - [ ] "Restore With Seed Phrase" button.
+    - [ ] Animated logo ring.
+4. [ ] Take a screenshot of the Profile section.
+5. [ ] Report the results.
+
+## Progress
+- Initialized scratchpad.

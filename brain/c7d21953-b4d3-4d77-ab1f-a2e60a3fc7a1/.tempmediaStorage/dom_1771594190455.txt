@@ -1,0 +1,7 @@
+GhostNet
+[0] (646,55)<a href='#about'>About />
+[1] (744,55)<a href='#how-it-works'>How it Works />
+[2] (860,55)<a href='#developers'>Developers />
+[3] (950,55)<button aria-label='Toggle Theme' class='icon-btn' id='theme-toggle' />
+[4] (100,981)<a class='btn btn-primary ripple' href='#' />
+[5] (252,981)<a class='btn btn-secondary ripple' href='#docs' />

@@ -1,0 +1,23 @@
+GHOST
+NET
+[0] (91,294)<button class='nav-btn active' />
+	[1] (64,294)<span >Home />
+[2] (91,381)<button class='nav-btn' />
+	[3] (65,381)<span >Nodes />
+[4] (91,469)<button class='nav-btn' />
+	[5] (64,469)<span >Wallet />
+[6] (91,556)<button class='nav-btn' />
+	[7] (61,556)<span >Chat />
+[8] (91,644)<button class='nav-btn' />
+	[9] (61,644)<span >Vault />
+[10] (91,731)<button class='nav-btn' />
+	[11] (65,731)<span >Profile />
+MESH CONNECTED
+[12] (954,48)<button class='btn-tiny theme-toggle-btn' />
+	[13] (962,48)<span >Dark Mode />
+MESH OVERVIEW
+Live Decentralized Topology
+NODES
+1
+LATENCY
+24ms

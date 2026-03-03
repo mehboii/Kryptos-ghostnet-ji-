@@ -1,0 +1,15 @@
+# Task: Test Website Responsiveness
+
+## Checklist:
+- [ ] Open website (`index.html`)
+- [ ] Verify desktop layout (Screenshot)
+- [ ] Resize to mobile dimension (375x812)
+- [ ] Verify hero section (Screenshot)
+- [ ] Verify pricing grid (Screenshot)
+- [ ] Verify logo in footer (Screenshot)
+- [ ] Check for horizontal scroll/overflow
+- [ ] Verify wrapping of "Private Infrastructure for the Decentralized Future"
+- [ ] Resize back to desktop and verify
+
+## Findings:
+TBD

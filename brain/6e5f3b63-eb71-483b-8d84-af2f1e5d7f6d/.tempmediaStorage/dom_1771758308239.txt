@@ -1,0 +1,38 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+GHOST
+NET
+[0] (91,294)<button class='nav-btn' />
+	[1] (64,294)<span >Home />
+[2] (91,381)<button class='nav-btn' />
+	[3] (65,381)<span >Nodes />
+[4] (91,469)<button class='nav-btn' />
+	[5] (64,469)<span >Wallet />
+[6] (91,556)<button class='nav-btn' />
+	[7] (61,556)<span >Chat />
+[8] (91,644)<button class='nav-btn' />
+	[9] (61,644)<span >Vault />
+[10] (91,731)<button class='nav-btn active' />
+	[11] (65,731)<span >Profile />
+MESH CONNECTED
+[12] (953,48)<button class='btn-tiny theme-toggle-btn' />
+	[13] (961,48)<span >Light Mode />
+NODE PROFILE
+Create Your Account
+Sign up or log in to access your
+                                    profile.
+[14] (553,426)<button id='tab-signup'>Sign
+                                    Up />
+[15] (629,426)<button id='tab-login'>Log
+                                    In />
+[16] (591,487)<label class='input-label'>EMAIL />
+[17] (591,534)<input class='modal-input' id='auth-signup-email' placeholder='you@example.com' />
+[18] (591,595)<label class='input-label'>PASSWORD
+(min 8 chars) />
+	(min 8 chars)
+[19] (591,643)<input class='modal-input' id='auth-signup-password' placeholder='â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢' />
+[20] (591,763)<button class='btn-primary' id='btn-signup'>CREATE ACCOUNT />
+
+</current_dom>

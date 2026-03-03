@@ -1,0 +1,26 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+[0] (174,54)<a class='logo' href='index.html' />
+	[1] (141,54)<div  />
+	[2] (188,54)<span >GhostNet />
+[3] (697,54)<a href='index.html#about'>About />
+[4] (764,54)<a href='index.html#how-it-works'>How it Works />
+[5] (843,54)<a href='index.html#developers'>Developers />
+Contact Us
+Have questions about running a node, evaluating our protocol, or enterprise licensing? Send us a
+                    secure message.
+[6] (392,507)<label >First
+                            Name />
+[7] (392,563)<input  />
+[8] (608,507)<label >Last
+                            Name />
+[9] (608,563)<input  />
+[10] (500,642)<label >Email
+                        Address />
+[11] (500,698)<input  />
+[12] (500,776)<label >Message />
+[13] (500,880)<textarea  />
+
+</current_dom>

@@ -1,0 +1,43 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+GHOST
+NET
+[0] (91,294)<button class='nav-btn' />
+	[1] (64,294)<span >Home />
+[2] (91,381)<button class='nav-btn' />
+	[3] (65,381)<span >Nodes />
+[4] (91,469)<button class='nav-btn' />
+	[5] (64,469)<span >Wallet />
+[6] (91,556)<button class='nav-btn' />
+	[7] (61,556)<span >Chat />
+[8] (91,644)<button class='nav-btn' />
+	[9] (61,644)<span >Vault />
+[10] (91,731)<button class='nav-btn active' />
+	[11] (65,731)<span >Profile />
+MESH CONNECTED
+[12] (953,48)<button class='btn-tiny theme-toggle-btn' />
+	[13] (961,48)<span >Light Mode />
+NODE PROFILE
+[14] (361,242)<label class='input-label'>CUSTOM
+                                ADDRESS / ALIAS />
+[15] (361,290)<input class='modal-input' id='profile-address' placeholder='e.g. 👾 CipherPunk#99' />
+[16] (361,349)<label class='input-label'>PROFILE
+                                PICTURE />
+[17] (361,400)<input id='profile-avatar-upload' />
+[18] (361,480)<button class='btn-primary'>SAVE
+                            PROFILE />
+Account
+Secure your identity with email & password.
+[19] (601,317)<button id='tab-signup'>Sign Up />
+[20] (734,317)<button id='tab-login'>Log In />
+[21] (667,372)<label class='input-label'>EMAIL />
+[22] (667,419)<input class='modal-input' id='auth-signup-email' placeholder='you@example.com' />
+[23] (667,478)<label class='input-label'>PASSWORD
+(min 8 chars) />
+	(min 8 chars)
+[24] (667,524)<input class='modal-input' id='auth-signup-password' placeholder='••••••••' />
+[25] (667,638)<button class='btn-primary' id='btn-signup'>CREATE ACCOUNT />
+
+</current_dom>

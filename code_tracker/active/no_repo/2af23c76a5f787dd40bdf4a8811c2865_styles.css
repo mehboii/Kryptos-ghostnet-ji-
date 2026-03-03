@@ -1,0 +1,2036 @@
+™¹/* ============================================================
+   BiogBrains â€” Preschool Learning Platform
+   Vibrant, Playful, Child-Friendly Design System
+   ============================================================ */
+
+/* ===== CSS VARIABLES / DESIGN TOKENS ===== */
+:root {
+    /* Colors â€” Warm, playful palette */
+    --bg-primary: #0f0a1e;
+    --bg-secondary: #130e24;
+    --bg-tertiary: #1a1430;
+    --bg-card: rgba(26, 20, 48, 0.7);
+    --bg-card-hover: rgba(35, 28, 60, 0.85);
+    --bg-glass: rgba(255, 255, 255, 0.04);
+    --bg-glass-hover: rgba(255, 255, 255, 0.08);
+
+    --text-primary: #f5f0ff;
+    --text-secondary: #a89cc8;
+    --text-tertiary: #6b5f8a;
+    --text-muted: #463d5f;
+
+    /* Fun vibrant accent colors */
+    --accent-orange: #ff7e33;
+    --accent-pink: #ff5593;
+    --accent-purple: #9b5de5;
+    --accent-cyan: #00d4ff;
+    --accent-green: #00e676;
+    --accent-yellow: #ffe44d;
+    --accent-blue: #4da6ff;
+
+    --gradient-primary: linear-gradient(135deg, #ff7e33, #ff5593, #9b5de5);
+    --gradient-warm: linear-gradient(135deg, #ff7e33, #ff5593);
+    --gradient-cool: linear-gradient(135deg, #9b5de5, #00d4ff);
+    --gradient-fun: linear-gradient(135deg, #ffe44d, #ff7e33, #ff5593);
+    --gradient-nature: linear-gradient(135deg, #00e676, #00d4ff);
+    --gradient-card: linear-gradient(135deg, rgba(255, 126, 51, 0.08), rgba(155, 93, 229, 0.05));
+    --gradient-text: linear-gradient(135deg, #ff7e33, #ff5593, #9b5de5);
+
+    --border-color: rgba(255, 255, 255, 0.06);
+    --border-hover: rgba(255, 126, 51, 0.3);
+
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 8px 32px rgba(0, 0, 0, 0.4);
+    --shadow-lg: 0 16px 64px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 40px rgba(255, 126, 51, 0.12);
+    --shadow-glow-strong: 0 0 60px rgba(255, 85, 147, 0.2);
+    --shadow-glow-purple: 0 0 40px rgba(155, 93, 229, 0.2);
+
+    /* Typography */
+    --font-primary: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: 'Fredoka', 'Outfit', sans-serif;
+
+    /* Spacing */
+    --section-padding: 120px 0;
+    --container-width: 1200px;
+    --border-radius: 20px;
+    --border-radius-sm: 12px;
+    --border-radius-lg: 28px;
+    --border-radius-xl: 36px;
+
+    /* Transitions */
+    --transition-fast: 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-medium: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-bounce: 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ===== RESET & BASE ===== */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 80px;
+}
+
+body {
+    font-family: var(--font-primary);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    line-height: 1.7;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+    text-decoration: none;
+    color: inherit;
+    transition: var(--transition-fast);
+}
+
+ul {
+    list-style: none;
+}
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+button {
+    cursor: pointer;
+    border: none;
+    outline: none;
+    font-family: inherit;
+}
+
+input,
+select {
+    font-family: inherit;
+}
+
+.container {
+    max-width: var(--container-width);
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+/* ===== FLOATING EMOJIS ===== */
+.floating-decorations {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+
+.float-emoji {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    font-size: 24px;
+    opacity: 0.15;
+    animation: floatEmoji 8s ease-in-out var(--delay) infinite;
+}
+
+@keyframes floatEmoji {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(0deg) scale(1);
+    }
+
+    25% {
+        transform: translateY(-15px) rotate(10deg) scale(1.1);
+    }
+
+    50% {
+        transform: translateY(-25px) rotate(-5deg) scale(1);
+    }
+
+    75% {
+        transform: translateY(-10px) rotate(5deg) scale(1.05);
+    }
+}
+
+/* ===== 3D CANVAS ===== */
+#hero-canvas {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0.4;
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 24px;
+    border-radius: var(--border-radius-sm);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.01em;
+    transition: all var(--transition-bounce);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.btn:hover::before {
+    opacity: 1;
+}
+
+.btn:active {
+    transform: scale(0.97);
+}
+
+.btn-primary {
+    background: var(--gradient-warm);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(255, 126, 51, 0.3);
+}
+
+.btn-primary:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 8px 30px rgba(255, 126, 51, 0.4);
+}
+
+.btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-color);
+}
+
+.btn-ghost:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+    background: var(--bg-glass);
+}
+
+.btn-glass {
+    background: var(--bg-glass);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(12px);
+}
+
+.btn-glass:hover {
+    background: var(--bg-glass-hover);
+    border-color: var(--border-hover);
+    transform: translateY(-3px);
+}
+
+.btn-outline {
+    background: transparent;
+    color: var(--accent-orange);
+    border: 2px solid var(--accent-orange);
+}
+
+.btn-outline:hover {
+    background: rgba(255, 126, 51, 0.1);
+    transform: translateY(-3px);
+}
+
+.btn-white {
+    background: #fff;
+    color: var(--accent-orange);
+    font-weight: 700;
+    border-radius: var(--border-radius-sm);
+}
+
+.btn-white:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(255, 255, 255, 0.2);
+}
+
+.btn-ghost-white {
+    background: transparent;
+    color: #fff;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-ghost-white:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-3px);
+}
+
+.btn-large {
+    padding: 16px 32px;
+    font-size: 16px;
+    border-radius: 14px;
+}
+
+.btn-full {
+    width: 100%;
+    justify-content: center;
+}
+
+/* ===== SECTION HEADERS ===== */
+.section-header {
+    text-align: center;
+    margin-bottom: 64px;
+}
+
+.section-tag {
+    display: inline-block;
+    padding: 8px 18px;
+    background: rgba(255, 126, 51, 0.1);
+    color: var(--accent-orange);
+    border-radius: 100px;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    margin-bottom: 16px;
+    border: 1px solid rgba(255, 126, 51, 0.15);
+}
+
+.section-title {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+}
+
+.section-subtitle {
+    font-size: 18px;
+    color: var(--text-secondary);
+    max-width: 580px;
+    margin: 0 auto;
+}
+
+.gradient-text {
+    background: var(--gradient-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* ===== NAVBAR ===== */
+.navbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    padding: 16px 0;
+    transition: all var(--transition-medium);
+}
+
+.navbar.scrolled {
+    padding: 10px 0;
+    background: rgba(15, 10, 30, 0.9);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.nav-container {
+    max-width: var(--container-width);
+    margin: 0 auto;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-display);
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.logo-icon {
+    font-size: 32px;
+    animation: logoBounce 3s ease-in-out infinite;
+}
+
+@keyframes logoBounce {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    25% {
+        transform: translateY(-4px) rotate(-5deg);
+    }
+
+    50% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    75% {
+        transform: translateY(-2px) rotate(5deg);
+    }
+}
+
+.logo-highlight {
+    background: var(--gradient-warm);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+}
+
+.nav-link {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    position: relative;
+    padding: 4px 0;
+}
+
+.nav-link::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 0;
+    height: 3px;
+    background: var(--gradient-warm);
+    border-radius: 3px;
+    transition: width var(--transition-medium);
+}
+
+.nav-link:hover {
+    color: var(--text-primary);
+}
+
+.nav-link:hover::after {
+    width: 100%;
+}
+
+.nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.mobile-menu-btn {
+    display: none;
+    flex-direction: column;
+    gap: 5px;
+    background: transparent;
+    padding: 8px;
+}
+
+.mobile-menu-btn span {
+    display: block;
+    width: 24px;
+    height: 2px;
+    background: var(--text-primary);
+    border-radius: 2px;
+    transition: all var(--transition-medium);
+}
+
+/* ===== HERO SECTION ===== */
+.hero {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    padding: 120px 24px 80px;
+    max-width: var(--container-width);
+    margin: 0 auto;
+    gap: 60px;
+}
+
+.hero-content {
+    flex: 1;
+    max-width: 640px;
+}
+
+.hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: rgba(255, 126, 51, 0.08);
+    border: 1px solid rgba(255, 126, 51, 0.15);
+    border-radius: 100px;
+    font-size: 14px;
+    color: var(--accent-orange);
+    margin-bottom: 24px;
+    animation: fadeInUp 0.8s ease-out;
+    backdrop-filter: blur(8px);
+}
+
+.badge-dot {
+    width: 8px;
+    height: 8px;
+    background: var(--accent-green);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(0.8);
+    }
+}
+
+.hero-title {
+    font-family: var(--font-display);
+    font-size: clamp(40px, 6vw, 72px);
+    font-weight: 700;
+    line-height: 1.1;
+    margin-bottom: 24px;
+    animation: fadeInUp 0.8s ease-out 0.1s both;
+}
+
+.hero-subtitle {
+    font-size: 18px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+    margin-bottom: 32px;
+    animation: fadeInUp 0.8s ease-out 0.2s both;
+}
+
+.hero-cta {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 48px;
+    animation: fadeInUp 0.8s ease-out 0.3s both;
+    flex-wrap: wrap;
+}
+
+.hero-stats {
+    display: flex;
+    align-items: center;
+    gap: 32px;
+    animation: fadeInUp 0.8s ease-out 0.4s both;
+}
+
+.stat-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-number {
+    font-family: var(--font-display);
+    font-size: 34px;
+    font-weight: 700;
+    background: var(--gradient-text);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.stat-number::after {
+    content: '+';
+    -webkit-text-fill-color: inherit;
+}
+
+.stat-label {
+    font-size: 13px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+.stat-divider {
+    width: 1px;
+    height: 40px;
+    background: var(--border-color);
+}
+
+.hero-3d-container {
+    flex: 1;
+    min-width: 400px;
+    min-height: 400px;
+    position: relative;
+    animation: fadeIn 1.2s ease-out 0.4s both;
+}
+
+#course-3d-canvas {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* ===== TRUSTED SECTION ===== */
+.trusted-section {
+    position: relative;
+    z-index: 1;
+    padding: 48px 0 40px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.trusted-text {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-weight: 600;
+    margin-bottom: 24px;
+}
+
+.trusted-logos {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 40px;
+    flex-wrap: wrap;
+}
+
+.trusted-logo {
+    font-family: var(--font-display);
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-muted);
+    opacity: 0.5;
+    transition: all var(--transition-medium);
+}
+
+.trusted-logo:hover {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+/* ===== CHARACTERS BANNER ===== */
+.characters-banner {
+    position: relative;
+    z-index: 1;
+    padding: 24px 0;
+    overflow: hidden;
+    background: linear-gradient(90deg, var(--bg-primary), rgba(255, 126, 51, 0.03), var(--bg-primary));
+}
+
+.characters-scroll {
+    display: flex;
+    gap: 40px;
+    animation: scrollCharacters 15s linear infinite;
+    width: max-content;
+}
+
+.character-item {
+    font-size: 40px;
+    transition: transform var(--transition-bounce);
+    cursor: default;
+}
+
+.character-item:hover {
+    transform: scale(1.4) rotate(10deg);
+}
+
+@keyframes scrollCharacters {
+    from {
+        transform: translateX(0);
+    }
+
+    to {
+        transform: translateX(-50%);
+    }
+}
+
+/* ===== COURSES SECTION ===== */
+.courses-section {
+    position: relative;
+    z-index: 1;
+    padding: var(--section-padding);
+}
+
+.course-filters {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 48px;
+    flex-wrap: wrap;
+}
+
+.filter-btn {
+    padding: 10px 24px;
+    border-radius: 100px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    transition: all var(--transition-bounce);
+}
+
+.filter-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+    background: var(--bg-glass-hover);
+    transform: translateY(-2px);
+}
+
+.filter-btn.active {
+    background: var(--gradient-warm);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 20px rgba(255, 126, 51, 0.3);
+}
+
+.course-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 24px;
+    margin-bottom: 48px;
+}
+
+.course-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    transition: all var(--transition-bounce);
+    cursor: pointer;
+    position: relative;
+}
+
+.course-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--border-radius);
+    background: var(--gradient-card);
+    opacity: 0;
+    transition: opacity var(--transition-medium);
+    z-index: 0;
+}
+
+.course-card:hover {
+    transform: translateY(-10px) scale(1.01);
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-glow);
+}
+
+.course-card:hover::before {
+    opacity: 1;
+}
+
+.course-card-image {
+    position: relative;
+    height: 200px;
+    overflow: hidden;
+    z-index: 1;
+}
+
+.course-card-image .course-badge {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    padding: 5px 14px;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(8px);
+    border-radius: 100px;
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.course-card-image .course-badge.bestseller {
+    background: rgba(255, 229, 77, 0.2);
+    color: #ffe44d;
+    border-color: rgba(255, 229, 77, 0.3);
+}
+
+.course-card-image .course-badge.new {
+    background: rgba(0, 230, 118, 0.2);
+    color: #00e676;
+    border-color: rgba(0, 230, 118, 0.3);
+}
+
+.course-card-body {
+    padding: 20px;
+    position: relative;
+    z-index: 1;
+}
+
+.course-category {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 8px;
+}
+
+.course-title {
+    font-family: var(--font-display);
+    font-size: 19px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.course-desc {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.course-meta {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+    font-size: 13px;
+    color: var(--text-tertiary);
+}
+
+.course-meta-item {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.course-rating {
+    color: var(--accent-yellow);
+}
+
+.course-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+.course-instructor {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.instructor-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.instructor-name {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.course-price {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 22px;
+    color: var(--text-primary);
+}
+
+.course-price .original-price {
+    font-size: 14px;
+    color: var(--text-muted);
+    text-decoration: line-through;
+    margin-left: 8px;
+    font-weight: 400;
+}
+
+.courses-cta {
+    text-align: center;
+}
+
+/* Course gradient placeholders */
+.course-gradient {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 56px;
+}
+
+.course-gradient-1 {
+    background: linear-gradient(135deg, #ff7e33, #ff5593);
+}
+
+.course-gradient-2 {
+    background: linear-gradient(135deg, #9b5de5, #00d4ff);
+}
+
+.course-gradient-3 {
+    background: linear-gradient(135deg, #ffe44d, #ff7e33);
+}
+
+.course-gradient-4 {
+    background: linear-gradient(135deg, #00e676, #00d4ff);
+}
+
+.course-gradient-5 {
+    background: linear-gradient(135deg, #ff5593, #9b5de5);
+}
+
+.course-gradient-6 {
+    background: linear-gradient(135deg, #4da6ff, #9b5de5);
+}
+
+.course-gradient-7 {
+    background: linear-gradient(135deg, #ff7e33, #ffe44d);
+}
+
+.course-gradient-8 {
+    background: linear-gradient(135deg, #00d4ff, #00e676);
+}
+
+/* ===== FEATURES SECTION ===== */
+.features-section {
+    position: relative;
+    z-index: 1;
+    padding: var(--section-padding);
+    background: var(--bg-secondary);
+}
+
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+.feature-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 32px;
+    transition: all var(--transition-bounce);
+    position: relative;
+    overflow: hidden;
+}
+
+.feature-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--gradient-primary);
+    opacity: 0;
+    transition: opacity var(--transition-medium);
+}
+
+.feature-card:hover {
+    transform: translateY(-6px);
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-glow);
+}
+
+.feature-card:hover::after {
+    opacity: 1;
+}
+
+.feature-card-large {
+    grid-column: 1;
+    grid-row: 1 / 3;
+}
+
+.feature-icon-wrap {
+    margin-bottom: 20px;
+}
+
+.feature-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 16px;
+    background: rgba(255, 126, 51, 0.1);
+    border: 1px solid rgba(255, 126, 51, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    transition: all var(--transition-bounce);
+}
+
+.feature-card:hover .feature-icon {
+    transform: scale(1.15) rotate(5deg);
+    box-shadow: 0 0 20px rgba(255, 126, 51, 0.2);
+}
+
+.icon-gradient-2 {
+    background: rgba(0, 212, 255, 0.1) !important;
+    border-color: rgba(0, 212, 255, 0.15) !important;
+}
+
+.icon-gradient-3 {
+    background: rgba(255, 85, 147, 0.1) !important;
+    border-color: rgba(255, 85, 147, 0.15) !important;
+}
+
+.icon-gradient-4 {
+    background: rgba(0, 230, 118, 0.1) !important;
+    border-color: rgba(0, 230, 118, 0.15) !important;
+}
+
+.icon-gradient-5 {
+    background: rgba(155, 93, 229, 0.1) !important;
+    border-color: rgba(155, 93, 229, 0.15) !important;
+}
+
+.feature-card h3 {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 12px;
+}
+
+.feature-card p {
+    font-size: 14px;
+    color: var(--text-secondary);
+    line-height: 1.7;
+}
+
+.feature-3d-demo {
+    margin-top: 24px;
+    height: 180px;
+    border-radius: 14px;
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-color);
+}
+
+/* ===== SHOWCASE SECTION ===== */
+.showcase-section {
+    position: relative;
+    z-index: 1;
+    padding: var(--section-padding);
+}
+
+.showcase-content {
+    display: flex;
+    align-items: center;
+    gap: 80px;
+}
+
+.showcase-text {
+    flex: 1;
+}
+
+.showcase-text .section-title {
+    text-align: left;
+}
+
+.showcase-text p {
+    font-size: 16px;
+    color: var(--text-secondary);
+    margin-bottom: 32px;
+    line-height: 1.8;
+}
+
+.showcase-list {
+    list-style: none;
+    margin-bottom: 32px;
+}
+
+.showcase-list li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    font-size: 15px;
+    color: var(--text-secondary);
+}
+
+.check-icon {
+    font-size: 20px;
+    flex-shrink: 0;
+}
+
+.showcase-3d {
+    flex: 1;
+    min-height: 500px;
+    position: relative;
+    border-radius: var(--border-radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+}
+
+#showcase-canvas {
+    width: 100%;
+    height: 100%;
+    min-height: 500px;
+}
+
+/* ===== PRICING SECTION ===== */
+.pricing-section {
+    position: relative;
+    z-index: 1;
+    padding: var(--section-padding);
+    background: var(--bg-secondary);
+}
+
+.pricing-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin-bottom: 48px;
+}
+
+.toggle-label {
+    font-size: 14px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+    transition: color var(--transition-fast);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.toggle-label.active {
+    color: var(--text-primary);
+}
+
+.toggle-switch {
+    width: 52px;
+    height: 28px;
+    background: var(--bg-tertiary);
+    border-radius: 100px;
+    border: 1px solid var(--border-color);
+    position: relative;
+    transition: all var(--transition-fast);
+    padding: 0;
+}
+
+.toggle-knob {
+    width: 22px;
+    height: 22px;
+    background: var(--gradient-warm);
+    border-radius: 50%;
+    position: absolute;
+    top: 2px;
+    left: 3px;
+    transition: transform var(--transition-medium);
+}
+
+.toggle-switch.active .toggle-knob {
+    transform: translateX(23px);
+}
+
+.save-badge {
+    padding: 3px 10px;
+    background: rgba(0, 230, 118, 0.1);
+    color: var(--accent-green);
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.pricing-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.pricing-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 40px 32px;
+    text-align: center;
+    transition: all var(--transition-bounce);
+    position: relative;
+    overflow: hidden;
+}
+
+.pricing-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gradient-primary);
+    opacity: 0;
+    transition: opacity var(--transition-medium);
+}
+
+.pricing-card:hover {
+    transform: translateY(-10px);
+    border-color: var(--border-hover);
+    box-shadow: var(--shadow-glow);
+}
+
+.pricing-card:hover::before {
+    opacity: 1;
+}
+
+.pricing-card.featured {
+    border-color: var(--accent-orange);
+    background: linear-gradient(180deg, rgba(255, 126, 51, 0.06), var(--bg-card));
+    transform: translateY(-10px) scale(1.03);
+    box-shadow: var(--shadow-glow-strong);
+}
+
+.pricing-card.featured::before {
+    opacity: 1;
+}
+
+.pricing-card.featured:hover {
+    transform: translateY(-14px) scale(1.03);
+}
+
+.pricing-popular-badge {
+    position: absolute;
+    top: 16px;
+    right: -32px;
+    background: var(--gradient-warm);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 4px 40px;
+    transform: rotate(45deg);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.pricing-plan-name {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.pricing-plan-desc {
+    font-size: 14px;
+    color: var(--text-tertiary);
+    margin-bottom: 24px;
+}
+
+.pricing-amount {
+    font-family: var(--font-display);
+    margin-bottom: 32px;
+}
+
+.pricing-currency {
+    font-size: 24px;
+    font-weight: 600;
+    vertical-align: top;
+    color: var(--text-secondary);
+}
+
+.pricing-value {
+    font-size: 56px;
+    font-weight: 700;
+    line-height: 1;
+    margin: 0 4px;
+}
+
+.pricing-period {
+    font-size: 14px;
+    color: var(--text-tertiary);
+    font-weight: 400;
+}
+
+.pricing-features {
+    text-align: left;
+    margin-bottom: 32px;
+}
+
+.pricing-features li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.pricing-features li:last-child {
+    border-bottom: none;
+}
+
+.pricing-check {
+    color: var(--accent-green);
+    font-size: 16px;
+    flex-shrink: 0;
+}
+
+.pricing-card .btn {
+    width: 100%;
+    justify-content: center;
+}
+
+/* ===== TESTIMONIALS SECTION ===== */
+.testimonials-section {
+    position: relative;
+    z-index: 1;
+    padding: var(--section-padding);
+}
+
+.testimonials-carousel {
+    display: flex;
+    gap: 24px;
+    overflow: hidden;
+    margin-bottom: 32px;
+}
+
+.testimonial-card {
+    flex: 0 0 calc(33.333% - 16px);
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 32px;
+    transition: all var(--transition-bounce);
+    min-width: calc(33.333% - 16px);
+}
+
+.testimonial-card:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-glow);
+}
+
+.testimonial-stars {
+    color: var(--accent-yellow);
+    font-size: 16px;
+    margin-bottom: 16px;
+    letter-spacing: 3px;
+}
+
+.testimonial-text {
+    font-size: 15px;
+    color: var(--text-secondary);
+    line-height: 1.8;
+    margin-bottom: 24px;
+    font-style: italic;
+}
+
+.testimonial-author {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.testimonial-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+}
+
+.testimonial-info h4 {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+.testimonial-info p {
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+
+.carousel-controls {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+.carousel-btn {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-bounce);
+}
+
+.carousel-btn:hover {
+    color: var(--text-primary);
+    border-color: var(--border-hover);
+    background: var(--bg-glass-hover);
+    transform: scale(1.1);
+}
+
+.carousel-dots {
+    display: flex;
+    gap: 8px;
+}
+
+.carousel-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--transition-medium);
+}
+
+.carousel-dot.active {
+    width: 28px;
+    border-radius: 5px;
+    background: var(--gradient-warm);
+}
+
+/* ===== CTA SECTION ===== */
+.cta-section {
+    position: relative;
+    z-index: 1;
+    padding: 80px 0;
+}
+
+.cta-card {
+    background: var(--gradient-primary);
+    border-radius: var(--border-radius-xl);
+    padding: 80px 48px;
+    text-align: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.cta-bg-shapes {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+}
+
+.cta-shape {
+    position: absolute;
+    border-radius: 50%;
+    opacity: 0.15;
+}
+
+.shape-1 {
+    width: 300px;
+    height: 300px;
+    background: #fff;
+    top: -100px;
+    right: -50px;
+    animation: float 8s ease-in-out infinite;
+}
+
+.shape-2 {
+    width: 200px;
+    height: 200px;
+    background: var(--accent-yellow);
+    bottom: -50px;
+    left: 10%;
+    animation: float 6s ease-in-out infinite reverse;
+}
+
+.shape-3 {
+    width: 150px;
+    height: 150px;
+    background: var(--accent-cyan);
+    top: 20%;
+    left: -30px;
+    animation: float 10s ease-in-out infinite;
+}
+
+.cta-emoji-rain {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: space-around;
+    align-items: flex-start;
+    pointer-events: none;
+}
+
+.cta-emoji-rain span {
+    font-size: 24px;
+    opacity: 0.2;
+    animation: emojiDrift 5s ease-in-out infinite;
+}
+
+.cta-emoji-rain span:nth-child(2) {
+    animation-delay: 1s;
+}
+
+.cta-emoji-rain span:nth-child(3) {
+    animation-delay: 2s;
+}
+
+.cta-emoji-rain span:nth-child(4) {
+    animation-delay: 3s;
+}
+
+.cta-emoji-rain span:nth-child(5) {
+    animation-delay: 4s;
+}
+
+.cta-emoji-rain span:nth-child(6) {
+    animation-delay: 5s;
+}
+
+@keyframes emojiDrift {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    50% {
+        transform: translateY(40px) rotate(20deg);
+    }
+}
+
+@keyframes float {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(0deg);
+    }
+
+    50% {
+        transform: translateY(-20px) rotate(5deg);
+    }
+}
+
+.cta-card h2 {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 4vw, 42px);
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 16px;
+    position: relative;
+    z-index: 1;
+}
+
+.cta-card p {
+    font-size: 18px;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 32px;
+    position: relative;
+    z-index: 1;
+}
+
+.cta-buttons {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    position: relative;
+    z-index: 1;
+    flex-wrap: wrap;
+}
+
+/* ===== FOOTER ===== */
+.footer {
+    position: relative;
+    z-index: 1;
+    padding: 80px 0 40px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+}
+
+.footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 48px;
+    margin-bottom: 48px;
+}
+
+.footer-brand p {
+    font-size: 14px;
+    color: var(--text-secondary);
+    margin-top: 16px;
+    line-height: 1.8;
+    max-width: 320px;
+}
+
+.social-links {
+    display: flex;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.social-link {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    transition: all var(--transition-bounce);
+}
+
+.social-link:hover {
+    border-color: var(--border-hover);
+    transform: translateY(-3px) scale(1.1);
+    box-shadow: var(--shadow-glow);
+}
+
+.footer-links-group h4 {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+}
+
+.footer-links-group li {
+    margin-bottom: 12px;
+}
+
+.footer-links-group a {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.footer-links-group a:hover {
+    color: var(--accent-orange);
+}
+
+.footer-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-top: 24px;
+    border-top: 1px solid var(--border-color);
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.heart {
+    animation: heartbeat 1.5s ease-in-out infinite;
+    display: inline-block;
+}
+
+@keyframes heartbeat {
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.3);
+    }
+}
+
+/* ===== MODAL ===== */
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(8px);
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: all var(--transition-medium);
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.modal {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-lg);
+    padding: 48px;
+    max-width: 460px;
+    width: 90%;
+    position: relative;
+    transform: translateY(20px) scale(0.95);
+    transition: all var(--transition-bounce);
+}
+
+.modal-overlay.active .modal {
+    transform: translateY(0) scale(1);
+}
+
+.modal-header-emoji {
+    font-size: 48px;
+    text-align: center;
+    margin-bottom: 16px;
+}
+
+.modal-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-size: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all var(--transition-bounce);
+}
+
+.modal-close:hover {
+    background: var(--bg-glass-hover);
+    color: var(--text-primary);
+    transform: rotate(90deg);
+}
+
+.modal h2 {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    text-align: center;
+}
+
+.modal>p {
+    color: var(--text-secondary);
+    font-size: 14px;
+    margin-bottom: 32px;
+    text-align: center;
+}
+
+.modal-form .form-group {
+    margin-bottom: 16px;
+}
+
+.modal-form input,
+.modal-form select {
+    width: 100%;
+    padding: 14px 16px;
+    background: var(--bg-glass);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm);
+    color: var(--text-primary);
+    font-size: 14px;
+    transition: all var(--transition-fast);
+    appearance: none;
+}
+
+.modal-form select {
+    cursor: pointer;
+    background: var(--bg-glass) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23a89cc8' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat right 16px center;
+}
+
+.modal-form input:focus,
+.modal-form select:focus {
+    outline: none;
+    border-color: var(--accent-orange);
+    box-shadow: 0 0 0 4px rgba(255, 126, 51, 0.1);
+}
+
+.modal-form input::placeholder {
+    color: var(--text-muted);
+}
+
+.modal-form .btn {
+    margin-top: 8px;
+}
+
+.modal-footer-text {
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    margin-top: 24px;
+}
+
+.modal-footer-text a {
+    color: var(--accent-orange);
+    font-weight: 600;
+}
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-tertiary);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--accent-orange);
+}
+
+/* ===== SCROLL REVEAL ===== */
+.reveal {
+    opacity: 0;
+    transform: translateY(40px);
+    transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1024px) {
+    .hero {
+        flex-direction: column;
+        text-align: center;
+        padding-top: 140px;
+    }
+
+    .hero-content {
+        max-width: 100%;
+    }
+
+    .hero-cta {
+        justify-content: center;
+    }
+
+    .hero-stats {
+        justify-content: center;
+    }
+
+    .hero-3d-container {
+        min-width: 300px;
+        min-height: 300px;
+    }
+
+    .features-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .feature-card-large {
+        grid-column: 1 / -1;
+        grid-row: auto;
+    }
+
+    .showcase-content {
+        flex-direction: column;
+    }
+
+    .showcase-text .section-title {
+        text-align: center;
+    }
+
+    .showcase-text {
+        text-align: center;
+    }
+
+    .showcase-list {
+        display: inline-block;
+        text-align: left;
+    }
+
+    .showcase-text .btn {
+        margin: 0 auto;
+    }
+
+    .pricing-grid {
+        grid-template-columns: 1fr;
+        max-width: 420px;
+    }
+
+    .pricing-card.featured {
+        transform: none;
+    }
+
+    .pricing-card.featured:hover {
+        transform: translateY(-10px);
+    }
+
+    .footer-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+@media (max-width: 768px) {
+
+    .nav-links,
+    .nav-actions {
+        display: none;
+    }
+
+    .mobile-menu-btn {
+        display: flex;
+    }
+
+    .hero-title {
+        font-size: clamp(32px, 8vw, 48px);
+    }
+
+    .hero-3d-container {
+        min-width: 100%;
+        min-height: 280px;
+    }
+
+    .course-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .features-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .testimonial-card {
+        flex: 0 0 100%;
+        min-width: 100%;
+    }
+
+    .footer-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .footer-bottom {
+        flex-direction: column;
+        gap: 8px;
+        text-align: center;
+    }
+
+    .cta-card {
+        padding: 48px 24px;
+    }
+}
+
+@media (max-width: 480px) {
+    .hero-stats {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .stat-divider {
+        width: 40px;
+        height: 1px;
+    }
+
+    .hero-cta {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .hero-cta .btn {
+        justify-content: center;
+    }
+}é*cascade08é± *cascade08±Ë*cascade08Ëã *cascade08ãä*cascade08äå *cascade08åè*cascade08è€ *cascade08€‚*cascade08‚ƒ *cascade08ƒ„*cascade08„… *cascade08…†*cascade08† *cascade08Ÿ*cascade08Ÿ  *cascade08 ¢*cascade08¢º *cascade08º»*cascade08»¾ *cascade08¾À*cascade08ÀÂ *cascade08ÂÄ*cascade08ÄÈ *cascade08ÈÉ*cascade08Éç *cascade08çé*cascade08éì *cascade08ìí*cascade08íï *cascade08ïñ*cascade08ñö *cascade08ö÷*cascade08÷¢ *cascade08¢£*cascade08£Ô *cascade08ÔÕ*cascade08Õñ *cascade08ñó*cascade08ó *cascade08‘*cascade08‘’ *cascade08’•*cascade08•¯ *cascade08¯±*cascade08±² *cascade08²µ*cascade08µË *cascade08ËÍ*cascade08ÍÎ *cascade08ÎÏ*cascade08ÏĞ *cascade08ĞÑ*cascade08ÑÚ *cascade08Úÿ*cascade08ÿˆ *cascade08ˆ‰*cascade08‰‹ *cascade08‹*cascade08‘ *cascade08‘“*cascade08“” *cascade08”—*cascade08—§ *cascade08§©*cascade08©ª *cascade08ª«*cascade08«® *cascade08®¯*cascade08¯° *cascade08°´*cascade08´Ä *cascade08ÄÆ*cascade08ÆÇ *cascade08ÇÜ*cascade08Üİ *cascade08İä*cascade08äå *cascade08åç*cascade08çí *cascade08íî*cascade08î *cascade08¡*cascade08¡¦ *cascade08¦²*cascade08²´ *cascade08´Â*cascade08ÂÃ *cascade08ÃÊ*cascade08Ê€ *cascade08€ƒ*cascade08ƒ„ *cascade08„†*cascade08†‰ *cascade08‰Š*cascade08Š‹ *cascade08‹*cascade08’ *cascade08’•*cascade08•– *cascade08–˜*cascade08˜« *cascade08«¬*cascade08¬® *cascade08®¯*cascade08¯Ê *cascade08ÊÌ*cascade08ÌÍ *cascade08ÍĞ*cascade08ĞÔ *cascade08ÔÙ*cascade08Ùí *cascade08íğ*cascade08ğŠ	 *cascade08Š	¥	*cascade08¥	¦	 *cascade08¦	¹	*cascade08¹	º	 *cascade08º	»	*cascade08»	¼	 *cascade08¼	Á	*cascade08Á	Ã	 *cascade08Ã	È	*cascade08È	Ê	 *cascade08Ê	Ñ	*cascade08Ñ	Ó	 *cascade08Ó	Ø	*cascade08Ø	Ù	 *cascade08Ù	Ú	*cascade08Ú	Ü	 *cascade08Ü	ã	*cascade08ã	ä	 *cascade08ä	ç	*cascade08ç	è	 *cascade08è	î	*cascade08î	ï	 *cascade08ï	…
+*cascade08…
+†
+ *cascade08†
+‡
+*cascade08‡
+ˆ
+ *cascade08ˆ
+
+*cascade08
+
+ *cascade08
+”
+*cascade08”
+–
+ *cascade08–
+˜
+*cascade08˜
+™
+ *cascade08™
+
+*cascade08
+Ÿ
+ *cascade08Ÿ
+ 
+*cascade08 
+¢
+ *cascade08¢
+¦
+*cascade08¦
+»
+ *cascade08»
+½
+*cascade08½
+×
+ *cascade08×
+ã
+*cascade08ã
+ä
+ *cascade08ä
+æ
+*cascade08æ
+ç
+ *cascade08ç
+è
+*cascade08è
+ê
+ *cascade08ê
+í
+*cascade08í
+î
+ *cascade08î
+ó
+*cascade08ó
+õ
+ *cascade08õ
+‰*cascade08‰» *cascade08»½*cascade08½¾ *cascade08¾Ä*cascade08ÄÅ *cascade08ÅÊ*cascade08ÊÍ *cascade08ÍĞ*cascade08ĞÑ *cascade08ÑÓ*cascade08Ó¢ *cascade08¢¥*cascade08¥§ *cascade08§¨*cascade08¨© *cascade08©ª*cascade08ª¬ *cascade08¬­*cascade08­í *cascade08íğ*cascade08ğò *cascade08òó*cascade08óô *cascade08ôõ*cascade08õ÷ *cascade08÷ø*cascade08øş *cascade08şÿ*cascade08ÿ« *cascade08«´*cascade08´µ *cascade08µ¹*cascade08¹º *cascade08ºë*cascade08ëî *cascade08îï*cascade08ïò *cascade08òô*cascade08ôª *cascade08ª¯*cascade08¯ø *cascade08øú*cascade08úû *cascade08ûü*cascade08üş *cascade08şÿ*cascade08ÿƒ *cascade08ƒ…*cascade08…† *cascade08†‰*cascade08‰„ *cascade08„†*cascade08†£ *cascade08£¥*cascade08¥Ã *cascade08ÃÄ*cascade08Äâ *cascade08âã*cascade08ã´ *cascade08´ö*cascade08ö *cascade08Ÿ*cascade08Ÿ© *cascade08©«*cascade08«¨ *cascade08¨­*cascade08­¿ *cascade08¿Á*cascade08ÁÂ *cascade08ÂÄ*cascade08ÄË *cascade08ËĞ*cascade08Ğá *cascade08áæ*cascade08æô *cascade08ôö*cascade08ö÷ *cascade08÷ù*cascade08ùƒ *cascade08ƒˆ*cascade08ˆ™ *cascade08™*cascade08¬ *cascade08¬±*cascade08±À *cascade08ÀÅ*cascade08ÅÛ *cascade08Ûİ*cascade08İŞ *cascade08Şà*cascade08àç *cascade08çğ*cascade08ğò *cascade08ò÷*cascade08÷ *cascade08*cascade08ƒ *cascade08ƒ„*cascade08„‡ *cascade08‡Ü *cascade08Ü ’" *cascade08’"“"*cascade08“"·$ *cascade08·$¹$*cascade08¹$º$ *cascade08º$½$*cascade08½$â& *cascade08â&“'*cascade08“'¾' *cascade08¾'¿'*cascade08¿'Á' *cascade08Á'Â'*cascade08Â'ø' *cascade08ø'û'*cascade08û'ı' *cascade08ı'ş'*cascade08ş'ÿ' *cascade08ÿ'€(*cascade08€(‚( *cascade08‚(ƒ(*cascade08ƒ(Ã( *cascade08Ã(Ä(*cascade08Ä(Ç( *cascade08Ç(Ó(*cascade08Ó(ö( *cascade08ö(ù(*cascade08ù(û( *cascade08û(ü(*cascade08ü(ı( *cascade08ı(ş(*cascade08ş(€) *cascade08€))*cascade08)·- *cascade08·-¸-*cascade08¸-Š. *cascade08Š.Œ.*cascade08Œ.. *cascade08..*cascade08.Ÿ. *cascade08Ÿ. .*cascade08 .¶. *cascade08¶.·.*cascade08·.¹. *cascade08¹.¼.*cascade08¼.ğ. *cascade08ğ.ó.*cascade08ó.õ. *cascade08õ.ö.*cascade08ö.÷. *cascade08÷.ø.*cascade08ø.ú. *cascade08ú.û.*cascade08û. / *cascade08 /¡/*cascade08¡/é/ *cascade08é/ê/*cascade08ê/ì/ *cascade08ì/ï/*cascade08ï/Š0 *cascade08Š0·0*cascade08·0ë0 *cascade08ë0ì0*cascade08ì0ı1 *cascade08ı1ş1*cascade08ş1´3 *cascade08´3µ3*cascade08µ3‘4 *cascade08‘4’4*cascade08’4…6 *cascade08…6†6*cascade08†6Š6 *cascade08Š6‹6*cascade08‹6¥6 *cascade08¥6¨6*cascade08¨6ª6 *cascade08ª6«6*cascade08«6¬6 *cascade08¬6­6*cascade08­6¯6 *cascade08¯6°6*cascade08°6Ó6 *cascade08Ó6Õ6*cascade08Õ6Ö6 *cascade08Ö6Ø6*cascade08Ø6‡7 *cascade08‡7ˆ7*cascade08ˆ7»7 *cascade08»7¼7*cascade08¼7ö7 *cascade08ö7ù7*cascade08ù7û7 *cascade08û7ü7*cascade08ü7ı7 *cascade08ı7ş7*cascade08ş7€8 *cascade08€88*cascade088ê8 *cascade08ê8ì8*cascade08ì8: *cascade08::*cascade08:é= *cascade08é=ê=*cascade08ê=í= *cascade08í=ï=*cascade08ï=ñ= *cascade08ñ=ó=*cascade08ó=÷= *cascade08÷=ø=*cascade08ø=‘A *cascade08‘A’A*cascade08’AñA *cascade08ñAòA*cascade08òA‚B *cascade08‚BƒB*cascade08ƒBŠB *cascade08ŠBŒB*cascade08ŒB’B *cascade08’B“B*cascade08“BÀB *cascade08ÀBÁB*cascade08ÁBÂB *cascade08ÂBÅB*cascade08ÅBÊB *cascade08ÊBÌB*cascade08ÌBÓB *cascade08ÓBØB*cascade08ØBßB *cascade08ßBèB*cascade08èBôB *cascade08ôB‚C*cascade08‚CC *cascade08C”C*cascade08”C–C *cascade08–C˜C*cascade08˜C£C *cascade08£C¬C*cascade08¬C¸C *cascade08¸CÉC*cascade08ÉCĞC *cascade08ĞC•D*cascade08•D›D *cascade08›D D*cascade08 D¢D *cascade08¢D¤D*cascade08¤D¯D *cascade08¯D¸D*cascade08¸DÄD *cascade08ÄDÕD*cascade08ÕDÜD *cascade08ÜDİD*cascade08İDâD *cascade08âDçD*cascade08çDéD *cascade08éD“F*cascade08“FˆG *cascade08ˆG‰G*cascade08‰GöH *cascade08öH÷H*cascade08÷H›I *cascade08›II*cascade08I¶I *cascade08¶I·I*cascade08·I¨Q *cascade08¨Q©Q*cascade08©Q¿Q *cascade08¿QÀQ*cascade08ÀQÂQ *cascade08ÂQÕQ*cascade08ÕQğQ *cascade08ğQóQ*cascade08óQôQ *cascade08ôQ†R*cascade08†RµR *cascade08µR¶R*cascade08¶RÌR *cascade08ÌRÏR*cascade08ÏRĞR *cascade08ĞRÑR*cascade08ÑRÕR *cascade08ÕRÙR*cascade08ÙR†T *cascade08†TŒT*cascade08ŒTT *cascade08TT*cascade08TT *cascade08T™T*cascade08™TıT *cascade08ıTÿT*cascade08ÿT†U *cascade08†U‹U*cascade08‹U’U *cascade08’U›U*cascade08›U§U *cascade08§U°U*cascade08°UÅU *cascade08ÅUÊU*cascade08ÊUÌU *cascade08ÌUÎU*cascade08ÎUÙU *cascade08ÙUâU*cascade08âUğU *cascade08ğUùU*cascade08ùUV *cascade08V•V*cascade08•VW *cascade08WW*cascade08WÕ\ *cascade08Õ\Ö\*cascade08Ö\ÿb *cascade08ÿbc*cascade08cîc *cascade08îc÷c*cascade08÷cƒd *cascade08ƒdˆd*cascade08ˆdŒd *cascade08Œdd*cascade08d–d *cascade08–dŸd*cascade08Ÿd«d *cascade08«d°d*cascade08°d®e *cascade08®e¯e*cascade08¯eƒg *cascade08ƒg„g*cascade08„g§h *cascade08§h¨h*cascade08¨hi *cascade08i‘i*cascade08‘i§i *cascade08§i¨i*cascade08¨iÛi *cascade08ÛiÜi*cascade08Üiği *cascade08ğiòi*cascade08òij *cascade08jªj*cascade08ªj®j *cascade08®jÍj*cascade08ÍjÏj *cascade08Ïj‰k*cascade08‰kŒk *cascade08Œkk*cascade08kk *cascade08kk*cascade08kŸk *cascade08ŸkÆk*cascade08ÆkÈk *cascade08ÈkÊk*cascade08ÊkÏk *cascade08ÏkÔk*cascade08ÔkÕk *cascade08Õkl*cascade08l‘l *cascade08‘l’l*cascade08’l“l *cascade08“l¢l*cascade08¢l£l *cascade08£lÕl*cascade08ÕlŞl *cascade08Şläl*cascade08älål *cascade08ålæl*cascade08ælèl *cascade08èl÷l*cascade08÷løl *cascade08ølûl*cascade08ûlül *cascade08ül‹m*cascade08‹mŒm *cascade08Œm¢m*cascade08¢m£m *cascade08£m¤m*cascade08¤m¥m *cascade08¥m­m*cascade08­m®m *cascade08®mİm*cascade08İmŞm *cascade08Şmàm*cascade08àmám *cascade08ámïm*cascade08ïmğm *cascade08ğmúm*cascade08úm‚n *cascade08‚nƒn*cascade08ƒn„n *cascade08„nn*cascade08nn *cascade08nšn*cascade08šn›n *cascade08›nÃn*cascade08ÃnÄn *cascade08Änïn*cascade08ïnñn *cascade08ñn¯o*cascade08¯o°o *cascade08°oèo*cascade08èoêo *cascade08êoõo*cascade08õoöo *cascade08öo°p*cascade08°p±p *cascade08±p¸p*cascade08¸p™r *cascade08™r›r*cascade08›r¿s *cascade08¿sÀs*cascade08ÀsÛt *cascade08Ûtİt*cascade08İtŞt *cascade08Ştát*cascade08átğu *cascade08ğu’v*cascade08’vÌv *cascade08ÌvÍv*cascade08ÍvÏv *cascade08ÏvĞv*cascade08Ğv¦w *cascade08¦w©w*cascade08©w«w *cascade08«w¬w*cascade08¬w­w *cascade08­w®w*cascade08®w°w *cascade08°w±w*cascade08±w™z *cascade08™z›z*cascade08›zŸz *cascade08Ÿz z*cascade08 z…} *cascade08…}‡}*cascade08‡}‹} *cascade08‹}}*cascade08}} *cascade08}}*cascade08}‘} *cascade08‘}•}*cascade08•}ú *cascade08úû*cascade08ûÿ *cascade08ÿ€€*cascade08€€¥€ *cascade08¥€¦€*cascade08¦€ *cascade08*cascade08¡‚ *cascade08¡‚¢‚*cascade08¢‚¥‚ *cascade08¥‚§‚*cascade08§‚©‚ *cascade08©‚«‚*cascade08«‚Á‚ *cascade08Á‚Æ‚*cascade08Æ‚â‚ *cascade08â‚ã‚*cascade08ã‚æ‚ *cascade08æ‚è‚*cascade08è‚ê‚ *cascade08ê‚ì‚*cascade08ì‚·ƒ *cascade08·ƒ¸ƒ*cascade08¸ƒ»ƒ *cascade08»ƒ½ƒ*cascade08½ƒÀƒ *cascade08ÀƒÁƒ*cascade08Áƒ×ƒ *cascade08×ƒÙƒ*cascade08ÙƒÚƒ *cascade08Úƒİƒ*cascade08İƒ÷ƒ *cascade08÷ƒøƒ*cascade08øƒûƒ *cascade08ûƒıƒ*cascade08ıƒ€„ *cascade08€„„*cascade08„£… *cascade08£…¤…*cascade08¤…à… *cascade08à…á…*cascade08á…Ì† *cascade08Ì†Í†*cascade08Í†§‹ *cascade08§‹­‹*cascade08­‹°‹ *cascade08°‹»‹*cascade08»‹î *cascade08îğ*cascade08ğ *cascade08ƒ*cascade08ƒı *cascade08ış*cascade08şâ *cascade08âã*cascade08ã¡” *cascade08¡”£”*cascade08£”Á” *cascade08Á”Æ”*cascade08Æ”ì” *cascade08ì”î”*cascade08î”ğ” *cascade08ğ”ò”*cascade08ò”õ” *cascade08õ”û”*cascade08û”ı” *cascade08ı”ÿ”*cascade08ÿ”€• *cascade08€•‚•*cascade08‚•˜• *cascade08˜••*cascade08•Å• *cascade08Å•É•*cascade08É•Ì• *cascade08Ì•Ñ•*cascade08Ñ•Ô• *cascade08Ô•Ö•*cascade08Ö•×• *cascade08×•Ù•*cascade08Ù•ï• *cascade08ï•ô•*cascade08ô•– *cascade08– –*cascade08 –¥– *cascade08¥–¦–*cascade08¦–§– *cascade08§–©–*cascade08©–«– *cascade08«–­–*cascade08­–°– *cascade08°–²–*cascade08²–Æ– *cascade08Æ–Ë–*cascade08Ë–ñ– *cascade08ñ–ó–*cascade08ó–ô– *cascade08ô–õ–*cascade08õ–ö– *cascade08ö–÷–*cascade08÷–ú– *cascade08ú–ÿ–*cascade08ÿ–‚— *cascade08‚—„—*cascade08„—…— *cascade08…—‡—*cascade08‡—— *cascade08—¢—*cascade08¢—É— *cascade08É—Ì—*cascade08Ì—Í— *cascade08Í—Î—*cascade08Î—Ñ— *cascade08Ñ—æ—*cascade08æ—ç— *cascade08ç—í—*cascade08í—î— *cascade08î—–˜*cascade08–˜—˜ *cascade08—˜Ÿ˜*cascade08Ÿ˜ ˜ *cascade08 ˜®˜*cascade08®˜°˜ *cascade08°˜²˜*cascade08²˜³˜ *cascade08³˜µ˜*cascade08µ˜È˜ *cascade08È˜É˜*cascade08É˜Ë˜ *cascade08Ë˜Ğ˜*cascade08Ğ˜ö˜ *cascade08ö˜˜™*cascade08˜™™™ *cascade08™™Ÿ™*cascade08Ÿ™ ™ *cascade08 ™ª™*cascade08ª™«™ *cascade08«™±™*cascade08±™²™ *cascade08²™Ä™*cascade08Ä™Å™ *cascade08Å™Ê™*cascade08Ê™Í™ *cascade08Í™Ñ™*cascade08Ñ™Ò™ *cascade08Ò™Ø™*cascade08Ø™Ù™ *cascade08Ù™Ü™*cascade08Ü™Ş™ *cascade08Ş™à™*cascade08à™Á *cascade08ÁÃ*cascade08ÃÄ *cascade08ÄÇ*cascade08Çù *cascade08ùú*cascade08ú¤  *cascade08¤ ¥ *cascade08¥ Ê¢ *cascade08Ê¢Ë¢*cascade08Ë¢İ¢ *cascade08İ¢Ş¢*cascade08Ş¢÷¢ *cascade08÷¢ø¢*cascade08ø¢’£ *cascade08’£•£*cascade08•£—£ *cascade08—£˜£*cascade08˜£™£ *cascade08™£š£*cascade08š£œ£ *cascade08œ££*cascade08£Â£ *cascade08Â£Å£*cascade08Å£Ç£ *cascade08Ç£È£*cascade08È£É£ *cascade08É£Ê£*cascade08Ê£Ì£ *cascade08Ì£Í£*cascade08Í£¨¤ *cascade08¨¤©¤*cascade08©¤®¤ *cascade08®¤°¤*cascade08°¤±¤ *cascade08±¤·¤*cascade08·¤ß¤ *cascade08ß¤ä¤*cascade08ä¤ª¥ *cascade08ª¥«¥*cascade08«¥­¥ *cascade08­¥º¥*cascade08º¥Û¥ *cascade08Û¥Ş¥*cascade08Ş¥à¥ *cascade08à¥á¥*cascade08á¥â¥ *cascade08â¥ã¥*cascade08ã¥å¥ *cascade08å¥æ¥*cascade08æ¥£¦ *cascade08£¦¤¦*cascade08¤¦Ù¦ *cascade08Ù¦Ú¦*cascade08Ú¦£§ *cascade08£§¥§*cascade08¥§§§ *cascade08§§©§*cascade08©§¬§ *cascade08¬§®§*cascade08®§Ú§ *cascade08Ú§Ü§*cascade08Ü§Ş§ *cascade08Ş§à§*cascade08à§ã§ *cascade08ã§å§*cascade08å§¨¨ *cascade08¨¨©¨*cascade08©¨¬¨ *cascade08¬¨®¨*cascade08®¨±¨ *cascade08±¨³¨*cascade08³¨Ş¨ *cascade08Ş¨ß¨*cascade08ß¨â¨ *cascade08â¨ä¨*cascade08ä¨ç¨ *cascade08ç¨é¨*cascade08é¨¬© *cascade08¬©­©*cascade08­©®© *cascade08®©¯©*cascade08¯©²© *cascade08²©³©*cascade08³©µ© *cascade08µ©¸©*cascade08¸©ã© *cascade08ã©ä©*cascade08ä©å© *cascade08å©æ©*cascade08æ©é© *cascade08é©ê©*cascade08ê©ì© *cascade08ì©ï©*cascade08ï©Ë¬ *cascade08Ë¬Ì¬*cascade08Ì¬²² *cascade08²²³²*cascade08³²–³ *cascade08–³˜³*cascade08˜³ª½ *cascade08ª½«½*cascade08«½­½ *cascade08­½®½*cascade08®½®¾ *cascade08®¾´¾*cascade08´¾¦¿ *cascade08¦¿§¿*cascade08§¿ª¿ *cascade08ª¿¬¿*cascade08¬¿Æ¿ *cascade08Æ¿Ç¿*cascade08Ç¿Ê¿ *cascade08Ê¿Ì¿*cascade08Ì¿Ï¿ *cascade08Ï¿Ğ¿*cascade08Ğ¿å¿ *cascade08å¿æ¿*cascade08æ¿ç¿ *cascade08ç¿î¿*cascade08î¿ï¿ *cascade08ï¿ø¿*cascade08ø¿½Ã *cascade08½Ã¿Ã*cascade08¿ÃÀÃ *cascade08ÀÃÃÃ*cascade08ÃÃöÄ *cascade08öÄ÷Ä*cascade08÷Ä¡Æ *cascade08¡Æ£Æ*cascade08£ÆéÇ *cascade08éÇêÇ*cascade08êÇìÇ *cascade08ìÇïÇ*cascade08ïÇ È *cascade08 È£È*cascade08£È¥È *cascade08¥È¦È*cascade08¦È§È *cascade08§È¨È*cascade08¨ÈªÈ *cascade08ªÈ«È*cascade08«È±È *cascade08±È²È*cascade08²ÈâÈ *cascade08âÈäÈ*cascade08äÈñÈ *cascade08ñÈòÈ*cascade08òÈ›Ê *cascade08›ÊœÊ*cascade08œÊ©Ê *cascade08©ÊªÊ*cascade08ªÊ¨Ë *cascade08¨Ë©Ë*cascade08©Ë«Ë *cascade08«Ë¬Ë*cascade08¬ËµÍ *cascade08µÍ¶Í*cascade08¶ÍóĞ *cascade08óĞôĞ*cascade08ôĞ›Õ *cascade08›Õ¡Õ*cascade08¡Õ¢Õ *cascade08¢Õ¤Õ*cascade08¤Õ¥Õ *cascade08¥Õ®Õ*cascade08®Õ Ú *cascade08 Ú¢Ú*cascade08¢Ú£Ú *cascade08£Ú¦Ú*cascade08¦Ú³Û *cascade08³Û´Û*cascade08´Û…Ü *cascade08…Ü‹Ü*cascade08‹ÜÜ *cascade08Ü™Ü*cascade08™Ü¬Ü *cascade08¬Ü­Ü*cascade08­ÜàÜ *cascade08àÜáÜ*cascade08áÜ…ß *cascade08…ß†ß*cascade08†ß˜ß *cascade08˜ß™ß*cascade08™ß’à *cascade08’à”à*cascade08”àéâ *cascade08éâêâ*cascade08êâüâ *cascade08üâıâ*cascade08ıâıä *cascade08ıäƒå*cascade08ƒå”æ *cascade08”æ°æ*cascade08°æ‹ç *cascade08‹çç*cascade08çç *cascade08ç ç*cascade08 çè *cascade08è£è*cascade08£èĞè *cascade08ĞèÑè*cascade08Ñèéè *cascade08éèêè*cascade08êèé *cascade08éé*cascade08é‘é *cascade08‘é’é*cascade08’é»ê *cascade08»ê¿ê*cascade08¿êÀê *cascade08ÀêÂê*cascade08Âêïî *cascade08ïîğî*cascade08ğîñî *cascade08ñîõî*cascade08õîöî *cascade08öîƒï*cascade08ƒï©ğ *cascade08©ğ»ğ*cascade08»ğ”ñ *cascade08”ñ“ö*cascade08“öö *cascade08ö¦ö*cascade08¦ö§ö *cascade08§öÛö*cascade08ÛöÜö *cascade08Üöåö*cascade08åöæö *cascade08æöçö*cascade08çöéö *cascade08éöƒ÷*cascade08ƒ÷‹÷ *cascade08‹÷á÷*cascade08á÷ä÷ *cascade08ä÷é÷*cascade08é÷ğ÷ *cascade08ğ÷ù÷*cascade08ù÷ ø *cascade08 ø¥ø*cascade08¥ø§ø *cascade08§ø©ø*cascade08©ø´ø *cascade08´ø½ø*cascade08½øèø *cascade08èøíø*cascade08íøÎù *cascade08ÎùÏù*cascade08Ïùû *cascade08ûû*cascade08û» *cascade08»¼*cascade08¼Î *cascade08ÎÏ*cascade08Ïè *cascade08èé*cascade08é—ƒ *cascade08—ƒ™ƒ*cascade08™ƒÃƒ *cascade08ÃƒÉƒ*cascade08Éƒ«„ *cascade08«„¬„*cascade08¬„®„ *cascade08®„Ş„*cascade08Ş„¸… *cascade08¸…¹…*cascade08¹…İ‡ *cascade08İ‡ß‡*cascade08ß‡à‡ *cascade08à‡â‡*cascade08â‡‘Š *cascade08‘Š­Š*cascade08­ŠÊŠ *cascade08ÊŠÌŠ*cascade08ÌŠÓŠ *cascade08ÓŠØŠ*cascade08ØŠßŠ *cascade08ßŠèŠ*cascade08èŠıŠ *cascade08ıŠ‚‹*cascade08‚‹„‹ *cascade08„‹†‹*cascade08†‹‘‹ *cascade08‘‹š‹*cascade08š‹®‹ *cascade08®‹¯‹*cascade08¯‹±‹ *cascade08±‹¶‹*cascade08¶‹°Œ *cascade08°Œ±Œ*cascade08±Œ‹ *cascade08‹Œ*cascade08Œ‘ *cascade08‘‘‘*cascade08‘‘’‘ *cascade08’‘•‘*cascade08•‘ë‘ *cascade08ë‘Ğ’*cascade08Ğ’¦“ *cascade08¦“¨“*cascade08¨“¹“ *cascade08¹“»“*cascade08»“Ú” *cascade08Ú”Û”*cascade08Û”Ñ• *cascade08Ñ•×•*cascade08×•¿– *cascade08¿–Ş–*cascade08Ş–§— *cascade08§—¨—*cascade08¨—İ— *cascade08İ—ö—*cascade08ö—Ú˜ *cascade08Ú˜ó˜*cascade08ó˜Ã™ *cascade08Ã™Ø™*cascade08Ø™æ› *cascade08æ›Ÿ*cascade08Ÿ» *cascade08»Ö*cascade08ÖŸ *cascade08ŸŸ*cascade08ŸŸ *cascade08Ÿ“Ÿ*cascade08“Ÿ¶Ÿ *cascade08¶Ÿ¹Ÿ*cascade08¹Ÿ»Ÿ *cascade08»Ÿ¼Ÿ*cascade08¼Ÿ½Ÿ *cascade08½Ÿ¾Ÿ*cascade08¾ŸÀŸ *cascade08ÀŸÁŸ*cascade08ÁŸù¡ *cascade08ù¡û¡*cascade08û¡ü¡ *cascade08ü¡ş¡*cascade08ş¡Î¤ *cascade08Î¤Ï¤*cascade08Ï¤Ñ¤ *cascade08Ñ¤Ô¤*cascade08Ô¤Ó® *cascade08Ó®Ô®*cascade08Ô®ç¯ *cascade08ç¯é¯*cascade08é¯Ş° *cascade08Ş°à°*cascade08à°ï° *cascade08ï°ô°*cascade08ô°™¹ *cascade08™¹™¹*cascade0826file:///c:/Users/novtw/Music/course-website/styles.css

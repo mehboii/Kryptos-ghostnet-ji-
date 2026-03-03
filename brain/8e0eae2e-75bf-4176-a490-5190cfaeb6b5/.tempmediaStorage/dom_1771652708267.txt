@@ -1,0 +1,22 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+[0] (70,46)<button class='mobile-menu-btn' id='mobile-menu-btn' />
+[1] (942,44)<button class='btn-tiny theme-toggle-btn' />
+Standard Network (IP)
+[2] (806,113)<button class='btn-tiny'>Enable Mesh />
+Hey Alice! How are you?
+This message should persist!
+[3] (97,849)<button class='chat-attach-btn' title='Attach File' />
+[4] (466,849)<input id='chat-input' placeholder='Type secure message...' />
+[5] (859,849)<button id='chat-send'>SEND />
+[6] (100,969)<button class='mobile-nav-item' />
+	[7] (100,984)<span >Home />
+Chat
+Wallet
+Nodes
+[8] (900,969)<button class='mobile-nav-item' />
+	[9] (900,984)<span >Profile />
+
+</current_dom>

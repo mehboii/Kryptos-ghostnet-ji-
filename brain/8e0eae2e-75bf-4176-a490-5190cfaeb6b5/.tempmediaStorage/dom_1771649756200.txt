@@ -1,0 +1,24 @@
+GHOST
+NET
+Home
+Nodes
+Wallet
+Chat
+Vault
+Profile
+MESH CONNECTED
+Dark Mode
+Messages
+No conversations yet.
+Standard Network (IP)
+Enable Mesh
+Save
+Burn
+SEND
+[0] (622,315)<button class='modal-close'>× />
+New Encrypted Chat
+[1] (500,409)<label class='input-label'>CONTACT NAME />
+[2] (500,461)<input class='modal-input' id='chat-name' placeholder='e.g. Alice' />
+[3] (500,526)<label class='input-label'>NODE ID / PUBLIC KEY />
+[4] (500,577)<input class='modal-input' id='chat-pubkey' placeholder='0x...' />
+[5] (500,679)<button class='btn-primary'>START SESSION />

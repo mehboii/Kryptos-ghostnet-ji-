@@ -1,0 +1,18 @@
+GhostNet
+[0] (646,55)<a href='#about'>About />
+[1] (744,55)<a href='#how-it-works'>How it Works />
+[2] (860,55)<a href='#developers'>Developers />
+[3] (950,55)<button aria-label='Toggle Theme' class='icon-btn' id='theme-toggle' />
+Decentralized
+                        Future.
+Build, communicate, and operate on a censorship-resistant network powered by
+                    encrypted nodes.
+[4] (114,401)<a class='btn btn-primary ripple' href='#'>Download Now />
+[5] (279,401)<a class='btn btn-secondary ripple' href='#docs'>View Docs />
+Live Network Metrics
+15,243
+892,401
+99.99
+%
+12
+ms

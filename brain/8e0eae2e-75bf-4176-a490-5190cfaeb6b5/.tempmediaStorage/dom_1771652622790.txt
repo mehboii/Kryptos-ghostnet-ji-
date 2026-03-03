@@ -1,0 +1,15 @@
+[0] (70,46)<button class='mobile-menu-btn' id='mobile-menu-btn' />
+[1] (942,44)<button class='btn-tiny theme-toggle-btn' />
+MESH OVERVIEW
+Live Decentralized Topology
+NODES
+4
+LATENCY
+24ms
+[2] (100,969)<button class='mobile-nav-item active' />
+	[3] (100,984)<span >Home />
+Chat
+Wallet
+Nodes
+[4] (900,969)<button class='mobile-nav-item' />
+	[5] (900,984)<span >Profile />

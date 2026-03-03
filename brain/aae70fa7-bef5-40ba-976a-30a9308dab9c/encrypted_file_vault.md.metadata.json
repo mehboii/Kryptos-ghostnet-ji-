@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "Comprehensive walkthrough of the GhostNet Encrypted File Vault implementation. Covers the 3-layer architecture (browser E2E encryption, vault storage, blockchain anchoring), the blockchain abstraction layer design for chain switching, new services (ghostnet-chain on port 4000, ghostnet-vault on port 4001), security model with zero-knowledge design, all new/modified files, API endpoints, UI features, and deployment instructions for PM2/Docker.",
+  "updatedAt": "2026-02-28T19:17:44.446504300Z"
+}

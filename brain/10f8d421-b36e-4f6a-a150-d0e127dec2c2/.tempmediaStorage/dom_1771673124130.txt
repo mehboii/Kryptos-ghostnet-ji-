@@ -1,0 +1,7 @@
+[0] (206,42)<a class='logo' href='#' id='logo' />
+	[1] (72,42)<span >◈ />
+	[2] (239,42)<span >NexusLearn />
+[3] (913,42)<button aria-label='Toggle menu' class='mobile-menu-btn' id='mobile-menu-btn' />
+	[4] (913,33)<span  />
+	[5] (913,42)<span  />
+	[6] (913,50)<span  />

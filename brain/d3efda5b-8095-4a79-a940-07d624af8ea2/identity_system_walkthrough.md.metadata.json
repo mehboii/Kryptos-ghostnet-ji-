@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary":  "Complete walkthrough of the GhostNet cryptographic identity system that replaces the old email/password auth. Covers the onboarding flow (7 screens), restore flow, returning user PIN unlock, security model (AES-256-GCM, BIP39, PBKDF2), localStorage schema, and files changed.",
+  "updatedAt":  "2026-03-01T18:23:21.389515700Z"
+}

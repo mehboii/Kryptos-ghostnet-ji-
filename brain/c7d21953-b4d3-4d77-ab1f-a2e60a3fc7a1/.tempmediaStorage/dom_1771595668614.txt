@@ -1,0 +1,13 @@
+GhostNet
+[0] (651,54)<a href='#about'>About />
+[1] (717,54)<a href='#how-it-works'>How it Works />
+[2] (796,54)<a href='#developers'>Developers />
+[3] (857,54)<button aria-label='Toggle Theme' class='icon-btn' id='theme-toggle' />
+GhostNet 2.0 Now Live
+Private Infrastructure for the
+Decentralized
+                        Future.
+Build, communicate, and operate on a censorship-resistant network powered by
+                    encrypted nodes.
+[4] (186,886)<a class='btn btn-primary ripple' href='#'>Download Now />
+[5] (298,886)<a class='btn btn-secondary ripple' href='#docs'>View Docs />

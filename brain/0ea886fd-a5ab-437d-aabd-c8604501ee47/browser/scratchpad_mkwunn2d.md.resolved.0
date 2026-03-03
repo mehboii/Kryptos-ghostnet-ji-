@@ -1,0 +1,10 @@
+# GhostNet UI Verification Task
+
+## Plan
+- [ ] Wait for page load (2 seconds)
+- [ ] Capture screenshot of http://localhost:8080
+- [ ] Verify DOM content
+- [ ] Return screenshot path
+
+## Progress
+- Initialized plan.

@@ -1,0 +1,34 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+GHOST
+NET
+[0] (81,294)<button class='nav-btn' />
+	[1] (64,294)<span >Home />
+[2] (81,381)<button class='nav-btn' />
+	[3] (65,381)<span >Nodes />
+[4] (81,469)<button class='nav-btn' />
+	[5] (64,469)<span >Wallet />
+[6] (81,556)<button class='nav-btn active' />
+	[7] (61,556)<span >Chat />
+[8] (81,644)<button class='nav-btn' />
+	[9] (61,644)<span >Vault />
+[10] (81,731)<button class='nav-btn' />
+	[11] (65,731)<span >Profile />
+MESH CONNECTED
+[12] (937,69)<button class='btn-tiny' />
+	[13] (945,69)<span >Dark Mode />
+Messages
+[14] (393,108)<button class='btn-tiny' />
+[15] (314,198)<input class='chat-search-input' placeholder='Search messages...' />
+No conversations yet.
+Standard Network (IP)
+[16] (917,101)<button class='btn-tiny'>Enable Mesh />
+[17] (464,887)<button class='chat-attach-btn' title='Attach File' />
+[18] (650,887)<input id='chat-input' placeholder='Type secure message...' />
+[19] (839,887)<button class='mode-btn active' title='Save'>Save />
+[20] (877,887)<button class='mode-btn' title='Burn 30s'>Burn />
+[21] (929,887)<button id='chat-send'>SEND />
+
+</current_dom>

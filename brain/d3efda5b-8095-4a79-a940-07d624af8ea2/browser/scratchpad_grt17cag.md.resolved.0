@@ -1,0 +1,9 @@
+# Task: Verify Wallet UI at http://localhost:8080
+
+## Plan
+- [ ] Open http://localhost:8080
+- [ ] Wait for page to load
+- [ ] Click "Wallet" tab
+- [ ] Wait 2 seconds
+- [ ] Take screenshot
+- [ ] Report URL and description

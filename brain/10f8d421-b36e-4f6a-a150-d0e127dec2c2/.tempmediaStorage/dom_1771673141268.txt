@@ -1,0 +1,9 @@
+[0] (177,46)<a class='logo' href='#' id='logo' />
+	[1] (133,46)<span >◈ />
+	[2] (188,46)<span >NexusLearn />
+[3] (393,46)<a class='nav-link' href='#courses'>Courses />
+[4] (451,46)<a class='nav-link' href='#features'>Features />
+[5] (506,46)<a class='nav-link' href='#pricing'>Pricing />
+[6] (560,46)<a class='nav-link' href='#testimonials'>Reviews />
+[7] (755,46)<button class='btn btn-ghost' id='btn-login'>Log In />
+[8] (834,46)<button class='btn btn-primary' id='btn-signup'>Get Started />

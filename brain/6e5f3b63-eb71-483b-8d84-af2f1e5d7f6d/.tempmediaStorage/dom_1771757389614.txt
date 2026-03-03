@@ -1,0 +1,33 @@
+[0] (69,43)<button class='mobile-menu-btn' id='mobile-menu-btn' />
+[1] (943,40)<button class='btn-tiny theme-toggle-btn' />
+NODE PROFILE
+[2] (500,195)<label class='input-label'>CUSTOM
+                            ADDRESS
+                            / ALIAS />
+[3] (500,240)<input class='modal-input' id='profile-address' placeholder='e.g. 👾 CipherPunk#99' />
+[4] (500,301)<label class='input-label'>PROFILE
+                            PICTURE />
+[5] (500,350)<input id='profile-avatar-upload' />
+[6] (500,444)<button class='btn-primary'>SAVE
+                        PROFILE />
+[7] (500,719)<div class='section-container' id='auth-section' scrollable='true' />
+	Account
+	Create an account or log in to secure your identity.
+	Sign Up
+	Log In
+	[8] (494,590)<label class='input-label'>EMAIL />
+	[9] (494,636)<input class='modal-input' id='auth-signup-email' placeholder='you@example.com' />
+	[10] (494,693)<label class='input-label'>PASSWORD
+(min 8 characters) />
+		(min 8 characters)
+	[11] (494,738)<input class='modal-input' id='auth-signup-password' placeholder='••••••••' />
+	[12] (494,857)<button class='btn-primary' id='btn-signup'>CREATE ACCOUNT />
+[13] (100,971)<button class='mobile-nav-item' />
+	[14] (100,984)<span >Home />
+[15] (300,971)<button class='mobile-nav-item' />
+	[16] (300,984)<span >Chat />
+Wallet
+[17] (700,971)<button class='mobile-nav-item' />
+	[18] (700,984)<span >Nodes />
+[19] (900,971)<button class='mobile-nav-item active' />
+	[20] (900,984)<span >Profile />

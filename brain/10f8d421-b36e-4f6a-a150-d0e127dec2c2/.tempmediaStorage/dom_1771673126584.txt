@@ -1,0 +1,13 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+[0] (206,42)<a class='logo' href='#' id='logo' />
+	[1] (72,42)<span >◈ />
+	[2] (239,42)<span >NexusLearn />
+[3] (913,42)<button aria-label='Toggle menu' class='mobile-menu-btn' id='mobile-menu-btn' />
+	[4] (913,33)<span  />
+	[5] (913,42)<span  />
+	[6] (913,50)<span  />
+
+</current_dom>
