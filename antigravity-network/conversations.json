@@ -1,0 +1,18 @@
+[
+  {
+    "id": "convo_1771651600801_anddg",
+    "participants": [
+      "user_1771649700367_93",
+      "alice123"
+    ],
+    "contactName": "Alice",
+    "lastMessage": {
+      "body": "This message should persist!",
+      "from": "user_1771649700367_93",
+      "to": "alice123",
+      "ts": 1771651610259,
+      "type": "MSG"
+    },
+    "updated": 1771651610262
+  }
+]
