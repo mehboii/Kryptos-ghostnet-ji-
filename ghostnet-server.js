@@ -128,6 +128,15 @@ app.get("/user/:id", (req, res) => {
     }
 });
 
+app.get('/wallet', async (req, res) => {
+  res.json([
+    { symbol: 'ETH', balance: 0.0, chain: 'Ethereum', address: '0x00...00' },
+    { symbol: 'BTC', balance: 0.0, chain: 'Regtest', address: 'N/A' },
+    { symbol: 'SOL', balance: 0.0, chain: 'Solana', address: 'N/A' },
+    { symbol: 'USDT', balance: 0.0, chain: 'Ethereum', address: '0x00...00' }
+  ]);
+});
+
 app.get("/users", (req, res) => {
     res.json(users);
 });
