@@ -416,7 +416,7 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`/conversations?userId=${userId}`);
+            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`);
             if (res.ok) {
                 const convos = await res.json();
                 UI.renderConversations(convos);
