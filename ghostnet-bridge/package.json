@@ -1,0 +1,17 @@
+{
+  "dependencies": {
+    "@solana/web3.js": "^1.98.4",
+    "bitcoinjs-lib": "^7.0.1",
+    "dotenv": "^16.6.1",
+    "ecpair": "^3.0.0",
+    "ether": "^0.0.9",
+    "ethers": "^6.16.0",
+    "fp-ts": "^2.16.11",
+    "io-ts": "^2.2.22",
+    "node-fetch": "^3.3.2",
+    "tiny-secp256k1": "^2.2.4"
+  },
+  "devDependencies": {
+    "hardhat": "^2.28.6"
+  }
+}
