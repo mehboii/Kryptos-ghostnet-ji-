@@ -215,7 +215,7 @@ class GhostMesh {
     connectWebSocket() {
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
             console.log(`🔌 Mesh: Connecting WebSocket: ${wsUrl}`);
 
             this.ws = new WebSocket(wsUrl);
