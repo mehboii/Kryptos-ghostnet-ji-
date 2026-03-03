@@ -1,5 +1,5 @@
-[build]
+﻿[build]
 builder = "nixpacks"
 
 [deploy]
-startCommand = "node ghostnet-orchestrator.cjs --mode=cloud"
+startCommand = "node ghostnet-server.js"
