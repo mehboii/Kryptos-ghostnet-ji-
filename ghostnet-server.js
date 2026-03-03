@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.use(cors({ origin: ['https://ghostnet-ji.vercel.app', 'http://localhost:3000'], credentials: true }));
+app.use(cors({ origin: true, credentials: true }));
 const PORT = parseInt(process.env.GHOSTNET_SERVER_PORT || process.env.PORT || '8080', 10);
 const GHOSTNET_MODE = process.env.GHOSTNET_MODE || 'development';
 const startTime = Date.now();
