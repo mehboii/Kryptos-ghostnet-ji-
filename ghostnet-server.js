@@ -326,11 +326,8 @@ app.get('/vault/download/:fileId', async (req, res) => {
 
 // Proxy vault list, verify, delete (JSON)
 app.get('/vault/files/:owner', async (req, res) => {
-    try {
-        const proxyRes = await fetch(`${VAULT_URL}/vault/files/${encodeURIComponent(req.params.owner)}`);
-        res.status(proxyRes.status).json(await proxyRes.json());
-    } catch (err) {
-        res.status(502).json({ error: 'Vault service unavailable' });
+  try {
+    res.json({ files: [] });
     }
 });
 
