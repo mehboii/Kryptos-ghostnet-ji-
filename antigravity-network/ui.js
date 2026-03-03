@@ -256,7 +256,7 @@ const UI = {
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
-            const res = await fetch('http://192.168.1.42:3001/wallet');
+            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet');
 
             if (!res.ok) throw new Error("Bridge Error");
 
