@@ -262,7 +262,7 @@ const UI = {
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
-            const res = await fetch(`${import.meta.env.VITE_BRIDGE_URL}/wallet`);
+            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet');
 
             if (!res.ok) throw new Error("Bridge Error");
 

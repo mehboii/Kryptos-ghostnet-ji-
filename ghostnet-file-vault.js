@@ -19,7 +19,7 @@
 
 window.GhostVault = (() => {
     // ─── Config ──────────────────────────────────────────────
-    const VAULT_API = 'https://ghostnet-ji-production.up.railway.app/vault';  // Proxied through main server
+    const VAULT_API = '/vault';  // Proxied through main server
     const KEY_STORE = 'ghostnet_vault_keys';
 
     // ─── Key Management ──────────────────────────────────────
