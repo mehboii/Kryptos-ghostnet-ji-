@@ -328,7 +328,9 @@ app.get('/vault/download/:fileId', async (req, res) => {
 app.get('/vault/files/:owner', async (req, res) => {
   try {
     res.json({ files: [] });
-    }
+    } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get('/vault/verify/:fileId', async (req, res) => {
