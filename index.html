@@ -1398,12 +1398,10 @@
                     }
 
                     function destroyIdentity() {
-                        if (!confirm('⚠️ This will permanently delete your identity from this device. You can only recover it with your seed phrase. Are you sure?')) return;
-                        GhostIdentity.clearIdentity();
-                        _pendingIdentity = null;
-                        const sidebarProfile = document.getElementById('sidebar-profile');
-                        if (sidebarProfile) sidebarProfile.style.display = 'none';
-                        showScreen('welcome');
+                        if (!confirm('⚠️ This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase. Are you sure?')) return;
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        window.location.reload();
                     }
 
                     function signOut() {
