@@ -869,13 +869,15 @@
                                 <p id="success-key"
                                     style="font-family:'SF Mono',monospace; font-size:0.82rem; color:var(--accent); margin-bottom:20px;">
                                 </p>
-                                <div class="id-info-grid" style="grid-template-columns: 1fr; gap: 14px;">
-                                    <div class="id-info-item" style="gap: 8px;">
+                                <div class="id-info-grid">
+                                    <div class="id-info-item">
                                         <div style="display:flex; justify-content:space-between; align-items:center;">
                                             <span class="id-info-label" style="margin:0;">NODE ID</span>
                                             <button onclick="IdentityUI.copyNodeId('success-nodeid', this)"
-                                                style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:4px; padding:2px 8px; cursor:pointer; color:#10b981; display:flex; align-items:center; gap:4px; font-size:0.65rem; transition:all 0.2s;">
-                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                style="background: linear-gradient(180deg, #10b981, #059669); border: none; border-radius: 6px; padding: 2px 6px; cursor: pointer; color: white; display: flex; align-items: center; gap: 3px; font-size: 0.55rem; font-weight: bold; box-shadow: 0 4px 6px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 -2px 0 rgba(0,0,0,0.2) inset; text-shadow: 0 1px 1px rgba(0,0,0,0.2); transition: all 0.1s ease;"
+                                                onmousedown="this.style.transform='translateY(2px)'; this.style.boxShadow='0 1px 2px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.1)';"
+                                                onmouseup="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 -2px 0 rgba(0,0,0,0.2) inset';">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
                                                     stroke="currentColor" stroke-width="2">
                                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
                                                     <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
@@ -884,8 +886,7 @@
                                                 COPY
                                             </button>
                                         </div>
-                                        <span class="id-info-value" id="success-nodeid"
-                                            style="font-size:0.75rem; word-break:break-all; user-select:all; line-height:1.4;"></span>
+                                        <span class="id-info-value" id="success-nodeid"></span>
                                     </div>
                                     <div class="id-info-item">
                                         <span class="id-info-label">SECURITY</span>
@@ -983,7 +984,9 @@
                                             style="display:flex; justify-content:space-between; width:100%; align-items:center;">
                                             <span class="id-detail-label">Node ID</span>
                                             <button onclick="IdentityUI.copyNodeId('dash-nodeid', this)"
-                                                style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:4px; padding:2px 8px; cursor:pointer; color:#10b981; display:flex; align-items:center; gap:4px; font-size:0.65rem; transition:all 0.2s;">
+                                                style="background: linear-gradient(180deg, #10b981, #059669); border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer; color: white; display: flex; align-items: center; gap: 4px; font-size: 0.65rem; font-weight: bold; box-shadow: 0 4px 6px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 -2px 0 rgba(0,0,0,0.2) inset; text-shadow: 0 1px 1px rgba(0,0,0,0.2); transition: all 0.15s ease;"
+                                                onmousedown="this.style.transform='translateY(2px)'; this.style.boxShadow='0 1px 2px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.1)';"
+                                                onmouseup="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 -2px 0 rgba(0,0,0,0.2) inset';">
                                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
                                                     stroke="currentColor" stroke-width="2">
                                                     <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -1058,7 +1061,8 @@
                     let _confirmPositions = [];  // 3 random seed word positions to verify
 
                     function copyNodeId(elementId, btn) {
-                        const val = document.getElementById(elementId).textContent;
+                        const el = document.getElementById(elementId);
+                        const val = el.dataset.fullid || el.textContent;
                         navigator.clipboard.writeText(val).then(() => {
                             const originalHTML = btn.innerHTML;
                             btn.innerHTML = '<span>COPIED!</span>';
@@ -1268,7 +1272,9 @@
                             // Show success
                             document.getElementById('success-name').textContent = _pendingIdentity.displayName;
                             document.getElementById('success-key').textContent = GhostIdentity.shortenKey(_pendingIdentity.address);
-                            document.getElementById('success-nodeid').textContent = _pendingIdentity.nodeId;
+                            const successNodeEl = document.getElementById('success-nodeid');
+                            successNodeEl.dataset.fullid = _pendingIdentity.nodeId;
+                            successNodeEl.textContent = GhostIdentity.shortenNodeId(_pendingIdentity.nodeId);
 
                             // Update sidebar
                             _updateSidebar(_pendingIdentity);
@@ -1368,7 +1374,9 @@
                         document.getElementById('dash-key').textContent = GhostIdentity.shortenKey(identity.address);
                         document.getElementById('dash-pubkey').textContent = GhostIdentity.shortenKey(identity.publicKey);
                         document.getElementById('dash-address').textContent = GhostIdentity.shortenKey(identity.address);
-                        document.getElementById('dash-nodeid').textContent = identity.nodeId;
+                        const dashNodeEl = document.getElementById('dash-nodeid');
+                        dashNodeEl.dataset.fullid = identity.nodeId;
+                        dashNodeEl.textContent = identity.nodeId;
                         showScreen('dashboard');
                     }
 
