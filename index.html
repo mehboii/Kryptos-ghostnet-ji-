@@ -869,14 +869,27 @@
                                 <p id="success-key"
                                     style="font-family:'SF Mono',monospace; font-size:0.82rem; color:var(--accent); margin-bottom:20px;">
                                 </p>
-                                <div class="id-info-grid">
-                                    <div class="id-info-item">
-                                        <span class="id-info-label">NODE ID</span>
-                                        <span class="id-info-value" id="success-nodeid"></span>
+                                <div class="id-info-grid" style="grid-template-columns: 1fr; gap: 14px;">
+                                    <div class="id-info-item" style="gap: 8px;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                            <span class="id-info-label" style="margin:0;">NODE ID</span>
+                                            <button onclick="IdentityUI.copyNodeId('success-nodeid', this)"
+                                                style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:4px; padding:2px 8px; cursor:pointer; color:#10b981; display:flex; align-items:center; gap:4px; font-size:0.65rem; transition:all 0.2s;">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
+                                                    </path>
+                                                </svg>
+                                                COPY
+                                            </button>
+                                        </div>
+                                        <span class="id-info-value" id="success-nodeid"
+                                            style="font-size:0.75rem; word-break:break-all; user-select:all; line-height:1.4;"></span>
                                     </div>
                                     <div class="id-info-item">
                                         <span class="id-info-label">SECURITY</span>
-                                        <span class="id-info-value" style="color:#10b981;">AES-256-GCM</span>
+                                        <span class="id-info-value" style="color:#10b981;">AES-256-GCM ✓</span>
                                     </div>
                                 </div>
                                 <button class="auth-btn-primary" onclick="IdentityUI.enterApp()"
@@ -964,9 +977,24 @@
                                         <span class="id-detail-label">Address</span>
                                         <span class="id-detail-value" id="dash-address"></span>
                                     </div>
-                                    <div class="id-detail-row">
-                                        <span class="id-detail-label">Node ID</span>
-                                        <span class="id-detail-value" id="dash-nodeid"></span>
+                                    <div class="id-detail-row"
+                                        style="flex-direction:column; align-items:flex-start; gap:8px;">
+                                        <div
+                                            style="display:flex; justify-content:space-between; width:100%; align-items:center;">
+                                            <span class="id-detail-label">Node ID</span>
+                                            <button onclick="IdentityUI.copyNodeId('dash-nodeid', this)"
+                                                style="background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); border-radius:4px; padding:2px 8px; cursor:pointer; color:#10b981; display:flex; align-items:center; gap:4px; font-size:0.65rem; transition:all 0.2s;">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
+                                                    </path>
+                                                </svg>
+                                                COPY
+                                            </button>
+                                        </div>
+                                        <span class="id-detail-value" id="dash-nodeid"
+                                            style="font-size:0.75rem; word-break:break-all; user-select:all; line-height:1.4;"></span>
                                     </div>
                                     <div class="id-detail-row">
                                         <span class="id-detail-label">Encryption</span>
@@ -1028,6 +1056,15 @@
                 window.IdentityUI = (() => {
                     let _pendingIdentity = null; // holds mnemonic + keys during onboarding
                     let _confirmPositions = [];  // 3 random seed word positions to verify
+
+                    function copyNodeId(elementId, btn) {
+                        const val = document.getElementById(elementId).textContent;
+                        navigator.clipboard.writeText(val).then(() => {
+                            const originalHTML = btn.innerHTML;
+                            btn.innerHTML = '<span>COPIED!</span>';
+                            setTimeout(() => { btn.innerHTML = originalHTML; }, 2000);
+                        });
+                    }
 
                     // ─── PIN INPUT HELPER ─────────────────────────
                     function _createPinBoxes(containerId, count = 6) {
@@ -1231,7 +1268,7 @@
                             // Show success
                             document.getElementById('success-name').textContent = _pendingIdentity.displayName;
                             document.getElementById('success-key').textContent = GhostIdentity.shortenKey(_pendingIdentity.address);
-                            document.getElementById('success-nodeid').textContent = GhostIdentity.shortenNodeId(_pendingIdentity.nodeId);
+                            document.getElementById('success-nodeid').textContent = _pendingIdentity.nodeId;
 
                             // Update sidebar
                             _updateSidebar(_pendingIdentity);
@@ -1331,7 +1368,7 @@
                         document.getElementById('dash-key').textContent = GhostIdentity.shortenKey(identity.address);
                         document.getElementById('dash-pubkey').textContent = GhostIdentity.shortenKey(identity.publicKey);
                         document.getElementById('dash-address').textContent = GhostIdentity.shortenKey(identity.address);
-                        document.getElementById('dash-nodeid').textContent = GhostIdentity.shortenNodeId(identity.nodeId);
+                        document.getElementById('dash-nodeid').textContent = identity.nodeId;
                         showScreen('dashboard');
                     }
 
@@ -1401,6 +1438,7 @@
                     }
 
                     return {
+                        copyNodeId,
                         showScreen,
                         submitName,
                         verifySeedConfirm,

@@ -274,6 +274,7 @@ const UI = {
                 AppState.wallet = walletData;
             }
 
+
             console.log("Wallet hydrated:", AppState.wallet);
 
             // Re-render
