@@ -970,17 +970,35 @@
                                         </svg>
                                         Identity Details
                                     </h3>
-                                    <div class="id-detail-row"></div>
+                                    <div class="id-detail-row">
                                         <span class="id-detail-label">Public Key</span>
-                                        <span class="id-detail-value secret-clickable" id="dash-pubkey" onclick="IdentityUI.revealSecret('pubkey', 'dash-pubkey')" style="cursor: pointer; transition: color 0.2s;" title="Click to reveal/copy"></span>
+                                        <span class="id-detail-value secret-clickable" id="dash-pubkey"
+                                            onclick="IdentityUI.revealSecret('pubkey', 'dash-pubkey')"
+                                            style="cursor: pointer; transition: color 0.2s;"
+                                            title="Click to reveal/copy"></span>
                                     </div>
                                     <div class="id-detail-row">
                                         <span class="id-detail-label">Address</span>
-                                        <span class="id-detail-value secret-clickable" id="dash-address" onclick="IdentityUI.revealSecret('address', 'dash-address')" style="cursor: pointer; transition: color 0.2s;" title="Click to reveal/copy"></span>
+                                        <span class="id-detail-value secret-clickable" id="dash-address"
+                                            onclick="IdentityUI.revealSecret('address', 'dash-address')"
+                                            style="cursor: pointer; transition: color 0.2s;"
+                                            title="Click to reveal/copy"></span>
                                     </div>
                                     <div class="id-detail-row">
                                         <span class="id-detail-label">Node ID</span>
-                                        <span class="id-detail-value secret-clickable" id="dash-nodeid" onclick="IdentityUI.copyNodeId('dash-nodeid')" style="cursor: pointer; transition: color 0.2s;" title="Click to copy full ID"></span>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span class="id-detail-value" id="dash-nodeid"></span>
+                                            <button onclick="IdentityUI.copyNodeId('dash-nodeid', this)"
+                                                style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: #10b981; display: flex; align-items: center; gap: 4px; font-size: 0.6rem; transition: all 0.2s;">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
+                                                    </path>
+                                                </svg>
+                                                COPY
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="id-detail-row">
                                         <span class="id-detail-label">Encryption</span>
@@ -1043,17 +1061,23 @@
                     let _pendingIdentity = null; // holds mnemonic + keys during onboarding
                     let _confirmPositions = [];  // 3 random seed word positions to verify
 
-                    function copyNodeId(elementId) {
+                    function copyNodeId(elementId, btn) {
                         const el = document.getElementById(elementId);
                         const val = el.dataset.fullid || el.textContent;
                         navigator.clipboard.writeText(val).then(() => {
-                            const originalHTML = el.textContent;
-                            el.textContent = 'COPIED!';
-                            el.style.color = '#10b981';
-                            setTimeout(() => { 
-                                el.textContent = originalHTML; 
-                                el.style.color = '';
-                            }, 2000);
+                            if (btn) {
+                                const originalHTML = btn.innerHTML;
+                                btn.innerHTML = '<span>COPIED!</span>';
+                                setTimeout(() => { btn.innerHTML = originalHTML; }, 2000);
+                            } else {
+                                const originalHTML = el.textContent;
+                                el.textContent = 'COPIED!';
+                                el.style.color = '#10b981';
+                                setTimeout(() => {
+                                    el.textContent = originalHTML;
+                                    el.style.color = '';
+                                }, 2000);
+                            }
                         });
                     }
 
@@ -1073,8 +1097,8 @@
                                 const originalHTML = el.textContent;
                                 el.textContent = 'COPIED!';
                                 el.style.color = '#10b981';
-                                setTimeout(() => { 
-                                    el.textContent = originalHTML; 
+                                setTimeout(() => {
+                                    el.textContent = originalHTML;
                                     el.style.color = '';
                                 }, 2000);
                             });
