@@ -325,6 +325,35 @@ class GhostMesh {
                 }
                 break;
 
+            case 'CHAT_MESSAGE':
+                // Targeted message from the server (HTTP-persisted, delivered via WS)
+                if (msg.senderId !== this.identity.id) {
+                    console.log(`📩 Chat message from ${msg.senderId?.substring(0, 12)}...`);
+                    // Extract message body
+                    let body = msg.content;
+                    if (typeof body === 'object' && body.body) body = body.body;
+                    if (typeof body === 'string' && body.includes('body":"')) {
+                        try { body = JSON.parse(body).body; } catch (e) { }
+                    }
+                    // Display in chat UI
+                    if (window.UI) {
+                        window.UI.addMessage(body || msg.content, 'them');
+                    }
+                    // Refresh conversation list (auto-creates contact on recipient side)
+                    if (window.UI && window.AppState && window.AppState.identity) {
+                        window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
+                    }
+                }
+                break;
+
+            case 'NEW_CONVERSATION':
+                // Server notifies us about a new/updated conversation
+                console.log('📋 New conversation notification received');
+                if (window.UI && window.AppState && window.AppState.identity) {
+                    window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
+                }
+                break;
+
             case 'MESH_PEERS':
                 // Server sent us the full peer list
                 if (msg.peers) {

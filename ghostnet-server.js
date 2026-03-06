@@ -327,6 +327,7 @@ app.post('/message', (req, res) => {
         id: "msg_" + Date.now(),
         convoId: convo.id,
         senderId,
+        receiverId,
         content,
         timestamp: Date.now()
     };
@@ -336,11 +337,36 @@ app.post('/message', (req, res) => {
         fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
     } catch (e) { console.error("Save Error", e); }
 
-    // Broadcast logic (Real-time)
-    if (typeof wss !== 'undefined') {
-        wss.clients.forEach(c => {
-            if (c.readyState === 1) c.send(JSON.stringify({ type: 'MSG', ...msg }));
-        });
+    // Real-time delivery to recipient via WebSocket
+    const recipientPeer = meshPeers.get(receiverId);
+    if (recipientPeer && recipientPeer.ws && recipientPeer.ws.readyState === 1) {
+        // Send the message
+        recipientPeer.ws.send(JSON.stringify({
+            type: 'CHAT_MESSAGE',
+            id: msg.id,
+            convoId: convo.id,
+            senderId,
+            receiverId,
+            content,
+            contactName: contactName || senderId,
+            timestamp: msg.timestamp
+        }));
+
+        // Also notify recipient about the conversation (auto-create contact)
+        recipientPeer.ws.send(JSON.stringify({
+            type: 'NEW_CONVERSATION',
+            convo: {
+                ...convo,
+                otherUser: {
+                    id: senderId,
+                    username: contactName || (registeredNodes[senderId]?.displayName) || senderId.substring(0, 10) + '...'
+                }
+            }
+        }));
+
+        console.log(`✅ Message delivered to ${receiverId.substring(0, 15)}... via WebSocket`);
+    } else {
+        console.log(`📦 Message stored for ${receiverId.substring(0, 15)}... (offline — will see on next login)`);
     }
 
     res.json({ success: true, message: msg, convo });

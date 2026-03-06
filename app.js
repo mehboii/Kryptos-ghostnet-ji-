@@ -84,7 +84,12 @@ window.addEventListener('DOMContentLoaded', async () => {
                     nodeId: window.app.identity.nodeId,
                     capabilities: { ble: false, ws: true }
                 }));
-                console.log(" Re-registered with mesh as:", real.nodeId.substring(0, 15) + '...');
+                console.log("🕸️ Re-registered with mesh as:", real.nodeId.substring(0, 15) + '...');
+            }
+
+            // Load conversation history with the real identity
+            if (window.UI) {
+                setTimeout(() => UI.loadConversations(real.nodeId), 500);
             }
         }
     });

@@ -577,8 +577,8 @@ const UI = {
                 if (res.ok) {
                     const msgs = await res.json();
                     msgs.forEach(m => {
-                        const myId = AppState.identity ? AppState.identity.id : null;
-                        const type = (m.senderId === myId) ? 'me' : 'them';
+                        const myNodeId = AppState.identity ? (AppState.identity.nodeId || AppState.identity.id) : null;
+                        const type = (m.senderId === myNodeId) ? 'me' : 'them';
 
                         let text = m.content;
                         if (typeof text === 'object' && text.body) text = text.body;
@@ -979,17 +979,18 @@ const UI = {
                 }
 
                 // Load conversations for this user
-                UI.loadConversations(user.id);
+                const userId = (AppState && AppState.identity) ? (AppState.identity.nodeId || AppState.identity.id) : user.id;
+                UI.loadConversations(userId);
             } catch (e) {
                 console.error("Error parsing user profile", e);
-                if (AppState && AppState.identity && AppState.identity.id) {
-                    UI.loadConversations(AppState.identity.id);
+                if (AppState && AppState.identity) {
+                    UI.loadConversations(AppState.identity.nodeId || AppState.identity.id);
                 }
             }
         } else {
             // No custom profile saved, but we still have a stable AppState identity from app.js
-            if (AppState && AppState.identity && AppState.identity.id) {
-                UI.loadConversations(AppState.identity.id);
+            if (AppState && AppState.identity) {
+                UI.loadConversations(AppState.identity.nodeId || AppState.identity.id);
             }
         }
 
@@ -1110,10 +1111,10 @@ const UI = {
             if (progressEl) progressEl.style.display = 'block';
 
             const stages = {
-                encrypting: { text: '🔐 Encrypting...', detail: `AES-256-GCM encrypting "${file.name}"`, icon: 'shield', percent: 30 },
-                uploading: { text: '📤 Uploading...', detail: `Sending encrypted blob to vault`, icon: 'upload-cloud', percent: 65 },
-                anchoring: { text: '⛓️ Anchoring on chain...', detail: `Recording SHA-256 hash on blockchain`, icon: 'link', percent: 90 },
-                complete: { text: '✅ Secured!', detail: `"${file.name}" encrypted & anchored`, icon: 'check-circle', percent: 100 }
+                encrypting: { text: ' Encrypting...', detail: `AES-256-GCM encrypting "${file.name}"`, icon: 'shield', percent: 30 },
+                uploading: { text: 'Uploading...', detail: `Sending encrypted blob to vault`, icon: 'upload-cloud', percent: 65 },
+                anchoring: { text: ' Anchoring on chain...', detail: `Recording SHA-256 hash on blockchain`, icon: 'link', percent: 90 },
+                complete: { text: ' Secured!', detail: `"${file.name}" encrypted & anchored`, icon: 'check-circle', percent: 100 }
             };
 
             try {
@@ -1128,10 +1129,10 @@ const UI = {
                     }
                 });
 
-                console.log('✅ Vault upload complete:', result);
+                console.log(' Vault upload complete:', result);
             } catch (err) {
-                console.error('❌ Vault upload failed:', err);
-                if (stageEl) stageEl.textContent = '❌ Upload Failed';
+                console.error(' Vault upload failed:', err);
+                if (stageEl) stageEl.textContent = ' Upload Failed';
                 if (detailEl) detailEl.textContent = err.message;
                 if (barEl) barEl.style.width = '0%';
             }
@@ -1240,7 +1241,7 @@ const UI = {
 
         try {
             await GhostVault.deleteFile(fileId);
-            console.log('🗑️ File deleted:', fileId);
+            console.log(' File deleted:', fileId);
             UI.vaultLoadFiles();
         } catch (err) {
             alert('Delete failed: ' + err.message);
@@ -1272,13 +1273,13 @@ const UI = {
                     <div class="vault-verify-row">
                         <span class="vault-verify-label">Disk Integrity</span>
                         <span class="vault-verify-value ${result.diskIntegrity ? 'pass' : 'fail'}">
-                            ${result.diskIntegrity ? '✅ PASS' : '❌ TAMPERED'}
+                            ${result.diskIntegrity ? ' PASS' : ' TAMPERED'}
                         </span>
                     </div>
                     <div class="vault-verify-row">
                         <span class="vault-verify-label">Chain Verified</span>
                         <span class="vault-verify-value ${result.chainVerified ? 'pass' : 'fail'}">
-                            ${result.chainVerified ? '✅ ON-CHAIN' : '⏳ PENDING'}
+                            ${result.chainVerified ? ' ON-CHAIN' : ' PENDING'}
                         </span>
                     </div>
                     <div class="vault-verify-row">
