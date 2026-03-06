@@ -517,7 +517,12 @@ const meshPeers = new Map(); // peerId -> { id, ws, capabilities, lastSeen }
 
 wss.on("connection", (ws) => {
     let clientId = null;
+    ws.isAlive = true;
     console.log("WS client connected");
+
+    ws.on("pong", () => {
+        ws.isAlive = true;
+    });
 
     ws.on("message", data => {
         try {
@@ -526,8 +531,15 @@ wss.on("connection", (ws) => {
             switch (msg.type) {
                 case 'HELLO':
                 case 'MESH_HELLO':
-                    // Register this peer
-                    clientId = msg.id || msg.nodeId;
+                    const newId = msg.id || msg.nodeId;
+
+                    // If client re-registers with another ID, clean up old one
+                    if (clientId && clientId !== newId && meshPeers.has(clientId)) {
+                        meshPeers.delete(clientId);
+                        console.log(`🔄 Peer re-registered: ${clientId} -> ${newId}`);
+                    }
+
+                    clientId = newId;
                     const peerEntry = {
                         id: clientId,
                         ws: ws,
@@ -543,8 +555,10 @@ wss.on("connection", (ws) => {
 
                     // Send full peer list to the new peer
                     const peerList = [];
+                    const seenWs = new Set();
                     for (const [id, peer] of meshPeers) {
-                        if (id !== clientId && peer.ws !== ws) {
+                        if (peer.ws !== ws && !seenWs.has(peer.ws)) {
+                            seenWs.add(peer.ws);
                             peerList.push({ id: peer.id, capabilities: peer.capabilities, lastSeen: peer.lastSeen });
                         }
                     }
@@ -559,6 +573,7 @@ wss.on("connection", (ws) => {
                     break;
 
                 case 'HEARTBEAT':
+                    ws.isAlive = true;
                     // Update lastSeen
                     if (clientId && meshPeers.has(clientId)) {
                         meshPeers.get(clientId).lastSeen = Date.now();
@@ -597,14 +612,21 @@ wss.on("connection", (ws) => {
     });
 
     ws.on("close", () => {
-        if (clientId) {
-            console.log(`🕸️ Mesh peer left: ${clientId} (total: ${meshPeers.size - 1})`);
-            meshPeers.delete(clientId);
+        // Clean up EVERYTHING that pointed to this websocket
+        const removedIds = [];
+        for (const [id, peer] of meshPeers) {
+            if (peer.ws === ws) {
+                meshPeers.delete(id);
+                removedIds.push(id);
+            }
+        }
 
+        if (removedIds.length > 0) {
+            console.log(`🕸️ Mesh peer left: ${removedIds[0]} (total: ${meshPeers.size})`);
             // Broadcast PEER_LEAVE
             wss.clients.forEach(c => {
                 if (c.readyState === 1) {
-                    c.send(JSON.stringify({ type: 'PEER_LEAVE', id: clientId }));
+                    c.send(JSON.stringify({ type: 'PEER_LEAVE', id: clientId || removedIds[0] }));
                 }
             });
         }
@@ -615,24 +637,23 @@ wss.on("connection", (ws) => {
 
 // Server-side WebSocket ping to prevent Railway/proxy idle timeout (every 25s)
 const WS_PING_INTERVAL = setInterval(() => {
-    wss.clients.forEach(client => {
-        if (client.readyState === 1) {
-            client.ping();
+    wss.clients.forEach(ws => {
+        if (ws.isAlive === false) {
+            console.log('🔌 Terminating dead WebSocket connection');
+            return ws.terminate();
         }
+        ws.isAlive = false;
+        ws.ping();
     });
 }, 25000);
 
-// Clean stale peers every 30 seconds
+// Clean stale peers every 60 seconds based on connection state
 setInterval(() => {
-    const now = Date.now();
     for (const [id, peer] of meshPeers) {
-        if (now - peer.lastSeen > 90000) { // 90 seconds no heartbeat
-            console.log(`🕸️ Stale peer removed: ${id}`);
+        if (!peer.ws || peer.ws.readyState !== 1) {
+            console.log(`🕸️ Stale peer removed because WS is dead: ${id}`);
             meshPeers.delete(id);
-            if (peer.ws.readyState === 1) {
-                peer.ws.close();
-            }
         }
     }
-}, 30000);
+}, 60000);
 

@@ -571,6 +571,13 @@
                                 <p id="pin-unlock-attempts"
                                     style="color:var(--text-muted); font-size:0.72rem; text-align:center; margin-top:4px;">
                                 </p>
+                                <div style="text-align:center; margin-top:15px; margin-bottom:15px;">
+                                    <label style="color:var(--text-muted); font-size:0.85rem; cursor:pointer;">
+                                        <input type="checkbox" id="remember-session" checked
+                                            style="accent-color:var(--accent);">
+                                        Remember me for 7 days
+                                    </label>
+                                </div>
                                 <button class="auth-btn-primary" id="btn-pin-unlock"
                                     onclick="IdentityUI.unlockWithPin()">UNLOCK</button>
                                 <p style="text-align:center; margin-top:20px;">
@@ -842,6 +849,13 @@
                                     <div class="pin-inputs" id="pin-confirm-inputs"></div>
                                 </div>
                                 <div id="pin-set-error" class="id-error"></div>
+                                <div style="text-align:center; margin-top:15px; margin-bottom:15px;">
+                                    <label style="color:var(--text-muted); font-size:0.85rem; cursor:pointer;">
+                                        <input type="checkbox" id="remember-session-new" checked
+                                            style="accent-color:var(--accent);">
+                                        Remember me for 7 days
+                                    </label>
+                                </div>
                                 <button class="auth-btn-primary" onclick="IdentityUI.submitPin()">SET PIN & ENCRYPT
                                     KEY</button>
                             </div>
@@ -1340,6 +1354,14 @@
                                 })
                             }).catch(e => console.warn('Node registration failed:', e));
 
+                            // Save 7-day session token if checked
+                            const remember = document.getElementById('remember-session-new');
+                            if (remember && remember.checked) {
+                                await GhostIdentity.saveSessionToken(pin, _pendingIdentity.nodeId);
+                            } else {
+                                GhostIdentity.clearSessionToken();
+                            }
+
                             // Show success
                             document.getElementById('success-name').textContent = _pendingIdentity.displayName;
                             document.getElementById('success-key').textContent = GhostIdentity.shortenKey(_pendingIdentity.address);
@@ -1372,8 +1394,8 @@
                     }
 
                     // ─── PIN UNLOCK (Returning User) ──────────────
-                    async function unlockWithPin() {
-                        const pin = _getPinValue('pin-unlock-inputs');
+                    async function unlockWithPin(autoPin = null) {
+                        const pin = autoPin || _getPinValue('pin-unlock-inputs');
                         const err = document.getElementById('pin-unlock-error');
 
                         if (pin.length !== 6) { err.textContent = 'Enter all 6 digits.'; return; }
@@ -1394,6 +1416,16 @@
                                     nodeId: stored.nodeId,
                                     id: stored.nodeId,
                                 };
+                            }
+
+                            // Save 7-day session token if checked (and this isn't an auto-login)
+                            if (!autoPin) {
+                                const remember = document.getElementById('remember-session');
+                                if (remember && remember.checked) {
+                                    await GhostIdentity.saveSessionToken(pin, stored.nodeId);
+                                } else {
+                                    GhostIdentity.clearSessionToken();
+                                }
                             }
 
                             // Notify app.js to update mesh identity
@@ -1539,6 +1571,7 @@
                     }
 
                     function lockIdentity() {
+                        GhostIdentity.clearSessionToken();
                         _pendingIdentity = null;
                         showScreen('pin');
                     }
@@ -1551,6 +1584,7 @@
                     }
 
                     function signOut() {
+                        GhostIdentity.clearSessionToken();
                         _pendingIdentity = null;
                         const sidebarProfile = document.getElementById('sidebar-profile');
                         if (sidebarProfile) sidebarProfile.style.display = 'none';
@@ -1566,10 +1600,19 @@
                     }
 
                     // ─── INIT ─────────────────────────────────────
-                    function init() {
+                    async function init() {
                         if (GhostIdentity.isLocked()) {
                             showScreen('locked');
                         } else if (GhostIdentity.isIdentityStored()) {
+                            // Check for valid 7-day session token
+                            const stored = GhostIdentity.getStoredIdentity();
+                            if (stored && stored.nodeId) {
+                                const sessionPin = await GhostIdentity.getSessionPin(stored.nodeId);
+                                if (sessionPin) {
+                                    console.log("🔓 Valid session found, auto-unlocking...");
+                                    return unlockWithPin(sessionPin);
+                                }
+                            }
                             showScreen('pin');
                         } else {
                             showScreen('welcome');

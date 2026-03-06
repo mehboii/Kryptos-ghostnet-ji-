@@ -19,6 +19,7 @@ const GhostIdentity = (() => {
         NODE_ID: 'ghostnet_node_id',
         PIN_ATTEMPTS: 'ghostnet_pin_attempts',
         LOCKED: 'ghostnet_locked',
+        SESSION_TOKEN: 'ghostnet_session_token',
     };
     const MAX_PIN_ATTEMPTS = 5;
 
@@ -178,6 +179,37 @@ const GhostIdentity = (() => {
         Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
     }
 
+    // ─── SESSION MANAGEMENT (7-Day Auto Unlock) ─────────────
+    async function saveSessionToken(pin, nodeId) {
+        const expiry = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+        const payload = JSON.stringify({ pin, expiry });
+        const token = await encryptWithPin(payload, nodeId);
+        localStorage.setItem(STORAGE_KEYS.SESSION_TOKEN, token);
+    }
+
+    async function getSessionPin(nodeId) {
+        const token = localStorage.getItem(STORAGE_KEYS.SESSION_TOKEN);
+        if (!token) return null;
+        try {
+            const payloadStr = await decryptWithPin(token, nodeId);
+            const payload = JSON.parse(payloadStr);
+            if (Date.now() > payload.expiry) {
+                clearSessionToken();
+                return null;
+            }
+            return payload.pin;
+        } catch (e) {
+            clearSessionToken();
+            return null;
+        }
+    }
+
+    function clearSessionToken() {
+        if (STORAGE_KEYS && STORAGE_KEYS.SESSION_TOKEN) {
+            localStorage.removeItem(STORAGE_KEYS.SESSION_TOKEN);
+        }
+    }
+
     function shortenKey(key) {
         if (!key) return '';
         return key.slice(0, 6) + '...' + key.slice(-4);
@@ -202,6 +234,9 @@ const GhostIdentity = (() => {
         incrementPinAttempts,
         resetPinAttempts,
         clearIdentity,
+        saveSessionToken,
+        getSessionPin,
+        clearSessionToken,
         shortenKey,
         shortenNodeId,
         MAX_PIN_ATTEMPTS,
