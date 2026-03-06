@@ -387,32 +387,70 @@ const UI = {
                     <input type="text" id="chat-pubkey" class="modal-input" placeholder="0x...">
                 </div>
 
-                <button class="btn-primary" onclick="UI.submitNewChat()">START SESSION</button>
+                <div id="chat-new-error" style="color:#ef4444; font-size:0.8rem; margin-top:8px; min-height:1.2em;"></div>
+
+                <button class="btn-primary" id="chat-start-btn" onclick="UI.submitNewChat()">START SESSION</button>
             </div>
         `;
         document.body.appendChild(modal);
     },
 
-    submitNewChat: () => {
+    submitNewChat: async () => {
         const name = document.getElementById('chat-name').value;
         const pubKey = document.getElementById('chat-pubkey').value;
+        const errEl = document.getElementById('chat-new-error');
+        const startBtn = document.getElementById('chat-start-btn');
 
-        if (!name || !pubKey) return alert("Please fill details");
-
-        document.querySelector('.modal-overlay').remove();
-
-        // Clear feed for new chat effect
-        const feed = document.getElementById('chat-feed');
-        if (feed) {
-            feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${name} Started --</div>`;
+        if (!name || !pubKey) {
+            if (errEl) errEl.textContent = 'Please fill in both fields.';
+            return;
         }
 
-        // Setup app state target
-        if (window.app) {
-            window.app.chatTarget = pubKey;
+        // Show loading state
+        if (startBtn) {
+            startBtn.disabled = true;
+            startBtn.textContent = 'VALIDATING...';
         }
+        if (errEl) errEl.textContent = '';
 
-        UI.selectChat('new', name, pubKey);
+        // Silent backend validation
+        try {
+            const res = await fetch(`/validate-node/${encodeURIComponent(pubKey)}`);
+            const data = await res.json();
+
+            if (!data.valid) {
+                if (errEl) errEl.textContent = '⚠ Node not found or offline. Check the Node ID and try again.';
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'START SESSION';
+                }
+                return;
+            }
+
+            // Node is valid — connect seamlessly
+            document.querySelector('.modal-overlay').remove();
+
+            // Clear feed for new chat effect
+            const feed = document.getElementById('chat-feed');
+            if (feed) {
+                feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${data.displayName || name} Started --</div>`;
+            }
+
+            // Setup app state target
+            if (window.app) {
+                window.app.chatTarget = pubKey;
+            }
+
+            UI.selectChat('new', data.displayName || name, pubKey);
+
+        } catch (e) {
+            console.error('Node validation error:', e);
+            if (errEl) errEl.textContent = '⚠ Could not verify node. Server may be offline.';
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.textContent = 'START SESSION';
+            }
+        }
     },
 
     loadConversations: async (userId) => {

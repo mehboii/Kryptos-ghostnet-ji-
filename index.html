@@ -1328,6 +1328,18 @@
                                 encrypted
                             );
 
+                            // Register node with backend
+                            fetch('/register-node', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    nodeId: GhostIdentity.getStoredIdentity().nodeId,
+                                    displayName: GhostIdentity.getStoredIdentity().displayName,
+                                    address: GhostIdentity.getStoredIdentity().address,
+                                    publicKey: GhostIdentity.getStoredIdentity().publicKey
+                                })
+                            }).catch(e => console.warn('Node registration failed:', e));
+
                             // Show success
                             document.getElementById('success-name').textContent = _pendingIdentity.displayName;
                             document.getElementById('success-key').textContent = GhostIdentity.shortenKey(_pendingIdentity.address);
@@ -1373,6 +1385,18 @@
 
                             _showDashboard(stored);
                             _updateSidebar(stored);
+
+                            // Re-register node with backend on every sign-in
+                            fetch('/register-node', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    nodeId: stored.nodeId,
+                                    displayName: stored.displayName,
+                                    address: stored.address,
+                                    publicKey: stored.publicKey
+                                })
+                            }).catch(e => console.warn('Node registration failed:', e));
                         } catch (e) {
                             const attempts = GhostIdentity.incrementPinAttempts();
                             const remaining = GhostIdentity.MAX_PIN_ATTEMPTS - attempts;

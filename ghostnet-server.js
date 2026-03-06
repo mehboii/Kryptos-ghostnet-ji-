@@ -80,6 +80,70 @@ try {
     users = [];
 }
 
+// Node ID Registry
+const NODES_FILE = path.join(__dirname, "nodes.json");
+let registeredNodes = {};
+
+try {
+    if (fs.existsSync(NODES_FILE)) {
+        registeredNodes = JSON.parse(fs.readFileSync(NODES_FILE, 'utf-8'));
+    } else {
+        fs.writeFileSync(NODES_FILE, "{}");
+    }
+} catch (e) {
+    console.error("Node registry load error", e);
+    registeredNodes = {};
+}
+
+function saveNodeRegistry() {
+    try {
+        fs.writeFileSync(NODES_FILE, JSON.stringify(registeredNodes, null, 2));
+    } catch (e) {
+        console.error("Node registry save error", e);
+    }
+}
+
+// --- API: NODE REGISTRATION & VALIDATION ---
+
+app.post("/register-node", (req, res) => {
+    const { nodeId, displayName, address, publicKey } = req.body;
+
+    if (!nodeId || !displayName) {
+        return res.status(400).json({ error: "nodeId and displayName required" });
+    }
+
+    registeredNodes[nodeId] = {
+        nodeId,
+        displayName,
+        address: address || null,
+        publicKey: publicKey || null,
+        registeredAt: Date.now(),
+        lastSeen: Date.now()
+    };
+
+    saveNodeRegistry();
+    console.log(`📋 Node registered: ${displayName} (${nodeId.substring(0, 10)}...)`);
+    res.json({ success: true });
+});
+
+app.get("/validate-node/:nodeId", (req, res) => {
+    const { nodeId } = req.params;
+
+    if (!nodeId) {
+        return res.status(400).json({ error: "nodeId required" });
+    }
+
+    const node = registeredNodes[nodeId];
+    if (node) {
+        // Update last seen
+        node.lastSeen = Date.now();
+        saveNodeRegistry();
+        res.json({ valid: true, displayName: node.displayName, address: node.address });
+    } else {
+        res.json({ valid: false });
+    }
+});
+
 // --- API: USER MANAGEMENT ---
 
 app.post("/create-user", (req, res) => {
@@ -129,12 +193,12 @@ app.get("/user/:id", (req, res) => {
 });
 
 app.get('/wallet', async (req, res) => {
-  res.json([
-    { symbol: 'ETH', balance: 0.0, chain: 'Ethereum', address: '0x00...00' },
-    { symbol: 'BTC', balance: 0.0, chain: 'Regtest', address: 'N/A' },
-    { symbol: 'SOL', balance: 0.0, chain: 'Solana', address: 'N/A' },
-    { symbol: 'USDT', balance: 0.0, chain: 'Ethereum', address: '0x00...00' }
-  ]);
+    res.json([
+        { symbol: 'ETH', balance: 0.0, chain: 'Ethereum', address: '0x00...00' },
+        { symbol: 'BTC', balance: 0.0, chain: 'Regtest', address: 'N/A' },
+        { symbol: 'SOL', balance: 0.0, chain: 'Solana', address: 'N/A' },
+        { symbol: 'USDT', balance: 0.0, chain: 'Ethereum', address: '0x00...00' }
+    ]);
 });
 
 app.get("/users", (req, res) => {
@@ -215,6 +279,12 @@ app.post('/message', (req, res) => {
 
     if (!senderId || !receiverId || !content) {
         return res.status(400).json({ error: "Missing fields" });
+    }
+
+    // Validate receiverId exists in node registry (skip 'broadcast')
+    if (receiverId !== 'broadcast' && !registeredNodes[receiverId]) {
+        console.log(`🚫 Message rejected — receiverId not found: ${receiverId.substring(0, 15)}...`);
+        return res.status(404).json({ error: "Node not found or offline" });
     }
 
     // Auto-create or update conversation
@@ -326,11 +396,11 @@ app.get('/vault/download/:fileId', async (req, res) => {
 
 // Proxy vault list, verify, delete (JSON)
 app.get('/vault/files/:owner', async (req, res) => {
-  try {
-    res.json({ files: [] });
+    try {
+        res.json({ files: [] });
     } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/vault/verify/:fileId', async (req, res) => {
