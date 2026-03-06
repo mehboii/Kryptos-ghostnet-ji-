@@ -41,7 +41,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Use real crypto identity if already available (e.g. stored in localStorage)
-    const stored = window.GhostIdentity ? window.GhostIdentity.getStoredIdentity() : null;
+    let stored = null;
+    try {
+        if (localStorage.getItem('ghostnet_enc_pk')) {
+            stored = {
+                nodeId: localStorage.getItem('ghostnet_node_id'),
+                publicKey: localStorage.getItem('ghostnet_pubkey'),
+                displayName: localStorage.getItem('ghostnet_display_name'),
+                address: localStorage.getItem('ghostnet_address')
+            };
+        }
+    } catch (e) { }
     if (stored && stored.nodeId) {
         window.app.identity = {
             id: stored.nodeId,
