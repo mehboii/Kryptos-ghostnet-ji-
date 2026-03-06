@@ -55,7 +55,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (stored && stored.nodeId) {
         window.app.identity = {
             id: stored.nodeId,
-            pub: stored.publicKey || stored.nodeId,
+            pub: stored.nodeId,
             nodeId: stored.nodeId,
             displayName: stored.displayName,
             address: stored.address
@@ -65,7 +65,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         const real = window.AppState.identity;
         window.app.identity = {
             id: real.nodeId,
-            pub: real.publicKey || real.nodeId,
+            pub: real.nodeId,
             nodeId: real.nodeId,
             displayName: real.displayName,
             address: real.address
@@ -370,7 +370,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             const chat = new GhostChat(window.app.identity, transportSender);
             window.app.chat = chat;
             chat.onMessage = (msg) => {
-                if (window.UI) UI.addMessage(msg.body, "them");
+                if (window.UI) {
+                    UI.addMessage(msg.body, "them");
+                    if (window.AppState && window.AppState.identity) {
+                        UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
+                    }
+                }
             };
             console.log(" GhostChat encryption layer initialized");
         } catch (e) {
