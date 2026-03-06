@@ -30,31 +30,64 @@ window.app = {
 
 // Initialize App on Load
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log("🚀 System: Initializing GhostNet...");
+    console.log(" System: Initializing GhostNet...");
 
     // --- 1. IDENTITY ---
+    // Generate a fallback ID for initial boot (before PIN unlock)
     let myId = localStorage.getItem('ghostnet_user_id');
     if (!myId) {
         myId = "user_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
         localStorage.setItem('ghostnet_user_id', myId);
     }
 
-    if (window.GhostIdentity) {
-        window.app.identity = await window.GhostIdentity.generateIdentity();
-        window.app.identity.id = myId;
-        window.app.identity.pub = myId;
-        window.app.identity.nodeId = myId;
+    // Use real crypto identity if already available (e.g. after PIN unlock)
+    if (window.AppState && window.AppState.identity && window.AppState.identity.nodeId) {
+        const real = window.AppState.identity;
+        window.app.identity = {
+            id: real.nodeId,
+            pub: real.publicKey || real.nodeId,
+            nodeId: real.nodeId,
+            displayName: real.displayName,
+            address: real.address
+        };
+        console.log(" Using crypto identity:", real.nodeId.substring(0, 15) + '...');
     } else {
+        // Fallback identity for before PIN unlock
         window.app.identity = { id: myId, pub: myId, nodeId: myId };
-        console.warn("⚠️ GhostIdentity module missing, using fallback identity");
+        console.log(" Using fallback identity:", myId);
     }
 
     // Set identity in global state
-    if (window.AppState) {
+    if (window.AppState && !window.AppState.identity) {
         window.AppState.identity = window.app.identity;
     }
 
-    console.log("🆔 Identity:", myId);
+    // Listen for identity updates (when user unlocks PIN after page load)
+    window.addEventListener('identity:updated', () => {
+        if (window.AppState && window.AppState.identity && window.AppState.identity.nodeId) {
+            const real = window.AppState.identity;
+            window.app.identity = {
+                id: real.nodeId,
+                pub: real.publicKey || real.nodeId,
+                nodeId: real.nodeId,
+                displayName: real.displayName,
+                address: real.address
+            };
+            console.log(" Identity updated to:", real.nodeId.substring(0, 15) + '...');
+
+            // Re-register with mesh if connected
+            if (window.app.mesh && window.app.mesh.ws && window.app.mesh.wsReady) {
+                window.app.mesh.identity = window.app.identity;
+                window.app.mesh.ws.send(JSON.stringify({
+                    type: 'MESH_HELLO',
+                    id: window.app.identity.id,
+                    nodeId: window.app.identity.nodeId,
+                    capabilities: { ble: false, ws: true }
+                }));
+                console.log(" Re-registered with mesh as:", real.nodeId.substring(0, 15) + '...');
+            }
+        }
+    });
 
     // --- 2. HTTP PERSISTENCE (always works) ---
     window.app.persistMessage = async (text, targetId) => {
@@ -82,6 +115,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                     window.UI.loadConversations(myId);
                 }
                 return result;
+            } else {
+                const errBody = await response.json().catch(() => ({}));
+                console.error(` Message rejected (HTTP ${response.status}):`, errBody.error || errBody);
             }
         } catch (e) {
             console.error("HTTP Persistence failed:", e);
@@ -108,7 +144,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             input.value = '';
 
             // 1. Persist via HTTP (always)
-            await window.app.persistMessage(text, window.app.chatTarget);
+            console.log(' Sending message to:', window.app.chatTarget, 'from:', window.app.identity.id);
+            const persistResult = await window.app.persistMessage(text, window.app.chatTarget);
+            if (persistResult === null) {
+                console.warn('⚠️ Message persistence failed — backend may have rejected');
+            }
 
             // 2. Broadcast via mesh (if available)
             if (window.app.mesh) {
@@ -151,7 +191,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (e.key === 'Enter') sendMessage();
         };
 
-        console.log("✅ Chat SEND button wired to HTTP + Mesh");
+        console.log(" Chat SEND button wired to HTTP + Mesh");
 
         // File Attachment Logic
         const fileInput = document.getElementById('chat-file');
@@ -159,8 +199,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             fileInput.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                console.log("📎 File Selected:", file.name);
-                UI.addMessage(`📎 FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
+                console.log(" File Selected:", file.name);
+                UI.addMessage(` FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
                 fileInput.value = '';
             };
         }
@@ -177,7 +217,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             // --- Mesh event handlers ---
 
             mesh.onPeerJoin = (peer) => {
-                console.log(`👋 Peer joined: ${peer.name} via ${peer.transport}`);
+                console.log(` Peer joined: ${peer.name} via ${peer.transport}`);
 
                 // Add to AppState peers
                 if (window.AppState && !window.AppState.peers.find(p => p.id === peer.id)) {
@@ -193,7 +233,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onPeerLeave = (peer) => {
-                console.log(`👋 Peer left: ${peer.name || peer.id}`);
+                console.log(` Peer left: ${peer.name || peer.id}`);
 
                 if (window.AppState) {
                     window.AppState.peers = window.AppState.peers.filter(p => p.id !== peer.id);
@@ -202,7 +242,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onMessage = (msgData, from, transport) => {
-                console.log(`📩 Mesh message from ${from} via ${transport}:`, msgData);
+                console.log(` Mesh message from ${from} via ${transport}:`, msgData);
 
                 // Display in chat if it's a MSG type
                 if (msgData && (msgData.type === 'MSG' || msgData.body)) {
@@ -219,7 +259,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onStatusChange = (status) => {
-                console.log('🕸️ Mesh status:', status);
+                console.log(' Mesh status:', status);
 
                 if (status.state === 'error') {
                     console.warn('Mesh error:', status.message);
@@ -228,14 +268,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             // Start the mesh (WebSocket auto-connects, BLE auto-reconnects known devices)
             await mesh.start();
-            console.log("✅ GhostMesh started. Status:", mesh.getStatus());
+            console.log(" GhostMesh started. Status:", mesh.getStatus());
 
         } catch (e) {
             console.warn("GhostMesh init failed:", e);
         }
     } else {
         // Fallback: Direct WebSocket if GhostMesh not loaded
-        console.warn("⚠️ GhostMesh not loaded, using direct WebSocket fallback");
+        console.warn(" GhostMesh not loaded, using direct WebSocket fallback");
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
@@ -272,7 +312,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             chat.onMessage = (msg) => {
                 if (window.UI) UI.addMessage(msg.body, "them");
             };
-            console.log("✅ GhostChat encryption layer initialized");
+            console.log(" GhostChat encryption layer initialized");
         } catch (e) {
             console.warn("GhostChat init failed (non-critical):", e);
         }
@@ -283,6 +323,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.dispatchEvent(new Event("app:state"));
 
     if (window.location.protocol === 'file:') {
-        alert("⚠️ WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
+        alert(" WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
     }
 });

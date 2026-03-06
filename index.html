@@ -1350,6 +1350,18 @@
                             // Update sidebar
                             _updateSidebar(_pendingIdentity);
 
+                            // Set global identity state
+                            if (window.AppState) {
+                                AppState.identity = {
+                                    displayName: _pendingIdentity.displayName,
+                                    publicKey: _pendingIdentity.publicKey,
+                                    address: _pendingIdentity.address,
+                                    nodeId: _pendingIdentity.nodeId,
+                                    id: _pendingIdentity.nodeId,
+                                };
+                            }
+                            window.dispatchEvent(new Event('identity:updated'));
+
                             // Clear sensitive data from memory
                             _pendingIdentity = null;
 
@@ -1380,8 +1392,12 @@
                                     publicKey: stored.publicKey,
                                     address: stored.address,
                                     nodeId: stored.nodeId,
+                                    id: stored.nodeId,
                                 };
                             }
+
+                            // Notify app.js to update mesh identity
+                            window.dispatchEvent(new Event('identity:updated'));
 
                             _showDashboard(stored);
                             _updateSidebar(stored);

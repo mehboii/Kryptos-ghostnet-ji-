@@ -502,18 +502,23 @@ wss.on("connection", (ws) => {
                 case 'MESH_HELLO':
                     // Register this peer
                     clientId = msg.id || msg.nodeId;
-                    meshPeers.set(clientId, {
+                    const peerEntry = {
                         id: clientId,
                         ws: ws,
                         capabilities: msg.capabilities || {},
                         lastSeen: Date.now()
-                    });
+                    };
+                    meshPeers.set(clientId, peerEntry);
+                    // Also register by nodeId if different from id
+                    if (msg.nodeId && msg.nodeId !== clientId) {
+                        meshPeers.set(msg.nodeId, peerEntry);
+                    }
                     console.log(`🕸️ Mesh peer joined: ${clientId} (total: ${meshPeers.size})`);
 
                     // Send full peer list to the new peer
                     const peerList = [];
                     for (const [id, peer] of meshPeers) {
-                        if (id !== clientId) {
+                        if (id !== clientId && peer.ws !== ws) {
                             peerList.push({ id: peer.id, capabilities: peer.capabilities, lastSeen: peer.lastSeen });
                         }
                     }
@@ -531,6 +536,25 @@ wss.on("connection", (ws) => {
                     // Update lastSeen
                     if (clientId && meshPeers.has(clientId)) {
                         meshPeers.get(clientId).lastSeen = Date.now();
+                    }
+                    break;
+
+                case 'MESH_DIRECT':
+                    // Route to specific recipient
+                    const targetId = msg.to || msg.data?.to;
+                    if (targetId && meshPeers.has(targetId)) {
+                        const target = meshPeers.get(targetId);
+                        if (target.ws && target.ws.readyState === 1) {
+                            target.ws.send(JSON.stringify(msg));
+                            console.log(`📨 WS routed MESH_DIRECT from ${clientId} to ${targetId}`);
+                        }
+                    } else {
+                        // Fallback: broadcast if target not found
+                        wss.clients.forEach(c => {
+                            if (c.readyState === 1 && c !== ws) {
+                                c.send(JSON.stringify(msg));
+                            }
+                        });
                     }
                     break;
 
