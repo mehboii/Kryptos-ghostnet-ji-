@@ -580,6 +580,7 @@ wss.on("connection", (ws) => {
                     }
                     break;
 
+                case 'message':
                 case 'MESH_DIRECT':
                     // Route to specific recipient
                     const targetId = msg.to || msg.data?.to;
@@ -587,7 +588,7 @@ wss.on("connection", (ws) => {
                         const target = meshPeers.get(targetId);
                         if (target.ws && target.ws.readyState === 1) {
                             target.ws.send(JSON.stringify(msg));
-                            console.log(`📨 WS routed MESH_DIRECT from ${clientId} to ${targetId}`);
+                            console.log(`📨 WS routed message from ${msg.from || clientId} to ${targetId}`);
                         }
                     } else {
                         // Fallback: broadcast if target not found

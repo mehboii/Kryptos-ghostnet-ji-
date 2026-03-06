@@ -40,8 +40,18 @@ window.addEventListener('DOMContentLoaded', async () => {
         localStorage.setItem('ghostnet_user_id', myId);
     }
 
-    // Use real crypto identity if already available (e.g. after PIN unlock)
-    if (window.AppState && window.AppState.identity && window.AppState.identity.nodeId) {
+    // Use real crypto identity if already available (e.g. stored in localStorage)
+    const stored = window.GhostIdentity ? window.GhostIdentity.getStoredIdentity() : null;
+    if (stored && stored.nodeId) {
+        window.app.identity = {
+            id: stored.nodeId,
+            pub: stored.publicKey || stored.nodeId,
+            nodeId: stored.nodeId,
+            displayName: stored.displayName,
+            address: stored.address
+        };
+        console.log(" Using crypto identity from storage:", stored.nodeId.substring(0, 15) + '...');
+    } else if (window.AppState && window.AppState.identity && window.AppState.identity.nodeId) {
         const real = window.AppState.identity;
         window.app.identity = {
             id: real.nodeId,
@@ -50,7 +60,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             displayName: real.displayName,
             address: real.address
         };
-        console.log(" Using crypto identity:", real.nodeId.substring(0, 15) + '...');
+        console.log(" Using crypto identity from state:", real.nodeId.substring(0, 15) + '...');
     } else {
         // Fallback identity for before PIN unlock
         window.app.identity = { id: myId, pub: myId, nodeId: myId };
@@ -84,7 +94,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                     nodeId: window.app.identity.nodeId,
                     capabilities: { ble: false, ws: true }
                 }));
-                console.log("🕸️ Re-registered with mesh as:", real.nodeId.substring(0, 15) + '...');
+                console.log(" Re-registered with mesh as:", real.nodeId.substring(0, 15) + '...');
             }
 
             // Load conversation history with the real identity
@@ -148,38 +158,33 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (window.UI) UI.addMessage(text, 'me');
             input.value = '';
 
-            // 1. Persist via HTTP (always)
-            console.log(' Sending message to:', window.app.chatTarget, 'from:', window.app.identity.id);
-            const persistResult = await window.app.persistMessage(text, window.app.chatTarget);
-            if (persistResult === null) {
-                console.warn('⚠️ Message persistence failed — backend may have rejected');
-            }
+            // 1. Forward via GhostChat encryption (if available) -> WS Routing
+            const recipientNodeId = window.app.chatTarget || 'broadcast';
 
-            // 2. Broadcast via mesh (if available)
-            if (window.app.mesh) {
+            if (window.app.chat && window.app.chat.sendMessage) {
                 try {
-                    window.app.mesh.broadcast({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast',
-                        type: 'MSG'
-                    });
-                } catch (e) {
-                    console.warn("Mesh broadcast failed:", e);
-                }
-            }
-
-            // 3. Forward via GhostChat encryption (if available)
-            if (window.app.chat && window.app.chat.sendToNetwork) {
-                try {
-                    await window.app.chat.sendToNetwork(JSON.stringify({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast'
-                    }));
+                    await window.app.chat.sendMessage(text, recipientNodeId, "PERSIST", 0);
                 } catch (e) {
                     console.warn("GhostChat send failed:", e);
                 }
+            } else {
+                // Plaintext fallback
+                if (window.app.mesh && window.app.mesh.ws && window.app.mesh.ws.readyState === 1) {
+                    window.app.mesh.ws.send(JSON.stringify({
+                        type: 'message',
+                        to: recipientNodeId,
+                        from: window.app.identity.nodeId,
+                        content: { body: text },
+                        timestamp: Date.now()
+                    }));
+                }
+            }
+
+            // 2. Persist via HTTP for offline recipients
+            console.log(' Persisting message to:', recipientNodeId);
+            const persistResult = await window.app.persistMessage(text, recipientNodeId);
+            if (persistResult === null) {
+                console.warn(' Message persistence failed');
             }
         };
 
@@ -249,8 +254,28 @@ window.addEventListener('DOMContentLoaded', async () => {
             mesh.onMessage = (msgData, from, transport) => {
                 console.log(` Mesh message from ${from} via ${transport}:`, msgData);
 
-                // Display in chat if it's a MSG type
-                if (msgData && (msgData.type === 'MSG' || msgData.body)) {
+                // Decrypt via GhostChat if it contains crypto payload
+                if (msgData && msgData.type === 'MSG' && msgData.iv) {
+                    if (window.app.chat) {
+                        try {
+                            // Reconstruct the expected GhostChat structure to feed the decryptor
+                            const gcPacket = {
+                                type: "MSG",
+                                id: msgData.id,
+                                from: from,
+                                to: window.app.identity.nodeId,
+                                ts: Date.now(),
+                                iv: msgData.iv,
+                                data: msgData.data,
+                                mode: msgData.mode,
+                                ttl: msgData.ttl
+                            };
+                            window.app.chat.receive(JSON.stringify(gcPacket));
+                        } catch (e) { console.warn("GhostChat Decryption error:", e); }
+                    }
+                }
+                // Display in chat if it's plaintext fallback
+                else if (msgData && (msgData.type === 'MSG' || msgData.body)) {
                     if (window.UI) {
                         UI.addMessage(msgData.body || JSON.stringify(msgData), 'them');
                     }
@@ -308,8 +333,28 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (window.GhostChat) {
         try {
             const transportSender = async (payloadStr) => {
-                if (window.app.mesh) {
-                    window.app.mesh.broadcast(JSON.parse(payloadStr));
+                const gcPayload = JSON.parse(payloadStr);
+
+                // Format it exactly as required by the backend routing
+                const customPayload = {
+                    type: 'message',
+                    to: gcPayload.to,
+                    from: gcPayload.from,
+                    content: {
+                        iv: gcPayload.iv,
+                        data: gcPayload.data,
+                        mode: gcPayload.mode,
+                        ttl: gcPayload.ttl,
+                        id: gcPayload.id,
+                        type: 'MSG'
+                    },
+                    timestamp: gcPayload.ts
+                };
+
+                if (window.app.mesh && window.app.mesh.ws && window.app.mesh.ws.readyState === 1) {
+                    window.app.mesh.ws.send(JSON.stringify(customPayload));
+                } else if (window.app.mesh) {
+                    window.app.mesh.broadcast(customPayload);
                 }
             };
             const chat = new GhostChat(window.app.identity, transportSender);

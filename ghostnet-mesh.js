@@ -309,6 +309,7 @@ class GhostMesh {
                 }
                 break;
 
+            case 'message':
             case 'MESH_MSG':
             case 'MSG':
                 if (msg.from !== this.identity.id) {
