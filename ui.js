@@ -268,7 +268,7 @@ const UI = {
 
             const walletData = await res.json();
 
-            console.log("✅ Bridge Data Received:", walletData);
+            console.log(" Bridge Data Received:", walletData);
 
             if (Array.isArray(walletData)) {
                 AppState.wallet = walletData;
@@ -281,7 +281,7 @@ const UI = {
             window.dispatchEvent(new Event("app:state"));
 
         } catch (e) {
-            console.warn("⚠️ Bridge Disconnected (Using Fallback Data):", e);
+            console.warn(" Bridge Disconnected (Using Fallback Data):", e);
 
             // Safety: Fallback if fetch fails
             if (!AppState.wallet || AppState.wallet.length === 0) {
@@ -417,7 +417,7 @@ const UI = {
         const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
         try {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
-            console.log('🔍 Validating node:', validateUrl);
+            console.log(' Validating node:', validateUrl);
             const res = await fetch(validateUrl);
 
             if (!res.ok) {
@@ -573,7 +573,7 @@ const UI = {
         // Load History
         if (convoId && convoId !== 'new') {
             try {
-                const res = await fetch(`/history?convoId=${convoId}`);
+                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`);
                 if (res.ok) {
                     const msgs = await res.json();
                     msgs.forEach(m => {
@@ -859,7 +859,7 @@ const UI = {
                 const myId = (window.AppState && window.AppState.identity) ? window.AppState.identity.id : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 try {
-                    const res = await fetch('/message', {
+                    const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -1021,7 +1021,7 @@ const UI = {
             avatarData = '';
         }
 
-        fetch("/create-user", {
+        fetch("https://ghostnet-ji-production.up.railway.app/create-user", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

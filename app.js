@@ -62,7 +62,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
         try {
-            const response = await fetch('/message', {
+            const response = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

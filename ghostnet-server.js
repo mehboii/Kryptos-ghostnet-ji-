@@ -563,14 +563,14 @@ wss.on("connection", (ws) => {
     ws.send(JSON.stringify({ type: "welcome" }));
 });
 
-// Server-side WebSocket ping to prevent Railway/proxy idle timeout (every 30s)
+// Server-side WebSocket ping to prevent Railway/proxy idle timeout (every 25s)
 const WS_PING_INTERVAL = setInterval(() => {
     wss.clients.forEach(client => {
         if (client.readyState === 1) {
             client.ping();
         }
     });
-}, 30000);
+}, 25000);
 
 // Clean stale peers every 30 seconds
 setInterval(() => {
