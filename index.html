@@ -942,13 +942,35 @@
                             <div class="auth-card-orb"></div>
                             <div class="auth-card" style="padding:24px;">
                                 <div class="auth-status-bar">
-                                    <div class="auth-status-icon"
-                                        style="background:rgba(16,185,129,0.15); color:#10b981;">
-                                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                            stroke="currentColor" stroke-width="2">
-                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                        </svg>
+                                    <div style="position:relative;">
+                                        <div class="auth-status-icon"
+                                            style="background:rgba(16,185,129,0.15); color:#10b981; position:relative; overflow:hidden; cursor:pointer;"
+                                            title="Click to update profile picture"
+                                            onclick="document.getElementById('avatar-upload').click()">
+                                            <div id="dash-avatar-placeholder"
+                                                style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
+                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                                </svg>
+                                            </div>
+                                            <img id="dash-avatar-img" src=""
+                                                style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0; pointer-events:none;" />
+                                        </div>
+                                        <div onclick="document.getElementById('avatar-upload').click()"
+                                            style="position:absolute; bottom:-2px; right:-2px; background:#10b981; color:#0f172a; width:16px; height:16px; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.4); border:2px solid #1e293b;"
+                                            title="Upload Avatar">
+                                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="3">
+                                                <path
+                                                    d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                </path>
+                                                <circle cx="12" cy="13" r="4"></circle>
+                                            </svg>
+                                        </div>
                                     </div>
+                                    <input type="file" id="avatar-upload" accept="image/*" style="display:none;"
+                                        onchange="IdentityUI.handleAvatarUpload(event)" />
                                     <div style="flex:1; min-width:0;">
                                         <h3 class="auth-status-title" id="dash-name"></h3>
                                         <p id="dash-key"
@@ -1410,6 +1432,18 @@
                         document.getElementById('dash-name').textContent = identity.displayName;
                         document.getElementById('dash-key').textContent = GhostIdentity.shortenKey(identity.address);
 
+                        const avatarData = localStorage.getItem('ghostnet_avatar_' + identity.address);
+                        const placeholder = document.getElementById('dash-avatar-placeholder');
+                        const img = document.getElementById('dash-avatar-img');
+                        if (avatarData) {
+                            img.src = avatarData;
+                            img.style.display = 'block';
+                            placeholder.style.display = 'none';
+                        } else {
+                            img.style.display = 'none';
+                            placeholder.style.display = 'flex';
+                        }
+
                         document.getElementById('dash-pubkey').dataset.fullid = identity.publicKey;
                         document.getElementById('dash-pubkey').textContent = GhostIdentity.shortenKey(identity.publicKey);
 
@@ -1420,6 +1454,28 @@
                         dashNodeEl.dataset.fullid = identity.nodeId;
                         dashNodeEl.textContent = GhostIdentity.shortenNodeId(identity.nodeId);
                         showScreen('dashboard');
+                    }
+
+                    function handleAvatarUpload(e) {
+                        const file = e.target.files[0];
+                        if (!file) return;
+
+                        const reader = new FileReader();
+                        reader.onload = function (event) {
+                            const avatarData = event.target.result;
+                            const stored = GhostIdentity.getStoredIdentity();
+                            if (stored) {
+                                localStorage.setItem('ghostnet_avatar_' + stored.address, avatarData);
+                                document.getElementById('dash-avatar-img').src = avatarData;
+                                document.getElementById('dash-avatar-img').style.display = 'block';
+                                document.getElementById('dash-avatar-placeholder').style.display = 'none';
+
+                                if (window.AppState && window.AppState.identity) {
+                                    window.AppState.identity.avatar = avatarData;
+                                }
+                            }
+                        };
+                        reader.readAsDataURL(file);
                     }
 
                     function _updateSidebar(identity) {
@@ -1500,6 +1556,7 @@
                         signOut,
                         trySignIn,
                         init,
+                        handleAvatarUpload
                     };
                 })();
             </script>
