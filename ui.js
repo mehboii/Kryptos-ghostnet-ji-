@@ -444,7 +444,7 @@ const UI = {
             const data = await res.json();
 
             if (!data.valid) {
-                if (errEl) errEl.textContent = '⚠ Node not found or offline. Check the Node ID and try again.';
+                if (errEl) errEl.textContent = '⚠ Node not found. Check the Node ID and try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -856,7 +856,7 @@ const UI = {
                 input.value = '';
 
                 // Direct HTTP persistence fallback
-                const myId = (window.AppState && window.AppState.identity) ? window.AppState.identity.id : 'anonymous';
+                const myId = (window.AppState && window.AppState.identity) ? (window.AppState.identity.nodeId || window.AppState.identity.id) : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 try {
                     const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
@@ -865,7 +865,7 @@ const UI = {
                         body: JSON.stringify({
                             senderId: myId,
                             receiverId: targetId,
-                            content: { body: text, from: myId, to: targetId, ts: Date.now(), type: 'MSG' }
+                            content: text
                         })
                     });
                     const result = await res.json();

@@ -133,8 +133,10 @@ app.get("/validate-node/:nodeId", (req, res) => {
         return res.status(400).json({ error: "nodeId required" });
     }
 
-    // Check 1: Is the node currently connected via WebSocket?
-    if (typeof meshPeers !== 'undefined' && meshPeers.has(nodeId)) {
+    // Check if the node is currently connected via WebSocket
+    const isOnline = (typeof meshPeers !== 'undefined' && meshPeers.has(nodeId));
+
+    if (isOnline) {
         const peer = meshPeers.get(nodeId);
         peer.lastSeen = Date.now();
         // Also ensure it's in the persistent registry
@@ -142,17 +144,17 @@ app.get("/validate-node/:nodeId", (req, res) => {
             registeredNodes[nodeId] = { nodeId, displayName: nodeId.substring(0, 10), registeredAt: Date.now(), lastSeen: Date.now() };
             saveNodeRegistry();
         }
-        res.json({ valid: true, displayName: registeredNodes[nodeId]?.displayName || nodeId.substring(0, 10), online: true });
-        return;
     }
 
-    // Check 2: Is it in the persistent node registry?
+    // Check persistent node registry
     const node = registeredNodes[nodeId];
     if (node) {
         node.lastSeen = Date.now();
         saveNodeRegistry();
-        res.json({ valid: true, displayName: node.displayName, address: node.address, online: false });
+        // Valid = exists in registry. Online status is separate.
+        res.json({ valid: true, displayName: node.displayName, address: node.address, online: isOnline });
     } else {
+        // Node ID does not exist in database at all
         res.json({ valid: false });
     }
 });
@@ -294,10 +296,22 @@ app.post('/message', (req, res) => {
         return res.status(400).json({ error: "Missing fields" });
     }
 
-    // Validate receiverId exists in node registry or is connected via WebSocket (skip 'broadcast')
+    // Validate receiverId: ONLY reject if Node ID doesn't exist at all in registry
+    // Allow messages to offline-but-registered nodes (like WhatsApp offline messages)
     if (receiverId !== 'broadcast' && !registeredNodes[receiverId] && !meshPeers.has(receiverId)) {
-        console.log(`🚫 Message rejected — receiverId not found: ${receiverId.substring(0, 15)}...`);
-        return res.status(404).json({ error: "Node not found or offline" });
+        console.log(`🚫 Message rejected — receiverId not registered: ${receiverId.substring(0, 15)}...`);
+        return res.status(404).json({ error: "Node not found" });
+    }
+
+    // Auto-register sender if not in registry yet
+    if (senderId && !registeredNodes[senderId]) {
+        registeredNodes[senderId] = {
+            nodeId: senderId,
+            displayName: contactName || senderId.substring(0, 10),
+            registeredAt: Date.now(),
+            lastSeen: Date.now()
+        };
+        saveNodeRegistry();
     }
 
     // Auto-create or update conversation
@@ -317,19 +331,19 @@ app.post('/message', (req, res) => {
     } else {
         convo.lastMessage = content;
         convo.updated = Date.now();
-        // Update contactName if provided and not already set
         if (contactName && !convo.contactName) convo.contactName = contactName;
     }
 
     fs.writeFileSync(CONVOS_FILE, JSON.stringify(conversations, null, 2));
 
     const msg = {
-        id: "msg_" + Date.now(),
+        id: "msg_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
         convoId: convo.id,
         senderId,
         receiverId,
         content,
-        timestamp: Date.now()
+        timestamp: Date.now(),
+        delivered: false
     };
 
     messages.push(msg);
@@ -337,10 +351,10 @@ app.post('/message', (req, res) => {
         fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
     } catch (e) { console.error("Save Error", e); }
 
-    // Real-time delivery to recipient via WebSocket
+    // Real-time delivery to recipient via WebSocket (if online)
     const recipientPeer = meshPeers.get(receiverId);
     if (recipientPeer && recipientPeer.ws && recipientPeer.ws.readyState === 1) {
-        // Send the message
+        // Deliver the message in real time
         recipientPeer.ws.send(JSON.stringify({
             type: 'CHAT_MESSAGE',
             id: msg.id,
@@ -348,11 +362,11 @@ app.post('/message', (req, res) => {
             senderId,
             receiverId,
             content,
-            contactName: contactName || senderId,
+            contactName: contactName || (registeredNodes[senderId]?.displayName) || senderId.substring(0, 10),
             timestamp: msg.timestamp
         }));
 
-        // Also notify recipient about the conversation (auto-create contact)
+        // Notify recipient about the conversation (auto-create contact)
         recipientPeer.ws.send(JSON.stringify({
             type: 'NEW_CONVERSATION',
             convo: {
@@ -364,9 +378,16 @@ app.post('/message', (req, res) => {
             }
         }));
 
+        // Mark as delivered
+        msg.delivered = true;
+        try {
+            fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
+        } catch (e) { }
+
         console.log(`✅ Message delivered to ${receiverId.substring(0, 15)}... via WebSocket`);
     } else {
-        console.log(`📦 Message stored for ${receiverId.substring(0, 15)}... (offline — will see on next login)`);
+        // Recipient is offline — message is persisted and will be delivered when they connect
+        console.log(`📦 Message stored for ${receiverId.substring(0, 15)}... (offline — pending delivery)`);
     }
 
     res.json({ success: true, message: msg, convo });
@@ -516,6 +537,58 @@ server.on("upgrade", (req, socket, head) => {
 const meshPeers = new Map(); // peerId -> { id, ws, capabilities, lastSeen }
 const connectedPeers = meshPeers;
 
+// --- Helper: Deliver pending messages to a newly connected peer ---
+function deliverPendingMessages(nodeId, ws) {
+    try {
+        // Find all undelivered messages for this nodeId
+        const pending = messages.filter(m => m.receiverId === nodeId && !m.delivered);
+        if (pending.length === 0) return;
+
+        console.log(`📬 Delivering ${pending.length} pending message(s) to ${nodeId.substring(0, 15)}...`);
+
+        pending.forEach(m => {
+            if (ws.readyState === 1) {
+                ws.send(JSON.stringify({
+                    type: 'CHAT_MESSAGE',
+                    id: m.id,
+                    convoId: m.convoId,
+                    senderId: m.senderId,
+                    receiverId: m.receiverId,
+                    content: m.content,
+                    contactName: registeredNodes[m.senderId]?.displayName || m.senderId.substring(0, 10),
+                    timestamp: m.timestamp
+                }));
+                m.delivered = true;
+            }
+        });
+
+        // Save updated delivery status
+        try {
+            fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
+        } catch (e) { console.error("Pending delivery save error:", e); }
+
+        // Also send conversation updates
+        const relevantConvos = conversations.filter(c => c.participants.includes(nodeId));
+        relevantConvos.forEach(c => {
+            const otherId = c.participants.find(p => p !== nodeId) || nodeId;
+            if (ws.readyState === 1) {
+                ws.send(JSON.stringify({
+                    type: 'NEW_CONVERSATION',
+                    convo: {
+                        ...c,
+                        otherUser: {
+                            id: otherId,
+                            username: registeredNodes[otherId]?.displayName || otherId.substring(0, 10) + '...'
+                        }
+                    }
+                }));
+            }
+        });
+    } catch (e) {
+        console.error("Pending message delivery error:", e);
+    }
+}
+
 wss.on("connection", (ws) => {
     let clientId = null;
     ws.isAlive = true;
@@ -553,6 +626,21 @@ wss.on("connection", (ws) => {
                     if (msg.nodeId && msg.nodeId !== clientId) {
                         meshPeers.set(msg.nodeId, peerEntry);
                     }
+
+                    // Auto-register in node registry if not present
+                    if (!registeredNodes[clientId]) {
+                        registeredNodes[clientId] = {
+                            nodeId: clientId,
+                            displayName: clientId.substring(0, 10),
+                            registeredAt: Date.now(),
+                            lastSeen: Date.now()
+                        };
+                        saveNodeRegistry();
+                    } else {
+                        registeredNodes[clientId].lastSeen = Date.now();
+                        saveNodeRegistry();
+                    }
+
                     console.log(`🕸️ Mesh peer joined: ${clientId} (total: ${meshPeers.size})`);
 
                     // Send full peer list to the new peer
@@ -572,6 +660,13 @@ wss.on("connection", (ws) => {
                             c.send(JSON.stringify({ type: 'PEER_JOIN', id: clientId, capabilities: msg.capabilities }));
                         }
                     });
+
+                    // 🔑 Deliver any pending messages stored while this user was offline
+                    setTimeout(() => deliverPendingMessages(clientId, ws), 500);
+                    // Also deliver for nodeId alias
+                    if (msg.nodeId && msg.nodeId !== clientId) {
+                        setTimeout(() => deliverPendingMessages(msg.nodeId, ws), 600);
+                    }
                     break;
 
                 case 'HEARTBEAT':
@@ -589,22 +684,24 @@ wss.on("connection", (ws) => {
                     const senderId = msg.from || clientId;
                     const encryptedContent = msg.content || msg.data;
                     const timestamp = msg.timestamp || msg.ts || Date.now();
+                    let wsDelivered = false;
 
+                    // Try real-time delivery if recipient is online
                     if (targetId && connectedPeers.has(targetId)) {
                         const target = connectedPeers.get(targetId);
                         if (target.ws && target.ws.readyState === 1) {
                             target.ws.send(JSON.stringify(msg));
+                            wsDelivered = true;
                             console.log(`📨 WS routed message from ${senderId} to ${targetId}`);
                         }
-                    } else {
-                        // Recipient offline - send back error directly to sender via WS
-                        if (ws.readyState === 1) {
-                            ws.send(JSON.stringify({ type: 'error', message: 'Recipient offline' }));
-                        }
-                        console.log(`🚫 Message dropped: recipient ${targetId} offline`);
                     }
 
-                    // Save to database permanently
+                    if (!wsDelivered) {
+                        // Recipient offline — message will be stored and delivered later (no error sent)
+                        console.log(`📦 WS message stored: recipient ${targetId} offline — will deliver on connect`);
+                    }
+
+                    // Always save to database permanently
                     if (senderId && targetId && encryptedContent && targetId !== 'broadcast') {
                         let convo = conversations.find(c =>
                             c.participants.includes(senderId) && c.participants.includes(targetId)
@@ -632,7 +729,8 @@ wss.on("connection", (ws) => {
                             senderId,
                             receiverId: targetId,
                             content: encryptedContent,
-                            timestamp: timestamp
+                            timestamp: timestamp,
+                            delivered: wsDelivered
                         };
                         messages.push(newMsg);
                         try {

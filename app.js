@@ -116,7 +116,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // --- 2. HTTP PERSISTENCE (always works) ---
     window.app.persistMessage = async (text, targetId) => {
-        const myId = window.app.identity.id;
+        const myId = window.app.identity.nodeId || window.app.identity.id;
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
         try {
@@ -126,8 +126,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                 body: JSON.stringify({
                     senderId: myId,
                     receiverId: targetId,
-                    contactName: window.app.chatContactName || targetId,
-                    content: { body: text, from: myId, to: targetId, ts: Date.now(), type: 'MSG' }
+                    contactName: window.app.chatContactName || (window.app.identity.displayName) || myId.substring(0, 10),
+                    content: text  // Send plain text — server stores as-is
                 })
             });
 
@@ -142,7 +142,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                 return result;
             } else {
                 const errBody = await response.json().catch(() => ({}));
-                console.error(` Message rejected (HTTP ${response.status}):`, errBody.error || errBody);
+                const errMsg = errBody.error || `HTTP ${response.status}`;
+                console.error(` Message rejected:`, errMsg);
+
+                // Show specific error to user
+                if (response.status === 404) {
+                    if (window.UI) UI.addMessage(`⚠️ ${errMsg}`, 'them');
+                }
             }
         } catch (e) {
             console.error("HTTP Persistence failed:", e);
@@ -164,30 +170,35 @@ window.addEventListener('DOMContentLoaded', async () => {
             const text = input.value.trim();
             if (!text) return;
 
+            const recipientNodeId = window.app.chatTarget || 'broadcast';
+            const myId = window.app.identity.nodeId || window.app.identity.id;
+
             // Immediately show in UI
             if (window.UI) UI.addMessage(text, 'me');
             input.value = '';
 
-            // 1. Forward via GhostChat encryption (if available) -> WS Routing
-            const recipientNodeId = window.app.chatTarget || 'broadcast';
-
-            if (window.app.chat && window.app.chat.sendMessage) {
-                try {
-                    await window.app.chat.sendMessage(text, recipientNodeId, "PERSIST", 0);
-                } catch (e) {
-                    console.warn("GhostChat send failed:", e);
+            // PRIMARY: Always persist via HTTP POST /message
+            // This is the single source of truth for message storage + delivery
+            // The server handles: DB save, WS real-time delivery, offline queuing
+            try {
+                const result = await window.app.persistMessage(text, recipientNodeId);
+                if (result && result.success) {
+                    console.log(' Message sent and persisted:', result.message?.id);
+                } else if (result === null) {
+                    console.warn(' Message persistence returned null (server may be down)');
+                    // Still try WS fallback for real-time delivery
+                    if (window.app.mesh && window.app.mesh.ws && window.app.mesh.ws.readyState === 1) {
+                        window.app.mesh.ws.send(JSON.stringify({
+                            type: 'message',
+                            to: recipientNodeId,
+                            from: myId,
+                            content: { body: text, from: myId, to: recipientNodeId, ts: Date.now(), type: 'MSG' },
+                            timestamp: Date.now()
+                        }));
+                    }
                 }
-            } else {
-                // Plaintext fallback
-                if (window.app.mesh && window.app.mesh.ws && window.app.mesh.ws.readyState === 1) {
-                    window.app.mesh.ws.send(JSON.stringify({
-                        type: 'message',
-                        to: recipientNodeId,
-                        from: window.app.identity.nodeId,
-                        content: { body: text },
-                        timestamp: Date.now()
-                    }));
-                }
+            } catch (e) {
+                console.error(' Send message error:', e);
             }
         };
 
@@ -204,7 +215,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (e.key === 'Enter') sendMessage();
         };
 
-        console.log(" Chat SEND button wired to HTTP + Mesh");
+        console.log(" Chat SEND button wired to HTTP persistence");
 
         // File Attachment Logic
         const fileInput = document.getElementById('chat-file');
