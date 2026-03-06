@@ -414,8 +414,33 @@ const UI = {
         if (errEl) errEl.textContent = '';
 
         // Silent backend validation
+        const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/validate-node/${encodeURIComponent(pubKey)}`);
+            const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
+            console.log('🔍 Validating node:', validateUrl);
+            const res = await fetch(validateUrl);
+
+            if (!res.ok) {
+                console.error('Validation HTTP error:', res.status, res.statusText);
+                if (errEl) errEl.textContent = `⚠ Validation failed (HTTP ${res.status}). Try again.`;
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'START SESSION';
+                }
+                return;
+            }
+
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                console.error('Validation returned non-JSON:', contentType);
+                if (errEl) errEl.textContent = '⚠ Server returned invalid response. Please try again.';
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'START SESSION';
+                }
+                return;
+            }
+
             const data = await res.json();
 
             if (!data.valid) {
