@@ -415,7 +415,7 @@ const UI = {
 
         // Silent backend validation
         try {
-            const res = await fetch(`/validate-node/${encodeURIComponent(pubKey)}`);
+            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/validate-node/${encodeURIComponent(pubKey)}`);
             const data = await res.json();
 
             if (!data.valid) {

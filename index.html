@@ -1329,7 +1329,7 @@
                             );
 
                             // Register node with backend
-                            fetch('/register-node', {
+                            fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -1387,7 +1387,7 @@
                             _updateSidebar(stored);
 
                             // Re-register node with backend on every sign-in
-                            fetch('/register-node', {
+                            fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
                                 method: 'POST',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({

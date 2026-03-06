@@ -133,12 +133,25 @@ app.get("/validate-node/:nodeId", (req, res) => {
         return res.status(400).json({ error: "nodeId required" });
     }
 
+    // Check 1: Is the node currently connected via WebSocket?
+    if (typeof meshPeers !== 'undefined' && meshPeers.has(nodeId)) {
+        const peer = meshPeers.get(nodeId);
+        peer.lastSeen = Date.now();
+        // Also ensure it's in the persistent registry
+        if (!registeredNodes[nodeId]) {
+            registeredNodes[nodeId] = { nodeId, displayName: nodeId.substring(0, 10), registeredAt: Date.now(), lastSeen: Date.now() };
+            saveNodeRegistry();
+        }
+        res.json({ valid: true, displayName: registeredNodes[nodeId]?.displayName || nodeId.substring(0, 10), online: true });
+        return;
+    }
+
+    // Check 2: Is it in the persistent node registry?
     const node = registeredNodes[nodeId];
     if (node) {
-        // Update last seen
         node.lastSeen = Date.now();
         saveNodeRegistry();
-        res.json({ valid: true, displayName: node.displayName, address: node.address });
+        res.json({ valid: true, displayName: node.displayName, address: node.address, online: false });
     } else {
         res.json({ valid: false });
     }
@@ -281,8 +294,8 @@ app.post('/message', (req, res) => {
         return res.status(400).json({ error: "Missing fields" });
     }
 
-    // Validate receiverId exists in node registry (skip 'broadcast')
-    if (receiverId !== 'broadcast' && !registeredNodes[receiverId]) {
+    // Validate receiverId exists in node registry or is connected via WebSocket (skip 'broadcast')
+    if (receiverId !== 'broadcast' && !registeredNodes[receiverId] && !meshPeers.has(receiverId)) {
         console.log(`🚫 Message rejected — receiverId not found: ${receiverId.substring(0, 15)}...`);
         return res.status(404).json({ error: "Node not found or offline" });
     }
@@ -549,6 +562,15 @@ wss.on("connection", (ws) => {
 
     ws.send(JSON.stringify({ type: "welcome" }));
 });
+
+// Server-side WebSocket ping to prevent Railway/proxy idle timeout (every 30s)
+const WS_PING_INTERVAL = setInterval(() => {
+    wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+            client.ping();
+        }
+    });
+}, 30000);
 
 // Clean stale peers every 30 seconds
 setInterval(() => {
