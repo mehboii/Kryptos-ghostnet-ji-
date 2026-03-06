@@ -512,8 +512,9 @@ server.on("upgrade", (req, socket, head) => {
         socket.destroy();
     }
 });
-// Track connected mesh peers
+// Track connected mesh peers (renamed to connectedPeers conceptually, keeping alias)
 const meshPeers = new Map(); // peerId -> { id, ws, capabilities, lastSeen }
+const connectedPeers = meshPeers;
 
 wss.on("connection", (ws) => {
     let clientId = null;
@@ -529,9 +530,10 @@ wss.on("connection", (ws) => {
             const msg = JSON.parse(data.toString());
 
             switch (msg.type) {
+                case 'register':
                 case 'HELLO':
                 case 'MESH_HELLO':
-                    const newId = msg.id || msg.nodeId;
+                    const newId = msg.nodeId || msg.id;
 
                     // If client re-registers with another ID, clean up old one
                     if (clientId && clientId !== newId && meshPeers.has(clientId)) {
@@ -584,19 +586,58 @@ wss.on("connection", (ws) => {
                 case 'MESH_DIRECT':
                     // Route to specific recipient
                     const targetId = msg.to || msg.data?.to;
-                    if (targetId && meshPeers.has(targetId)) {
-                        const target = meshPeers.get(targetId);
+                    const senderId = msg.from || clientId;
+                    const encryptedContent = msg.content || msg.data;
+                    const timestamp = msg.timestamp || msg.ts || Date.now();
+
+                    if (targetId && connectedPeers.has(targetId)) {
+                        const target = connectedPeers.get(targetId);
                         if (target.ws && target.ws.readyState === 1) {
                             target.ws.send(JSON.stringify(msg));
-                            console.log(`📨 WS routed message from ${msg.from || clientId} to ${targetId}`);
+                            console.log(`📨 WS routed message from ${senderId} to ${targetId}`);
                         }
                     } else {
-                        // Fallback: broadcast if target not found
-                        wss.clients.forEach(c => {
-                            if (c.readyState === 1 && c !== ws) {
-                                c.send(JSON.stringify(msg));
-                            }
-                        });
+                        // Recipient offline - send back error directly to sender via WS
+                        if (ws.readyState === 1) {
+                            ws.send(JSON.stringify({ type: 'error', message: 'Recipient offline' }));
+                        }
+                        console.log(`🚫 Message dropped: recipient ${targetId} offline`);
+                    }
+
+                    // Save to database permanently
+                    if (senderId && targetId && encryptedContent && targetId !== 'broadcast') {
+                        let convo = conversations.find(c =>
+                            c.participants.includes(senderId) && c.participants.includes(targetId)
+                        );
+                        if (!convo) {
+                            convo = {
+                                id: "convo_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                                participants: [senderId, targetId],
+                                contactName: null,
+                                lastMessage: encryptedContent,
+                                updated: Date.now()
+                            };
+                            conversations.push(convo);
+                        } else {
+                            convo.lastMessage = encryptedContent;
+                            convo.updated = Date.now();
+                        }
+                        try {
+                            fs.writeFileSync(CONVOS_FILE, JSON.stringify(conversations, null, 2));
+                        } catch (e) { }
+
+                        const newMsg = {
+                            id: "msg_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                            convoId: convo.id,
+                            senderId,
+                            receiverId: targetId,
+                            content: encryptedContent,
+                            timestamp: timestamp
+                        };
+                        messages.push(newMsg);
+                        try {
+                            fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
+                        } catch (e) { console.error("Save Error", e); }
                     }
                     break;
 

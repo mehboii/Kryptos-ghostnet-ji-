@@ -226,7 +226,7 @@ class GhostMesh {
 
                 // Register ourselves
                 this.ws.send(JSON.stringify({
-                    type: 'MESH_HELLO',
+                    type: 'register',
                     id: this.identity.id,
                     nodeId: this.identity.nodeId,
                     capabilities: {
@@ -379,6 +379,13 @@ class GhostMesh {
                 // Respond to keep connection alive
                 if (this.ws && this.wsReady) {
                     this.ws.send(JSON.stringify({ type: 'HEARTBEAT_ACK', id: this.identity.id }));
+                }
+                break;
+
+            case 'error':
+                console.warn("WebSocket Server Error:", msg.message);
+                if (window.UI) {
+                    window.UI.addMessage(`⚠️ System: ${msg.message}`, 'them');
                 }
                 break;
 

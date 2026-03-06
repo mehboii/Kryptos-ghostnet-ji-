@@ -99,7 +99,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (window.app.mesh && window.app.mesh.ws && window.app.mesh.wsReady) {
                 window.app.mesh.identity = window.app.identity;
                 window.app.mesh.ws.send(JSON.stringify({
-                    type: 'MESH_HELLO',
+                    type: 'register',
                     id: window.app.identity.id,
                     nodeId: window.app.identity.nodeId,
                     capabilities: { ble: false, ws: true }
@@ -188,13 +188,6 @@ window.addEventListener('DOMContentLoaded', async () => {
                         timestamp: Date.now()
                     }));
                 }
-            }
-
-            // 2. Persist via HTTP for offline recipients
-            console.log(' Persisting message to:', recipientNodeId);
-            const persistResult = await window.app.persistMessage(text, recipientNodeId);
-            if (persistResult === null) {
-                console.warn(' Message persistence failed');
             }
         };
 
@@ -321,7 +314,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'HELLO', id: myId }));
+                ws.send(JSON.stringify({ type: 'register', id: window.app.identity.id, nodeId: window.app.identity.nodeId }));
             };
             ws.onmessage = (event) => {
                 try {
