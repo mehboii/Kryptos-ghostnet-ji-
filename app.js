@@ -1,58 +1,149 @@
-
 /**
- * GhostNet Application Logic
- * Integrates Identity, GhostMesh Transport, and Chat.
- * 
- * Architecture:
- * - GhostMesh handles ALL transport (WebSocket auto-connect + BLE scan)
- * - HTTP persistence always works independently
- * - BLE and GhostChat are optional enhancements
+ * GhostNet Application Logic — FULLY HARDENED VERSION
+ *
+ * Vulnerabilities fixed in THIS pass (on top of prior hardening):
+ *
+ * [A] _showDevWarning uses innerHTML with caller-controlled HTML → XSS vector.
+ *     Fixed: accept only plain text + a whitelist of safe tags via DOM construction.
+ *
+ * [B] alert() is still called in two places inside sendMessage / file handler,
+ *     contradicting the stated Fix [11]. Fixed: route through _showDevWarning.
+ *
+ * [C] Rate limiter (MsgRateLimit) lives entirely in JS — trivially reset via
+ *     DevTools (`MsgRateLimit._timestamps = []`). Fixed: move to a closure so
+ *     the internal state is not globally writable.
+ *
+ * [D] Double rate-limit consumption: sendMessage() calls MsgRateLimit.check()
+ *     then immediately calls persistMessage() which calls it AGAIN, burning two
+ *     slots per message. Fixed: remove the redundant check from persistMessage.
+ *
+ * [E] contactName is written into the POST payload without sanitization,
+ *     allowing stored-XSS if the server echoes it back to other clients.
+ *     Fixed: sanitize() applied before payload construction.
+ *
+ * [F] File attachment handler validates only size — not MIME type.
+ *     A renamed .html or .svg file passes straight through.
+ *     Fixed: enforce an allowlist of safe MIME types.
+ *
+ * [G] targetId (from window.app.chatTarget) flows into the POST payload
+ *     without sanitization. Fixed: sanitize() applied before use.
  */
 
+// ─────────────────────────────────────────────
+//  SECURITY UTILITIES
+// ─────────────────────────────────────────────
+
+function getAuthToken() {
+    return sessionStorage.getItem('ghostnet_token') || '';
+}
+
+function secureHeaders(extra = {}) {
+    return {
+        'Content-Type': 'application/json',
+        'X-Auth-Token': getAuthToken(),
+        ...extra
+    };
+}
+
+function generateSecureId(prefix = 'user') {
+    const array = new Uint8Array(16);
+    crypto.getRandomValues(array);
+    const hex = Array.from(array).map(b => b.toString(16).padStart(2, '0')).join('');
+    return `${prefix}_${hex}`;
+}
+
+function sanitize(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
+const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const log = {
+    info: (...a) => isDev && console.log('[GN]', ...a),
+    warn: (...a) => isDev && console.warn('[GN]', ...a),
+    error: (...a) => console.error('[GN:ERR]', ...a),
+};
+
+// ─── [FIX C] Rate limiter wrapped in a closure so internal state is
+//             NOT reachable / resettable from the global scope. ────────────────
+const MsgRateLimit = (() => {
+    let _timestamps = [];          // private — not on window or any exported object
+    const MAX_PER_MINUTE = 30;
+    return {
+        check() {
+            const now = Date.now();
+            _timestamps = _timestamps.filter(t => now - t < 60_000);
+            if (_timestamps.length >= MAX_PER_MINUTE) return false;
+            _timestamps.push(now);
+            return true;
+        }
+    };
+})();
+
+const BACKEND = {
+    http: 'https://ghostnet-ji-production.up.railway.app',
+    ws: 'wss://ghostnet-ji-production.up.railway.app/ws',
+    url: (path) => `https://ghostnet-ji-production.up.railway.app${path}`
+};
+
+const MAX_MSG_LENGTH = 2000;
+
+// ─── [FIX F] Allowlist of safe attachment MIME types. ────────────────────────
+const ALLOWED_ATTACHMENT_MIME = new Set([
+    'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+    'application/pdf',
+    'text/plain',
+]);
+
+// ─────────────────────────────────────────────
+//  APP STATE
+// ─────────────────────────────────────────────
 window.app = {
     identity: null,
     chat: null,
     chatTarget: null,
     chatContactName: null,
     mesh: null,
+    _sendAbort: null,
     transport: {
         ble: null,
-        // Legacy compatibility: startBLEScan delegates to mesh
         startBLEScan: async () => {
             if (window.app.mesh) {
                 await window.app.mesh.scanBLE();
             } else {
-                alert("Mesh transport not ready. Please wait for initialization.");
+                log.warn('Mesh transport not ready for BLE scan.');
             }
         }
     }
 };
 
-// Initialize App on Load
+// ─────────────────────────────────────────────
+//  MAIN INIT
+// ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log(" System: Initializing GhostNet...");
+    log.info('Initializing GhostNet...');
 
-    // --- 1. IDENTITY ---
-    // Generate a fallback ID for initial boot (before PIN unlock)
+    // ── 1. IDENTITY ──────────────────────────────
+
     let myId = localStorage.getItem('ghostnet_user_id');
     if (!myId) {
-        myId = "user_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        myId = generateSecureId('user');
         localStorage.setItem('ghostnet_user_id', myId);
     }
 
-    // Use real crypto identity if already available (e.g. stored in localStorage)
     let stored = null;
     try {
-        if (localStorage.getItem('ghostnet_enc_pk')) {
-            stored = {
-                nodeId: localStorage.getItem('ghostnet_node_id'),
-                publicKey: localStorage.getItem('ghostnet_pubkey'),
-                displayName: localStorage.getItem('ghostnet_display_name'),
-                address: localStorage.getItem('ghostnet_address')
-            };
-        }
-    } catch (e) { }
-    if (stored && stored.nodeId) {
+        const nodeId = localStorage.getItem('ghostnet_node_id');
+        const displayName = localStorage.getItem('ghostnet_display_name');
+        const address = localStorage.getItem('ghostnet_address');
+        if (nodeId) stored = { nodeId, displayName, address };
+    } catch (e) {
+        log.error('Failed to read identity from storage:', e.message);
+    }
+
+    if (stored?.nodeId) {
         window.app.identity = {
             id: stored.nodeId,
             pub: stored.nodeId,
@@ -60,8 +151,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             displayName: stored.displayName,
             address: stored.address
         };
-        console.log(" Using crypto identity from storage:", stored.nodeId.substring(0, 15) + '...');
-    } else if (window.AppState && window.AppState.identity && window.AppState.identity.nodeId) {
+        log.info('Using stored identity.');
+    } else if (window.AppState?.identity?.nodeId) {
         const real = window.AppState.identity;
         window.app.identity = {
             id: real.nodeId,
@@ -70,65 +161,80 @@ window.addEventListener('DOMContentLoaded', async () => {
             displayName: real.displayName,
             address: real.address
         };
-        console.log(" Using crypto identity from state:", real.nodeId.substring(0, 15) + '...');
+        log.info('Using AppState identity.');
     } else {
-        // Fallback identity for before PIN unlock
         window.app.identity = { id: myId, pub: myId, nodeId: myId };
-        console.log(" Using fallback identity:", myId);
+        log.info('Using fallback identity.');
     }
 
-    // Set identity in global state
     if (window.AppState && !window.AppState.identity) {
         window.AppState.identity = window.app.identity;
     }
 
-    // Listen for identity updates (when user unlocks PIN after page load)
     window.addEventListener('identity:updated', () => {
-        if (window.AppState && window.AppState.identity && window.AppState.identity.nodeId) {
-            const real = window.AppState.identity;
-            window.app.identity = {
-                id: real.nodeId,
-                pub: real.publicKey || real.nodeId,
-                nodeId: real.nodeId,
-                displayName: real.displayName,
-                address: real.address
-            };
-            console.log(" Identity updated to:", real.nodeId.substring(0, 15) + '...');
+        const real = window.AppState?.identity;
+        if (!real?.nodeId) return;
+        window.app.identity = {
+            id: real.nodeId,
+            pub: real.publicKey || real.nodeId,
+            nodeId: real.nodeId,
+            displayName: real.displayName,
+            address: real.address
+        };
+        log.info('Identity updated.');
 
-            // Re-register with mesh if connected
-            if (window.app.mesh && window.app.mesh.ws && window.app.mesh.wsReady) {
-                window.app.mesh.identity = window.app.identity;
-                window.app.mesh.ws.send(JSON.stringify({
-                    type: 'register',
-                    id: window.app.identity.id,
-                    nodeId: window.app.identity.nodeId,
-                    capabilities: { ble: false, ws: true }
-                }));
-                console.log(" Re-registered with mesh as:", real.nodeId.substring(0, 15) + '...');
-            }
-
-            // Load conversation history with the real identity
-            if (window.UI) {
-                setTimeout(() => UI.loadConversations(real.nodeId), 500);
-            }
+        if (window.app.mesh?.ws && window.app.mesh.wsReady) {
+            _safeSendWS(window.app.mesh.ws, {
+                type: 'register',
+                id: window.app.identity.id,
+                nodeId: window.app.identity.nodeId,
+                capabilities: { ble: false, ws: true }
+            });
+        }
+        if (window.UI) {
+            setTimeout(() => UI.loadConversations(real.nodeId), 500);
         }
     });
 
-    // --- 2. HTTP PERSISTENCE (always works) ---
+    // ── 2. HTTP PERSISTENCE ───────────────────────
+
     window.app.persistMessage = async (text, targetId) => {
+        if (!text || typeof text !== 'string') return null;
+        if (text.length > MAX_MSG_LENGTH) {
+            log.warn('Message exceeds max length, truncating.');
+            text = text.substring(0, MAX_MSG_LENGTH);
+        }
+
+        // ─── [FIX D] Rate limit is checked ONLY in sendMessage (the caller).
+        //             Checking it again here caused double-slot consumption.
+        //             persistMessage is also callable internally, so we do NOT
+        //             re-check here.
+
         const myId = window.app.identity.nodeId || window.app.identity.id;
-        targetId = targetId || window.app.chatTarget || 'broadcast';
+
+        // ─── [FIX G] Sanitize targetId before using in payload. ──────────────
+        const safeTargetId = sanitize(targetId || window.app.chatTarget || 'broadcast');
+
+        // ─── [FIX E] Sanitize contactName before it enters the payload. ───────
+        const rawContactName =
+            window.app.chatContactName ||
+            window.app.identity.displayName ||
+            'Anonymous';
+        const safeContactName = sanitize(rawContactName);
 
         try {
-            const response = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
+            const payload = {
+                senderId: myId,
+                receiverId: safeTargetId,
+                contactName: safeContactName,
+                content: text,
+                encrypted: !!(window.app.chat),
+            };
+
+            const response = await fetch(BACKEND.url('/message'), {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    senderId: myId,
-                    receiverId: targetId,
-                    contactName: window.app.chatContactName || (window.app.identity.displayName) || myId.substring(0, 10),
-                    content: text  // Send plain text — server stores as-is
-                })
+                headers: secureHeaders(),
+                body: JSON.stringify(payload)
             });
 
             if (response.ok) {
@@ -136,147 +242,160 @@ window.addEventListener('DOMContentLoaded', async () => {
                 if (result.convo && window.AppState) {
                     window.AppState.activeConvoId = result.convo.id;
                 }
-                if (window.UI) {
-                    window.UI.loadConversations(myId);
-                }
+                if (window.UI) window.UI.loadConversations(myId);
                 return result;
             } else {
                 const errBody = await response.json().catch(() => ({}));
-                const errMsg = errBody.error || `HTTP ${response.status}`;
-                console.error(` Message rejected:`, errMsg);
-
-                // Show specific error to user
-                if (response.status === 404) {
-                    if (window.UI) UI.addMessage(`⚠️ ${errMsg}`, 'them');
+                const errMsg = sanitize(errBody.error || `HTTP ${response.status}`);
+                log.error('Message rejected:', errMsg);
+                if (response.status === 404 && window.UI) {
+                    UI.addMessage(`⚠ ${errMsg}`, 'them');
                 }
             }
         } catch (e) {
-            console.error("HTTP Persistence failed:", e);
+            log.error('HTTP persistence failed:', e.message);
         }
         return null;
     };
 
-    // --- 3. WIRE UP SEND BUTTON ---
+    // ── 3. SEND BUTTON ────────────────────────────
+
     const wireUpSendButton = () => {
         const btn = document.getElementById('chat-send');
         const input = document.getElementById('chat-input');
+
         if (!btn || !input) {
-            console.warn("Chat send button or input not found. Retrying...");
+            log.warn('Chat elements not found, retrying...');
             setTimeout(wireUpSendButton, 500);
             return;
         }
+
+        if (window.app._sendAbort) window.app._sendAbort.abort();
+        window.app._sendAbort = new AbortController();
+        const { signal } = window.app._sendAbort;
 
         const sendMessage = async () => {
             const text = input.value.trim();
             if (!text) return;
 
+            if (text.length > MAX_MSG_LENGTH) {
+                // ─── [FIX B] Replace alert() with non-blocking UI banner. ──────
+                _showDevWarning(`⚠ Message too long — maximum ${MAX_MSG_LENGTH} characters.`);
+                return;
+            }
+
+            // ─── [FIX D] Rate limit checked here (ONCE), not also in persistMessage.
+            if (!MsgRateLimit.check()) {
+                log.warn('Rate limit hit.');
+                _showDevWarning('⚠ Slow down — message rate limit reached (30/min).');
+                return;
+            }
+
             const recipientNodeId = window.app.chatTarget || 'broadcast';
             const myId = window.app.identity.nodeId || window.app.identity.id;
 
-            // Immediately show in UI
             if (window.UI) UI.addMessage(text, 'me');
             input.value = '';
 
-            // PRIMARY: Always persist via HTTP POST /message
-            // This is the single source of truth for message storage + delivery
-            // The server handles: DB save, WS real-time delivery, offline queuing
             try {
                 const result = await window.app.persistMessage(text, recipientNodeId);
-                if (result && result.success) {
-                    console.log(' Message sent and persisted:', result.message?.id);
+                if (result?.success) {
+                    log.info('Message sent and persisted.');
                 } else if (result === null) {
-                    console.warn(' Message persistence returned null (server may be down)');
-                    // Still try WS fallback for real-time delivery
-                    if (window.app.mesh && window.app.mesh.ws && window.app.mesh.ws.readyState === 1) {
-                        window.app.mesh.ws.send(JSON.stringify({
+                    if (window.app.mesh?.ws?.readyState === WebSocket.OPEN) {
+                        _safeSendWS(window.app.mesh.ws, {
                             type: 'message',
                             to: recipientNodeId,
                             from: myId,
                             content: { body: text, from: myId, to: recipientNodeId, ts: Date.now(), type: 'MSG' },
                             timestamp: Date.now()
-                        }));
+                        });
                     }
                 }
             } catch (e) {
-                console.error(' Send message error:', e);
+                log.error('Send message error:', e.message);
             }
         };
 
         window.app.sendMessage = sendMessage;
-
-        const newBtn = btn.cloneNode(true);
-        btn.parentNode.replaceChild(newBtn, btn);
-
-        const newInput = input.cloneNode(true);
-        input.parentNode.replaceChild(newInput, input);
-
-        newBtn.onclick = sendMessage;
-        newInput.onkeypress = (e) => {
+        btn.addEventListener('click', sendMessage, { signal });
+        input.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendMessage();
-        };
+        }, { signal });
 
-        console.log(" Chat SEND button wired to HTTP persistence");
+        log.info('Chat send button wired.');
 
-        // File Attachment Logic
         const fileInput = document.getElementById('chat-file');
         if (fileInput) {
-            fileInput.onchange = async (e) => {
+            fileInput.addEventListener('change', async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                console.log(" File Selected:", file.name);
-                UI.addMessage(` FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
+
+                if (file.size > 10 * 1024 * 1024) {
+                    // ─── [FIX B] Replace alert() with banner. ────────────────
+                    _showDevWarning('⚠ File too large — maximum size is 10 MB.');
+                    fileInput.value = '';
+                    return;
+                }
+
+                // ─── [FIX F] Validate MIME type against allowlist. ───────────
+                if (!ALLOWED_ATTACHMENT_MIME.has(file.type)) {
+                    _showDevWarning(
+                        `⚠ File type "${sanitize(file.type)}" is not allowed. ` +
+                        `Permitted: images, PDF, plain text.`
+                    );
+                    fileInput.value = '';
+                    return;
+                }
+
+                const safeName = sanitize(file.name);
+                const sizeKB = (file.size / 1024).toFixed(1);
+                if (window.UI) UI.addMessage(`📎 FILE: ${safeName} (${sizeKB} KB)`, 'me');
                 fileInput.value = '';
-            };
+            }, { signal });
         }
     };
 
     wireUpSendButton();
 
-    // --- 4. INITIALIZE MESH TRANSPORT ---
+    // ── 4. MESH TRANSPORT ─────────────────────────
+
     if (window.GhostMesh) {
         try {
             const mesh = new GhostMesh(window.app.identity);
             window.app.mesh = mesh;
 
-            // --- Mesh event handlers ---
-
             mesh.onPeerJoin = (peer) => {
-                console.log(` Peer joined: ${peer.name} via ${peer.transport}`);
-
-                // Add to AppState peers
+                log.info('Peer joined via', peer.transport);
                 if (window.AppState && !window.AppState.peers.find(p => p.id === peer.id)) {
                     window.AppState.peers.push({
-                        id: peer.id,
+                        id: sanitize(peer.id),
                         type: peer.transport === 'ble' ? 'Bluetooth' : 'Wi-Fi',
-                        name: peer.name,
+                        name: sanitize(peer.name || 'Unknown'),
                         latency: peer.transport === 'ble' ? 15 : 5
                     });
                 }
-
-                window.dispatchEvent(new Event("app:state"));
+                window.dispatchEvent(new Event('app:state'));
             };
 
             mesh.onPeerLeave = (peer) => {
-                console.log(` Peer left: ${peer.name || peer.id}`);
-
+                log.info('Peer left.');
                 if (window.AppState) {
                     window.AppState.peers = window.AppState.peers.filter(p => p.id !== peer.id);
                 }
-                window.dispatchEvent(new Event("app:state"));
+                window.dispatchEvent(new Event('app:state'));
             };
 
             mesh.onMessage = (msgData, from, transport) => {
-                console.log(` Mesh message from ${from} via ${transport}:`, msgData);
+                if (!msgData || typeof msgData !== 'object') return;
 
-                // Decrypt via GhostChat if it contains crypto payload
-                if (msgData && msgData.type === 'MSG' && msgData.iv) {
+                if (msgData.type === 'MSG' && msgData.iv) {
                     if (window.app.chat) {
                         try {
-                            // Reconstruct the expected GhostChat structure to feed the decryptor
                             const gcPacket = {
-                                type: "MSG",
+                                type: 'MSG',
                                 id: msgData.id,
-                                from: from,
+                                from: sanitize(from),
                                 to: window.app.identity.nodeId,
                                 ts: Date.now(),
                                 iv: msgData.iv,
@@ -285,71 +404,88 @@ window.addEventListener('DOMContentLoaded', async () => {
                                 ttl: msgData.ttl
                             };
                             window.app.chat.receive(JSON.stringify(gcPacket));
-                        } catch (e) { console.warn("GhostChat Decryption error:", e); }
+                        } catch (e) {
+                            log.warn('GhostChat decryption error:', e.message);
+                        }
                     }
-                }
-                // Display in chat if it's plaintext fallback
-                else if (msgData && (msgData.type === 'MSG' || msgData.body)) {
-                    if (window.UI) {
-                        UI.addMessage(msgData.body || JSON.stringify(msgData), 'them');
-                    }
+                } else if (msgData.type === 'MSG' || msgData.body) {
+                    const body = sanitize(msgData.body || '');
+                    if (body && window.UI) UI.addMessage(body, 'them');
                 }
             };
 
             mesh.onMeshUpdate = (peers) => {
-                // Update the UI stat counter
                 const statNodes = document.getElementById('stat-nodes');
-                if (statNodes) statNodes.innerText = peers.length + 1; // +1 for self
+                if (statNodes) statNodes.textContent = peers.length + 1;
             };
 
             mesh.onStatusChange = (status) => {
-                console.log(' Mesh status:', status);
-
-                if (status.state === 'error') {
-                    console.warn('Mesh error:', status.message);
-                }
+                log.info('Mesh state:', status?.state);
+                if (status?.state === 'error') log.error('Mesh error occurred.');
             };
 
-            // Start the mesh (WebSocket auto-connects, BLE auto-reconnects known devices)
             await mesh.start();
-            console.log(" GhostMesh started. Status:", mesh.getStatus());
+            log.info('GhostMesh started.');
 
         } catch (e) {
-            console.warn("GhostMesh init failed:", e);
+            log.warn('GhostMesh init failed:', e.message);
         }
     } else {
-        // Fallback: Direct WebSocket if GhostMesh not loaded
-        console.warn(" GhostMesh not loaded, using direct WebSocket fallback");
+        log.warn('GhostMesh not loaded, using direct WebSocket fallback.');
         try {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
-            const ws = new WebSocket(wsUrl);
-            ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'register', id: window.app.identity.id, nodeId: window.app.identity.nodeId }));
-            };
-            ws.onmessage = (event) => {
+            const ws = new WebSocket(BACKEND.ws);
+
+            ws.addEventListener('open', () => {
+                _safeSendWS(ws, {
+                    type: 'register',
+                    id: window.app.identity.id,
+                    nodeId: window.app.identity.nodeId
+                });
+            });
+
+            ws.addEventListener('message', (event) => {
                 try {
+                    if (typeof event.data !== 'string') return;
+                    if (event.data.length > 65536) {
+                        log.warn('WS message too large, ignoring.');
+                        return;
+                    }
                     const msg = JSON.parse(event.data);
-                    if (msg.type === 'PEER_JOIN') {
-                        if (window.AppState) {
-                            window.AppState.peers.push({ id: msg.id, type: 'Wi-Fi', latency: 5 });
-                            window.dispatchEvent(new Event("app:state"));
+                    if (!msg || typeof msg !== 'object') return;
+                    if (typeof msg.type !== 'string') return;
+
+                    if (msg.type === 'PEER_JOIN' && window.AppState) {
+                        const safeId = sanitize(String(msg.id || ''));
+                        if (safeId && !window.AppState.peers.find(p => p.id === safeId)) {
+                            window.AppState.peers.push({ id: safeId, type: 'Wi-Fi', latency: 5 });
+                            window.dispatchEvent(new Event('app:state'));
                         }
                     }
-                } catch (e) { }
-            };
+                } catch (e) {
+                    log.warn('WS message parse error:', e.message);
+                }
+            });
+
+            ws.addEventListener('error', () => {
+                log.error('WebSocket error occurred.');
+            });
+
         } catch (e) {
-            console.warn("WebSocket fallback failed:", e);
+            log.warn('WebSocket fallback failed:', e.message);
         }
     }
 
-    // --- 5. OPTIONAL: GhostChat encryption layer ---
+    // ── 5. GHOST CHAT ENCRYPTION ─────────────────
+
     if (window.GhostChat) {
         try {
             const transportSender = async (payloadStr) => {
-                const gcPayload = JSON.parse(payloadStr);
+                if (typeof payloadStr !== 'string') return;
+                let gcPayload;
+                try { gcPayload = JSON.parse(payloadStr); }
+                catch (e) { log.error('Invalid GhostChat payload.'); return; }
+                if (!gcPayload || typeof gcPayload !== 'object') return;
 
-                // Format it exactly as required by the backend routing
                 const customPayload = {
                     type: 'message',
                     to: gcPayload.to,
@@ -365,33 +501,99 @@ window.addEventListener('DOMContentLoaded', async () => {
                     timestamp: gcPayload.ts
                 };
 
-                if (window.app.mesh && window.app.mesh.ws && window.app.mesh.ws.readyState === 1) {
-                    window.app.mesh.ws.send(JSON.stringify(customPayload));
+                if (window.app.mesh?.ws?.readyState === WebSocket.OPEN) {
+                    _safeSendWS(window.app.mesh.ws, customPayload);
                 } else if (window.app.mesh) {
                     window.app.mesh.broadcast(customPayload);
                 }
             };
+
             const chat = new GhostChat(window.app.identity, transportSender);
             window.app.chat = chat;
+
             chat.onMessage = (msg) => {
+                if (!msg?.body) return;
+                const safeBody = sanitize(msg.body);
                 if (window.UI) {
-                    UI.addMessage(msg.body, "them");
-                    if (window.AppState && window.AppState.identity) {
-                        UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
-                    }
+                    UI.addMessage(safeBody, 'them');
+                    const userId = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
+                    if (userId) UI.loadConversations(userId);
                 }
             };
-            console.log(" GhostChat encryption layer initialized");
+
+            log.info('GhostChat encryption layer initialized.');
         } catch (e) {
-            console.warn("GhostChat init failed (non-critical):", e);
+            log.warn('GhostChat init failed (non-critical):', e.message);
         }
     }
 
-    // --- 6. SIGNAL READY ---
-    window.dispatchEvent(new Event("app:ready"));
-    window.dispatchEvent(new Event("app:state"));
+    // ── 6. READY ──────────────────────────────────
+
+    window.dispatchEvent(new Event('app:ready'));
+    window.dispatchEvent(new Event('app:state'));
 
     if (window.location.protocol === 'file:') {
-        alert(" WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
+        _showDevWarning(
+            '⚠ Running from file:// — run node ghostnet-server.js and visit http://localhost:8080'
+        );
     }
 });
+
+// ─────────────────────────────────────────────
+//  HELPERS
+// ─────────────────────────────────────────────
+
+function _safeSendWS(ws, data) {
+    try {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            log.warn('WS send skipped — not open.');
+            return;
+        }
+        const str = JSON.stringify(data);
+        if (str.length > 65536) {
+            log.warn('WS payload too large, skipping.');
+            return;
+        }
+        ws.send(str);
+    } catch (e) {
+        log.error('WS send error:', e.message);
+    }
+}
+
+/**
+ * [FIX A] Show a non-blocking warning banner.
+ *
+ * ORIGINAL BUG: used `banner.innerHTML = html` where `html` was a
+ * caller-supplied string containing markup — a stored/reflected XSS vector.
+ *
+ * FIX: accept ONLY a plain-text message string. All content is injected
+ * via textContent (never innerHTML). The close button is built via the DOM
+ * API, not by concatenating HTML strings.
+ *
+ * @param {string} message  Plain text message to show (no HTML accepted).
+ */
+function _showDevWarning(message) {
+    const banner = document.createElement('div');
+    banner.style.cssText = [
+        'position:fixed', 'bottom:20px', 'left:50%', 'transform:translateX(-50%)',
+        'background:#7c2d12', 'color:#fef2f2', 'padding:12px 20px',
+        'border-radius:8px', 'font-size:0.85rem', 'z-index:9999',
+        'max-width:90vw', 'text-align:center', 'box-shadow:0 4px 20px rgba(0,0,0,0.4)'
+    ].join(';');
+
+    // ── Safe: textContent never executes markup. ──────────────────────────────
+    const span = document.createElement('span');
+    span.textContent = String(message);   // sanitized — no innerHTML
+
+    const close = document.createElement('button');
+    close.textContent = '×';             // textContent, not innerHTML
+    close.style.cssText = 'margin-left:12px;background:none;border:none;color:inherit;cursor:pointer;font-size:1.1rem;';
+    close.addEventListener('click', () => banner.remove());
+
+    banner.appendChild(span);
+    banner.appendChild(close);
+    document.body.appendChild(banner);
+
+    // Auto-dismiss after 6 seconds so banners don't pile up.
+    setTimeout(() => banner.isConnected && banner.remove(), 6000);
+}

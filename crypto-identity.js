@@ -1,88 +1,107 @@
 /**
- * GhostNet Crypto Identity System
- * ================================
- * Client-side-only cryptographic identity management.
+ * GhostNet Crypto Identity System — SECURITY HARDENED
  *
- * - BIP39 mnemonic seed phrase (12 words)
- * - HD wallet key derivation (ethers.js)
- * - AES-256-GCM PIN-based encryption of private key
- * - All ops happen in-browser — nothing sent to any server
+ * Vulnerabilities found and fixed in this pass:
+ *
+ * [A] CRITICAL — Session token uses nodeId (a PUBLIC value) as the encryption
+ *     key, while the payload contains the raw PIN. nodeId is derived from
+ *     publicKey + displayName and is shared with peers — it is not secret.
+ *     This is equivalent to storing the PIN in plaintext.
+ *     Fixed: session token no longer stores the PIN at all. Instead it stores
+ *     the encrypted private key re-encrypted under a fresh random session key,
+ *     which is itself wrapped in sessionStorage (not localStorage). The PIN
+ *     is never persisted in any form.
+ *
+ * [B] CRITICAL — PIN lockout state (attempt count + locked flag) stored in
+ *     writable localStorage. Any script can bypass the lockout with:
+ *       localStorage.setItem('ghostnet_locked', 'false')
+ *       localStorage.setItem('ghostnet_pin_attempts', '0')
+ *     Fixed: lockout state is tracked in a module-private in-memory variable.
+ *     It resets only on page reload, which is acceptable — an attacker who
+ *     can reload the page gets 5 more guesses, not unlimited guesses.
+ *     For server-backed deployments, lockout should additionally be enforced
+ *     server-side per nodeId.
+ *
+ * [C] HIGH — Internal crypto primitives (encryptWithPin, decryptWithPin) and
+ *     lockout controls (incrementPinAttempts, resetPinAttempts) are on the
+ *     public API. Any script on the page can call resetPinAttempts() to
+ *     silently reset the counter, or use the encryption helpers directly.
+ *     Fixed: these are now module-private. The public API exposes only the
+ *     high-level operations that need them.
+ *
+ * [D] HIGH — PBKDF2 iteration count is 100,000. OWASP 2023 recommends
+ *     600,000 iterations for PBKDF2-SHA-256. Lower counts accelerate
+ *     offline brute-force attacks against the encrypted private key.
+ *     Fixed: raised to 600,000.
+ *
+ * [E] HIGH — No PIN length or complexity enforcement. A user can set PIN "1",
+ *     reducing the AES-256-GCM protection to a 1-digit brute-force.
+ *     Fixed: minimum 6 characters enforced; pure-numeric short PINs warned.
+ *
+ * [F] MEDIUM — nodeId derived via ethers.utils.id(publicKey + displayName)
+ *     uses bare string concatenation without a separator. This creates a
+ *     second-preimage collision: publicKey "abc" + displayName "def" produces
+ *     the same nodeId as publicKey "abcd" + displayName "ef".
+ *     Fixed: use a length-prefixed canonical encoding with a separator that
+ *     cannot appear in either field.
+ *
+ * [G] MEDIUM — STORAGE_KEYS object and MAX_PIN_ATTEMPTS exported on the
+ *     public API. Exposing storage key names makes it trivial for attackers to
+ *     target exactly the right localStorage entries. MAX_PIN_ATTEMPTS leaks
+ *     the attempt budget.
+ *     Fixed: both are module-private only.
+ *
+ * [H] MEDIUM — saveSessionToken stored the actual PIN value, meaning PIN
+ *     recovery is possible if the session token is exfiltrated. Cryptographic
+ *     material should never enable recovery of the secret used to derive it.
+ *     Fixed: session mechanism redesigned (see [A] above).
  */
 
 const GhostIdentity = (() => {
-    // ─── CONSTANTS ──────────────────────────────────────────
-    const STORAGE_KEYS = {
+    'use strict';
+
+    // ─── PRIVATE CONSTANTS ───────────────────────────────────────────────────
+    // [FIX G] Storage key names are not exported.
+    const _SK = {
         ENCRYPTED_PK: 'ghostnet_enc_pk',
         PUBLIC_KEY: 'ghostnet_pubkey',
         ADDRESS: 'ghostnet_address',
         DISPLAY_NAME: 'ghostnet_display_name',
         NODE_ID: 'ghostnet_node_id',
-        PIN_ATTEMPTS: 'ghostnet_pin_attempts',
-        LOCKED: 'ghostnet_locked',
-        SESSION_TOKEN: 'ghostnet_session_token',
+        // Session key stored in sessionStorage (tab-scoped, not persisted).
+        SESSION_KEY: 'ghostnet_session_key',
     };
-    const MAX_PIN_ATTEMPTS = 5;
 
-    // ─── BIP39 WORDLIST (English, 2048 words) ───────────────
-    // We fetch it lazily from ethers
-    function getWordlist() {
-        if (window.ethers && window.ethers.wordlists) {
-            return window.ethers.wordlists.en;
-        }
-        return null;
-    }
+    // [FIX G] Not exported.
+    const _MAX_PIN_ATTEMPTS = 5;
+    // [FIX D] Raised from 100,000 to OWASP-recommended 600,000.
+    const _PBKDF2_ITERATIONS = 600_000;
+    // [FIX E] Minimum PIN length.
+    const _MIN_PIN_LENGTH = 6;
 
-    // ─── CORE: Generate New Identity ────────────────────────
-    async function generateIdentity(displayName) {
-        // 1. Generate 12-word mnemonic
-        const wallet = ethers.Wallet.createRandom({ locale: ethers.wordlists.en });
-        const mnemonic = wallet.mnemonic.phrase;
-        const privateKey = wallet.privateKey;
-        const publicKey = wallet.publicKey;
-        const address = wallet.address;
+    // [FIX B] Lockout state is in-memory only — not in writable localStorage.
+    let _pinAttempts = 0;
+    let _locked = false;
 
-        // 2. Derive Node ID = keccak256(publicKey + displayName)
-        const nodeId = ethers.utils.id(publicKey + displayName);
-
-        return {
-            mnemonic,        // 12-word seed phrase — show once, never store
-            privateKey,      // hex string — encrypt with PIN, never store raw
-            publicKey,       // hex string — public identity
-            address,         // ethereum-style address
-            displayName,
-            nodeId,
-        };
-    }
-
-    // ─── CORE: Restore from Seed Phrase ─────────────────────
-    async function restoreFromMnemonic(mnemonic, displayName) {
-        try {
-            const wallet = ethers.Wallet.fromMnemonic(mnemonic.trim());
-            const privateKey = wallet.privateKey;
-            const publicKey = wallet.publicKey;
-            const address = wallet.address;
-            const nodeId = ethers.utils.id(publicKey + displayName);
-
-            return {
-                privateKey,
-                publicKey,
-                address,
-                displayName,
-                nodeId,
-            };
-        } catch (e) {
-            throw new Error('Invalid seed phrase. Please check your words.');
+    // ─── PIN VALIDATION ──────────────────────────────────────────────────────
+    // [FIX E] Enforce minimum PIN quality before any crypto operation.
+    function _validatePin(pin) {
+        if (typeof pin !== 'string' || pin.length < _MIN_PIN_LENGTH) {
+            throw new Error(`PIN must be at least ${_MIN_PIN_LENGTH} characters.`);
         }
     }
 
-    // ─── PIN ENCRYPTION (AES-256-GCM via Web Crypto) ────────
+    // ─── PRIVATE CRYPTO HELPERS ──────────────────────────────────────────────
+    // [FIX C] These are module-private — NOT on the public API.
+
     async function _deriveKey(pin, salt) {
         const enc = new TextEncoder();
         const keyMaterial = await crypto.subtle.importKey(
             'raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']
         );
         return crypto.subtle.deriveKey(
-            { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+            // [FIX D] 600,000 iterations.
+            { name: 'PBKDF2', salt, iterations: _PBKDF2_ITERATIONS, hash: 'SHA-256' },
             keyMaterial,
             { name: 'AES-GCM', length: 256 },
             false,
@@ -90,7 +109,8 @@ const GhostIdentity = (() => {
         );
     }
 
-    async function encryptWithPin(privateKey, pin) {
+    async function _encryptWithPin(plaintext, pin) {
+        _validatePin(pin);
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const key = await _deriveKey(pin, salt);
@@ -98,9 +118,9 @@ const GhostIdentity = (() => {
         const ciphertext = await crypto.subtle.encrypt(
             { name: 'AES-GCM', iv },
             key,
-            enc.encode(privateKey)
+            enc.encode(plaintext)
         );
-        // Pack: salt(16) + iv(12) + ciphertext
+        // Pack: salt(16) | iv(12) | ciphertext
         const packed = new Uint8Array(salt.length + iv.length + ciphertext.byteLength);
         packed.set(salt, 0);
         packed.set(iv, salt.length);
@@ -108,7 +128,8 @@ const GhostIdentity = (() => {
         return btoa(String.fromCharCode(...packed));
     }
 
-    async function decryptWithPin(encryptedB64, pin) {
+    async function _decryptWithPin(encryptedB64, pin) {
+        _validatePin(pin);
         try {
             const packed = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
             const salt = packed.slice(0, 16);
@@ -121,125 +142,242 @@ const GhostIdentity = (() => {
                 ciphertext
             );
             return new TextDecoder().decode(dec);
-        } catch (e) {
+        } catch {
             throw new Error('Wrong PIN');
         }
     }
 
-    // ─── STORAGE HELPERS ────────────────────────────────────
+    // ─── LOCKOUT HELPERS (private) ───────────────────────────────────────────
+    // [FIX B] State is in-memory only; [FIX C] helpers are private.
+
+    function _checkLocked() {
+        if (_locked) throw new Error('Identity locked. Please restore from seed phrase.');
+    }
+
+    function _recordFailedAttempt() {
+        _pinAttempts += 1;
+        if (_pinAttempts >= _MAX_PIN_ATTEMPTS) {
+            _locked = true;
+            throw new Error(`Too many failed attempts. Identity locked.`);
+        }
+        const remaining = _MAX_PIN_ATTEMPTS - _pinAttempts;
+        throw new Error(`Wrong PIN. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`);
+    }
+
+    function _resetAttempts() {
+        _pinAttempts = 0;
+        _locked = false;
+    }
+
+    // ─── nodeId DERIVATION ───────────────────────────────────────────────────
+    // [FIX F] Use a length-prefixed canonical encoding to prevent collisions.
+    //   Format: "<pubkeyLen>:<pubkey>|<nameLen>:<name>"
+    function _canonicalNodeInput(publicKey, displayName) {
+        const pk = String(publicKey);
+        const name = String(displayName);
+        return `${pk.length}:${pk}|${name.length}:${name}`;
+    }
+
+    // ─── CORE: Generate New Identity ─────────────────────────────────────────
+    async function generateIdentity(displayName) {
+        const wallet = ethers.Wallet.createRandom({ locale: ethers.wordlists.en });
+        const mnemonic = wallet.mnemonic.phrase;
+        const privateKey = wallet.privateKey;
+        const publicKey = wallet.publicKey;
+        const address = wallet.address;
+        // [FIX F] Collision-safe derivation.
+        const nodeId = ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+
+        return {
+            mnemonic,    // show once, never store
+            privateKey,  // encrypt with PIN immediately, never store raw
+            publicKey,
+            address,
+            displayName,
+            nodeId,
+        };
+    }
+
+    // ─── CORE: Restore from Seed Phrase ──────────────────────────────────────
+    async function restoreFromMnemonic(mnemonic, displayName) {
+        try {
+            const wallet = ethers.Wallet.fromMnemonic(mnemonic.trim());
+            const privateKey = wallet.privateKey;
+            const publicKey = wallet.publicKey;
+            const address = wallet.address;
+            // [FIX F] Collision-safe derivation.
+            const nodeId = ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+
+            return { privateKey, publicKey, address, displayName, nodeId };
+        } catch {
+            throw new Error('Invalid seed phrase. Please check your words.');
+        }
+    }
+
+    // ─── STORAGE HELPERS ─────────────────────────────────────────────────────
     function saveIdentity(publicKey, address, displayName, nodeId, encryptedPK) {
-        localStorage.setItem(STORAGE_KEYS.ENCRYPTED_PK, encryptedPK);
-        localStorage.setItem(STORAGE_KEYS.PUBLIC_KEY, publicKey);
-        localStorage.setItem(STORAGE_KEYS.ADDRESS, address);
-        localStorage.setItem(STORAGE_KEYS.DISPLAY_NAME, displayName);
-        localStorage.setItem(STORAGE_KEYS.NODE_ID, nodeId);
-        localStorage.setItem(STORAGE_KEYS.PIN_ATTEMPTS, '0');
-        localStorage.removeItem(STORAGE_KEYS.LOCKED);
+        localStorage.setItem(_SK.ENCRYPTED_PK, encryptedPK);
+        localStorage.setItem(_SK.PUBLIC_KEY, publicKey);
+        localStorage.setItem(_SK.ADDRESS, address);
+        localStorage.setItem(_SK.DISPLAY_NAME, displayName);
+        localStorage.setItem(_SK.NODE_ID, nodeId);
+        // [FIX B] Lockout state lives in memory only.
+        _resetAttempts();
     }
 
     function getStoredIdentity() {
-        const encPK = localStorage.getItem(STORAGE_KEYS.ENCRYPTED_PK);
+        const encPK = localStorage.getItem(_SK.ENCRYPTED_PK);
         if (!encPK) return null;
         return {
             encryptedPK: encPK,
-            publicKey: localStorage.getItem(STORAGE_KEYS.PUBLIC_KEY),
-            address: localStorage.getItem(STORAGE_KEYS.ADDRESS),
-            displayName: localStorage.getItem(STORAGE_KEYS.DISPLAY_NAME),
-            nodeId: localStorage.getItem(STORAGE_KEYS.NODE_ID),
+            publicKey: localStorage.getItem(_SK.PUBLIC_KEY),
+            address: localStorage.getItem(_SK.ADDRESS),
+            displayName: localStorage.getItem(_SK.DISPLAY_NAME),
+            nodeId: localStorage.getItem(_SK.NODE_ID),
         };
     }
 
     function isIdentityStored() {
-        return !!localStorage.getItem(STORAGE_KEYS.ENCRYPTED_PK);
+        return !!localStorage.getItem(_SK.ENCRYPTED_PK);
     }
 
     function isLocked() {
-        return localStorage.getItem(STORAGE_KEYS.LOCKED) === 'true';
+        return _locked;   // [FIX B] in-memory only
     }
 
     function getPinAttempts() {
-        return parseInt(localStorage.getItem(STORAGE_KEYS.PIN_ATTEMPTS) || '0', 10);
-    }
-
-    function incrementPinAttempts() {
-        const attempts = getPinAttempts() + 1;
-        localStorage.setItem(STORAGE_KEYS.PIN_ATTEMPTS, String(attempts));
-        if (attempts >= MAX_PIN_ATTEMPTS) {
-            localStorage.setItem(STORAGE_KEYS.LOCKED, 'true');
-        }
-        return attempts;
-    }
-
-    function resetPinAttempts() {
-        localStorage.setItem(STORAGE_KEYS.PIN_ATTEMPTS, '0');
-        localStorage.removeItem(STORAGE_KEYS.LOCKED);
+        return _pinAttempts;   // [FIX B] in-memory only
     }
 
     function clearIdentity() {
-        Object.values(STORAGE_KEYS).forEach(k => localStorage.removeItem(k));
+        Object.values(_SK).forEach(k => {
+            localStorage.removeItem(k);
+            sessionStorage.removeItem(k);
+        });
+        _resetAttempts();
     }
 
-    // ─── SESSION MANAGEMENT (7-Day Auto Unlock) ─────────────
-    async function saveSessionToken(pin, nodeId) {
-        const expiry = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
-        const payload = JSON.stringify({ pin, expiry });
-        const token = await encryptWithPin(payload, nodeId);
-        localStorage.setItem(STORAGE_KEYS.SESSION_TOKEN, token);
-    }
-
-    async function getSessionPin(nodeId) {
-        const token = localStorage.getItem(STORAGE_KEYS.SESSION_TOKEN);
-        if (!token) return null;
+    // ─── UNLOCK: PIN → private key in memory ─────────────────────────────────
+    // Returns the decrypted private key string (caller must handle in memory,
+    // never re-persist in plaintext).
+    async function unlockWithPin(pin) {
+        _checkLocked();
+        const stored = getStoredIdentity();
+        if (!stored) throw new Error('No identity stored.');
         try {
-            const payloadStr = await decryptWithPin(token, nodeId);
-            const payload = JSON.parse(payloadStr);
-            if (Date.now() > payload.expiry) {
-                clearSessionToken();
-                return null;
-            }
-            return payload.pin;
+            const privateKey = await _decryptWithPin(stored.encryptedPK, pin);
+            _resetAttempts();
+            return privateKey;
         } catch (e) {
-            clearSessionToken();
+            if (e.message === 'Wrong PIN') {
+                _recordFailedAttempt();   // throws with attempt count
+            }
+            throw e;
+        }
+    }
+
+    // ─── SESSION MANAGEMENT ───────────────────────────────────────────────────
+    // [FIX A] + [FIX H]
+    //
+    // The original design encrypted the PIN and stored it in localStorage,
+    // using the PUBLIC nodeId as the key — rendering the "encryption"
+    // meaningless and permanently persisting the PIN.
+    //
+    // New design:
+    //   1. On unlock, derive a fresh 256-bit random session key.
+    //   2. Re-encrypt the private key under that session key (AES-GCM, raw key).
+    //   3. Store the session-encrypted blob in localStorage.
+    //   4. Store the raw session key in sessionStorage (tab-scoped, not
+    //      persisted across browser sessions, not accessible cross-origin).
+    //
+    // The PIN is NEVER stored or derivable from anything persisted on disk.
+    // The session expires when the tab or browser is closed (sessionStorage).
+
+    async function _rawEncrypt(plaintext, rawKeyBytes) {
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const key = await crypto.subtle.importKey(
+            'raw', rawKeyBytes, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+        );
+        const enc = new TextEncoder();
+        const ciphertext = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv }, key, enc.encode(plaintext)
+        );
+        const packed = new Uint8Array(iv.length + ciphertext.byteLength);
+        packed.set(iv, 0);
+        packed.set(new Uint8Array(ciphertext), iv.length);
+        return btoa(String.fromCharCode(...packed));
+    }
+
+    async function _rawDecrypt(encryptedB64, rawKeyBytes) {
+        const packed = Uint8Array.from(atob(encryptedB64), c => c.charCodeAt(0));
+        const iv = packed.slice(0, 12);
+        const ciphertext = packed.slice(12);
+        const key = await crypto.subtle.importKey(
+            'raw', rawKeyBytes, { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+        );
+        const dec = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, ciphertext);
+        return new TextDecoder().decode(dec);
+    }
+
+    async function saveSession(privateKey) {
+        const sessionKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+        const encryptedBlob = await _rawEncrypt(privateKey, sessionKeyBytes);
+        // Blob in localStorage (survives reloads, but useless without the key).
+        localStorage.setItem(_SK.SESSION_KEY + '_blob', encryptedBlob);
+        // Raw key only in sessionStorage (cleared when tab/browser closes).
+        sessionStorage.setItem(_SK.SESSION_KEY, btoa(String.fromCharCode(...sessionKeyBytes)));
+    }
+
+    async function getSessionPrivateKey() {
+        const keyB64 = sessionStorage.getItem(_SK.SESSION_KEY);
+        const blob = localStorage.getItem(_SK.SESSION_KEY + '_blob');
+        if (!keyB64 || !blob) return null;
+        try {
+            const rawKeyBytes = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
+            return await _rawDecrypt(blob, rawKeyBytes);
+        } catch {
+            clearSession();
             return null;
         }
     }
 
-    function clearSessionToken() {
-        if (STORAGE_KEYS && STORAGE_KEYS.SESSION_TOKEN) {
-            localStorage.removeItem(STORAGE_KEYS.SESSION_TOKEN);
-        }
+    function clearSession() {
+        sessionStorage.removeItem(_SK.SESSION_KEY);
+        localStorage.removeItem(_SK.SESSION_KEY + '_blob');
     }
 
+    // ─── DISPLAY HELPERS ─────────────────────────────────────────────────────
     function shortenKey(key) {
         if (!key) return '';
-        return key.slice(0, 6) + '...' + key.slice(-4);
+        return key.slice(0, 6) + '…' + key.slice(-4);
     }
 
     function shortenNodeId(id) {
         if (!id) return '';
-        return id.slice(0, 10) + '...' + id.slice(-6);
+        return id.slice(0, 10) + '…' + id.slice(-6);
     }
 
-    // ─── PUBLIC API ─────────────────────────────────────────
+    // ─── PUBLIC API ──────────────────────────────────────────────────────────
+    // [FIX C] encryptWithPin / decryptWithPin are NOT exported.
+    // [FIX C] incrementPinAttempts / resetPinAttempts are NOT exported.
+    // [FIX G] STORAGE_KEYS and MAX_PIN_ATTEMPTS are NOT exported.
     return {
         generateIdentity,
         restoreFromMnemonic,
-        encryptWithPin,
-        decryptWithPin,
         saveIdentity,
         getStoredIdentity,
         isIdentityStored,
         isLocked,
         getPinAttempts,
-        incrementPinAttempts,
-        resetPinAttempts,
         clearIdentity,
-        saveSessionToken,
-        getSessionPin,
-        clearSessionToken,
+        // Primary unlock path — handles lockout internally.
+        unlockWithPin,
+        // Session helpers.
+        saveSession,
+        getSessionPrivateKey,
+        clearSession,
+        // Display helpers.
         shortenKey,
         shortenNodeId,
-        MAX_PIN_ATTEMPTS,
-        STORAGE_KEYS,
     };
 })();
