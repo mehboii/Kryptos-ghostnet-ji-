@@ -52,14 +52,14 @@ function generateSecureId(prefix = 'user') {
     return `${prefix}_${hex}`;
 }
 
-function sanitize(str) {
+const sanitize = (str) => {
     if (str === null || str === undefined) return '';
     const div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
-}
+};
 
-const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+var isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const log = {
     info: (...a) => isDev && console.log('[GN]', ...a),
     warn: (...a) => isDev && console.warn('[GN]', ...a),

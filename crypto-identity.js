@@ -370,6 +370,11 @@ const GhostIdentity = (() => {
         isLocked,
         getPinAttempts,
         clearIdentity,
+        // Primary API for saving a newly generated or restored identity
+        saveNewIdentity: async (identity, pin) => {
+            const encryptedPK = await _encryptWithPin(identity.privateKey, pin);
+            saveIdentity(identity.publicKey, identity.address, identity.displayName, identity.nodeId, encryptedPK);
+        },
         // Primary unlock path — handles lockout internally.
         unlockWithPin,
         // Session helpers.

@@ -158,7 +158,7 @@ function safeJson(text, validator) {
 /**
  * [P] Dev mode — check multiple signals, not just hostname.
  */
-const isDev = (
+var isDev = (
     window.location.hostname === 'localhost' ||
     window.location.hostname === '127.0.0.1' ||
     window.location.protocol === 'file:'

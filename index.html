@@ -17,7 +17,6 @@
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <!-- Logic Scripts -->
-    <script src="ghostnet-identity.js"></script>
     <script src="ghostnet-chat.js"></script>
     <script src="ghostnet-mesh.js"></script>
     <script src="ghostnet-file-vault.js"></script>
@@ -1125,7 +1124,7 @@
                         if (!pin) return;
 
                         try {
-                            await GhostIdentity.decryptWithPin(stored.encryptedPK, pin);
+                            await GhostIdentity.unlockWithPin(pin);
 
                             const val = type === 'pubkey' ? stored.publicKey : stored.address;
                             navigator.clipboard.writeText(val).then(() => {
@@ -1333,14 +1332,7 @@
                         err.textContent = '';
 
                         try {
-                            const encrypted = await GhostIdentity.encryptWithPin(_pendingIdentity.privateKey, pin);
-                            GhostIdentity.saveIdentity(
-                                _pendingIdentity.publicKey,
-                                _pendingIdentity.address,
-                                _pendingIdentity.displayName,
-                                _pendingIdentity.nodeId,
-                                encrypted
-                            );
+                            await GhostIdentity.saveNewIdentity(_pendingIdentity, pin);
 
                             // Register node with backend
                             fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
@@ -1357,9 +1349,9 @@
                             // Save 7-day session token if checked
                             const remember = document.getElementById('remember-session-new');
                             if (remember && remember.checked) {
-                                await GhostIdentity.saveSessionToken(pin, _pendingIdentity.nodeId);
+                                await GhostIdentity.saveSession(_pendingIdentity.privateKey);
                             } else {
-                                GhostIdentity.clearSessionToken();
+                                GhostIdentity.clearSession();
                             }
 
                             // Show success
@@ -1404,8 +1396,7 @@
                         if (!stored) { showScreen('welcome'); return; }
 
                         try {
-                            const privateKey = await GhostIdentity.decryptWithPin(stored.encryptedPK, pin);
-                            GhostIdentity.resetPinAttempts();
+                            const privateKey = await GhostIdentity.unlockWithPin(pin);
 
                             // Set global identity state
                             if (window.AppState) {
@@ -1418,14 +1409,12 @@
                                 };
                             }
 
-                            // Save 7-day session token if checked (and this isn't an auto-login)
-                            if (!autoPin) {
-                                const remember = document.getElementById('remember-session');
-                                if (remember && remember.checked) {
-                                    await GhostIdentity.saveSessionToken(pin, stored.nodeId);
-                                } else {
-                                    GhostIdentity.clearSessionToken();
-                                }
+                            // Save 7-day session token if checked
+                            const remember = document.getElementById('remember-session');
+                            if (remember && remember.checked) {
+                                await GhostIdentity.saveSession(privateKey);
+                            } else {
+                                GhostIdentity.clearSession();
                             }
 
                             // Notify app.js to update mesh identity
@@ -1446,13 +1435,12 @@
                                 })
                             }).catch(e => console.warn('Node registration failed:', e));
                         } catch (e) {
-                            const attempts = GhostIdentity.incrementPinAttempts();
-                            const remaining = GhostIdentity.MAX_PIN_ATTEMPTS - attempts;
-
                             if (GhostIdentity.isLocked()) {
                                 showScreen('locked');
                             } else {
-                                err.textContent = `Wrong PIN`;
+                                err.textContent = e.message || 'Wrong PIN';
+                                const attempts = GhostIdentity.getPinAttempts();
+                                const remaining = 5 - attempts; // GhostIdentity doesn't expose MAX_PIN_ATTEMPTS anymore
                                 document.getElementById('pin-unlock-attempts').textContent =
                                     `${remaining} attempt${remaining !== 1 ? 's' : ''} remaining`;
                                 _clearPinBoxes('pin-unlock-inputs');
@@ -1571,7 +1559,7 @@
                     }
 
                     function lockIdentity() {
-                        GhostIdentity.clearSessionToken();
+                        GhostIdentity.clearSession();
                         _pendingIdentity = null;
                         showScreen('pin');
                     }
@@ -1584,7 +1572,7 @@
                     }
 
                     function signOut() {
-                        GhostIdentity.clearSessionToken();
+                        GhostIdentity.clearSession();
                         _pendingIdentity = null;
                         const sidebarProfile = document.getElementById('sidebar-profile');
                         if (sidebarProfile) sidebarProfile.style.display = 'none';
@@ -1604,13 +1592,35 @@
                         if (GhostIdentity.isLocked()) {
                             showScreen('locked');
                         } else if (GhostIdentity.isIdentityStored()) {
-                            // Check for valid 7-day session token
+                            // Check for valid session
                             const stored = GhostIdentity.getStoredIdentity();
                             if (stored && stored.nodeId) {
-                                const sessionPin = await GhostIdentity.getSessionPin(stored.nodeId);
-                                if (sessionPin) {
+                                const sessionPk = await GhostIdentity.getSessionPrivateKey();
+                                if (sessionPk) {
                                     console.log("🔓 Valid session found, auto-unlocking...");
-                                    return unlockWithPin(sessionPin);
+                                    if (window.AppState) {
+                                        AppState.identity = {
+                                            displayName: stored.displayName,
+                                            publicKey: stored.publicKey,
+                                            address: stored.address,
+                                            nodeId: stored.nodeId,
+                                            id: stored.nodeId,
+                                        };
+                                    }
+                                    window.dispatchEvent(new Event('identity:updated'));
+                                    _showDashboard(stored);
+                                    _updateSidebar(stored);
+                                    fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                            nodeId: stored.nodeId,
+                                            displayName: stored.displayName,
+                                            address: stored.address,
+                                            publicKey: stored.publicKey
+                                        })
+                                    }).catch(e => console.warn('Node registration failed:', e));
+                                    return;
                                 }
                             }
                             showScreen('pin');
