@@ -1,0 +1,16 @@
+{
+  "name": "ghostnet-vault",
+  "version": "1.0.0",
+  "description": "GhostNet File Vault — E2E encrypted file storage with blockchain anchoring",
+  "type": "module",
+  "main": "vault-service.js",
+  "scripts": {
+    "start": "node vault-service.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "multer": "^1.4.5-lts.2"
+  }
+}

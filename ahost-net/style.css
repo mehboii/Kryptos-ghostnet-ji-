@@ -1,0 +1,39 @@
+/* Chat Mode Buttons */
+.mode-btn {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #a1a1aa;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.mode-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.mode-btn.active {
+    background: rgba(139, 92, 246, 0.2);
+    border-color: rgba(139, 92, 246, 0.5);
+    color: #c4b5fd;
+}
+
+/* Ephemeral Message Fire Effect */
+.msg-ephemeral {
+    border-left: 2px solid #ef4444 !important;
+    position: relative;
+}
+
+.msg-ephemeral::after {
+    content: "🔥";
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    font-size: 10px;
+}

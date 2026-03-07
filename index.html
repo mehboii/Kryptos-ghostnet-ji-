@@ -1,0 +1,1677 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostNet | Decentralized Mesh</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="ui.css">
+
+    <!-- Core Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Logic Scripts -->
+    <script src="ghostnet-identity.js"></script>
+    <script src="ghostnet-chat.js"></script>
+    <script src="ghostnet-mesh.js"></script>
+    <script src="ghostnet-file-vault.js"></script>
+    <script src="app.js"></script>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <!-- MOBILE HAMBURGER -->
+        <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="UI.toggleMobileMenu()">
+            <i data-lucide="menu"></i>
+        </button>
+
+        <!-- MOBILE OVERLAY (tap to close sidebar) -->
+        <div class="sidebar-overlay" id="sidebar-overlay" onclick="UI.toggleMobileMenu()"></div>
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="app-sidebar">
+            <div class="brand">
+                <div class="logo-glow">GHOST<br>NET</div>
+            </div>
+
+            <!-- PROFILE WIDGET -->
+            <div id="sidebar-profile"
+                style="display:none; flex-direction: column; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px;">
+                <img id="sidebar-avatar" src=""
+                    style="width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--accent); margin-bottom: 10px; object-fit: cover;">
+                <div id="sidebar-address"
+                    style="color: var(--text-primary); font-weight: 500; font-size: 0.9rem; text-align: center; word-break: break-all; padding: 0 10px;">
+                </div>
+                <div id="sidebar-id"
+                    style="color: var(--text-muted); font-family: monospace; font-size: 0.7rem; margin-top: 5px;"></div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-target="home">
+                    <i data-lucide="globe"></i> <span>Home</span>
+                </button>
+                <button class="nav-btn" data-target="nodes">
+                    <i data-lucide="network"></i> <span>Nodes</span>
+                </button>
+                <button class="nav-btn" data-target="wallet">
+                    <i data-lucide="wallet"></i> <span>Wallet</span>
+                </button>
+                <button class="nav-btn" data-target="chat">
+                    <i data-lucide="message-square"></i> <span>Chat</span>
+                </button>
+                <button class="nav-btn" data-target="vault">
+                    <i data-lucide="hard-drive"></i> <span>Vault</span>
+                </button>
+                <button class="nav-btn" data-target="profile">
+                    <i data-lucide="user"></i> <span>Profile</span>
+                </button>
+            </nav>
+
+            <div style="flex:1;"></div>
+
+            <div class="status-panel" style="margin-top:0;">
+                <div class="status-indicator"></div>
+                <span>MESH CONNECTED</span>
+            </div>
+        </aside>
+
+        <!-- MAIN VIEWPORT -->
+        <main id="main-content" class="main-content" style="position: relative;">
+
+            <!-- THEME TOGGLE (TOP RIGHT) -->
+            <button class="btn-tiny theme-toggle-btn" onclick="UI.toggleTheme()"
+                style="position: absolute; top: 15px; right: 15px; z-index: 100; display:flex; align-items:center; gap:8px; padding: 8px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor:pointer; box-shadow: var(--glow);">
+                <i id="theme-icon" data-lucide="moon" style="width: 16px;"></i> <span id="theme-label"
+                    style="font-size: 0.8rem; font-weight: 500;">Dark Mode</span>
+            </button>
+
+            <!-- HOME SECTION (Mesh Visualization) -->
+            <section id="view-home" class="view-section active">
+
+                <!-- Hero Header Bar -->
+                <div class="home-hero">
+                    <div class="home-hero-left">
+                        <h1 class="home-title">Mesh Overview</h1>
+                        <p class="home-subtitle">Live Decentralized Topology</p>
+                    </div>
+                    <div class="home-hero-right">
+                        <span class="home-badge home-badge--live">
+                            <span class="home-pulse"></span>
+                            LIVE
+                        </span>
+                        <span class="home-badge">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>
+                            E2E Encrypted
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Stats Row -->
+                <div class="home-stats-row">
+                    <div class="home-stat-card">
+                        <div class="home-stat-icon" style="--stat-color: #3b82f6;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round">
+                                <circle cx="12" cy="5" r="3" />
+                                <line x1="12" y1="8" x2="12" y2="14" />
+                                <circle cx="6" cy="19" r="3" />
+                                <circle cx="18" cy="19" r="3" />
+                                <line x1="12" y1="14" x2="6" y2="16" />
+                                <line x1="12" y1="14" x2="18" y2="16" />
+                            </svg>
+                        </div>
+                        <div class="home-stat-info">
+                            <span class="home-stat-label">Active Nodes</span>
+                            <span class="home-stat-value" id="stat-nodes">1</span>
+                        </div>
+                        <div class="home-stat-trend home-stat-trend--up">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                                <polyline points="17 6 23 6 23 12" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="home-stat-card">
+                        <div class="home-stat-icon" style="--stat-color: #10b981;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                            </svg>
+                        </div>
+                        <div class="home-stat-info">
+                            <span class="home-stat-label">Latency</span>
+                            <span class="home-stat-value" id="stat-latency">24<small>ms</small></span>
+                        </div>
+                        <div class="home-stat-trend home-stat-trend--down">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round">
+                                <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
+                                <polyline points="17 18 23 18 23 12" />
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="home-stat-card">
+                        <div class="home-stat-icon" style="--stat-color: #8b5cf6;">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10" />
+                                <polyline points="12 6 12 12 16 14" />
+                            </svg>
+                        </div>
+                        <div class="home-stat-info">
+                            <span class="home-stat-label">Uptime</span>
+                            <span class="home-stat-value" id="stat-uptime">99.9<small>%</small></span>
+                        </div>
+                        <div class="home-stat-trend home-stat-trend--up">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2.5" stroke-linecap="round">
+                                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                                <polyline points="17 6 23 6 23 12" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Canvas Container -->
+                <div class="home-canvas-wrap">
+                    <div class="canvas-container">
+                        <canvas id="mesh"></canvas>
+                        <div class="mesh-overlay">
+                            <div class="mesh-overlay-title">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2" stroke-linecap="round">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <line x1="2" y1="12" x2="22" y2="12" />
+                                    <path
+                                        d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                </svg>
+                                Network
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">PEERS</span>
+                                <span class="value" id="stat-peers-overlay">1</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">LATENCY</span>
+                                <span class="value">24ms</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">STATUS</span>
+                                <span class="value" style="color:#10b981;">● Online</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- NODES SECTION -->
+            <section id="view-nodes" class="view-section">
+                <div class="home-hero" style="margin-bottom: 24px;">
+                    <div class="home-hero-left">
+                        <h1 class="home-title">Discovered Peers</h1>
+                        <p class="home-subtitle">Active mesh nodes in range</p>
+                    </div>
+                    <div class="home-hero-right">
+                        <span class="home-badge home-badge--live">
+                            <span class="home-pulse"></span>
+                            Scanning
+                        </span>
+                    </div>
+                </div>
+                <div class="section-container">
+                    <div id="discover-nodes" class="grid-list">
+                        <!-- Populated by renderDiscoverNodes() -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- WALLET SECTION -->
+            <section id="view-wallet" class="view-section">
+                <div class="home-hero" style="margin-bottom: 24px;">
+                    <div class="home-hero-left">
+                        <h1 class="home-title">Crypto Wallet</h1>
+                        <p class="home-subtitle">Multi-chain portfolio overview</p>
+                    </div>
+                    <div class="home-hero-right">
+                        <span class="home-badge">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="2" y="6" width="20" height="12" rx="2" />
+                                <path d="M22 10H2" />
+                            </svg>
+                            Multi-Chain
+                        </span>
+                    </div>
+                </div>
+                <div class="section-container">
+                    <div id="wallet" class="wallet-container">
+                        <!-- Populated by renderWallet() -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- CHAT SECTION -->
+            <section id="view-chat" class="view-section">
+                <div class="section-container chat-layout-split">
+
+                    <!-- LEFT PANEL - Conversation List -->
+                    <div class="chat-sidebar">
+                        <div class="chat-sidebar-header">
+                            <div>
+                                <h2
+                                    style="font-size: 1.25rem; margin: 0; color: var(--text-primary); font-family: var(--font-heading); font-weight: 800;">
+                                    Messages</h2>
+                                <span
+                                    style="font-size: 0.68rem; color: var(--text-muted); letter-spacing: 0.5px;">End-to-end
+                                    encrypted</span>
+                            </div>
+                            <button class="chat-new-btn" onclick="UI.openNewChat()" title="New Chat">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5" stroke-linecap="round">
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="chat-search">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round">
+                                <circle cx="11" cy="11" r="8" />
+                                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            </svg>
+                            <input type="text" placeholder="Search conversations..." class="chat-search-input">
+                        </div>
+                        <div class="chat-user-list" id="chat-user-list">
+                            <!-- Populated dynamically via JS -->
+                            <div class="chat-user-row active" onclick="UI.selectChat('mock_1')">
+                                <div class="chat-avatar-wrap">
+                                    <div class="chat-avatar"
+                                        style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);"></div>
+                                    <div class="unread-dot"></div>
+                                </div>
+                                <div class="chat-user-info">
+                                    <div class="chat-user-top">
+                                        <span class="chat-username">Phantom_99</span>
+                                        <span class="chat-time">10:42 AM</span>
+                                    </div>
+                                    <div class="chat-user-bottom">
+                                        <span class="chat-preview">
+                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="2.5"
+                                                style="vertical-align: -1px; margin-right: 3px;">
+                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                            </svg>
+                                            Encryption verified.
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT PANEL - Active Chat -->
+                    <div id="chat" class="chat-wrapper chat-main-panel">
+
+                        <!-- EMPTY STATE -->
+                        <div id="chat-empty-state" class="chat-empty-state">
+                            <div class="empty-icon">
+                                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                                </svg>
+                            </div>
+                            <h2>Your messages</h2>
+                            <p>Private, encrypted conversations across the GhostNet mesh.</p>
+                            <div class="chat-empty-badges">
+                                <span class="chat-empty-badge">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                    </svg>
+                                    E2E Encrypted
+                                </span>
+                                <span class="chat-empty-badge">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <path d="M2 12h20" />
+                                        <path
+                                            d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                    </svg>
+                                    Mesh Network
+                                </span>
+                                <span class="chat-empty-badge">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path
+                                            d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
+                                        <path d="M9 12l2 2 4-4" />
+                                    </svg>
+                                    Zero-Knowledge
+                                </span>
+                            </div>
+                            <button class="btn-primary" onclick="UI.openNewChat()"
+                                style="max-width: 220px; margin-top: 24px; border-radius: 14px; display: flex; align-items: center; gap: 8px; justify-content: center;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2.5" stroke-linecap="round">
+                                    <line x1="12" y1="5" x2="12" y2="19" />
+                                    <line x1="5" y1="12" x2="19" y2="12" />
+                                </svg>
+                                Start Conversation
+                            </button>
+                        </div>
+
+                        <!-- ACTIVE STATE (hidden by default) -->
+                        <div id="chat-active-state" style="display: none; height: 100%; flex-direction: column;">
+                            <div id="chat-transport-bar" class="chat-main-header">
+                                <div class="active-chat-user">
+                                    <button class="chat-back-btn" onclick="UI.chatBackToList()">
+                                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                            <line x1="19" y1="12" x2="5" y2="12" />
+                                            <polyline points="12 19 5 12 12 5" />
+                                        </svg>
+                                    </button>
+                                    <div class="chat-avatar" id="active-chat-avatar"
+                                        style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); width: 38px; height: 38px;">
+                                    </div>
+                                    <div style="display:flex; flex-direction: column;">
+                                        <span id="label-transport"
+                                            style="font-weight: 700; color: var(--text-primary); font-size: 0.95rem;">Select
+                                            a chat</span>
+                                        <span class="chat-header-status">
+                                            <span class="chat-header-dot"></span>
+                                            Mesh Active
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:8px; align-items: center;">
+                                    <span class="chat-encrypt-badge">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                        E2E
+                                    </span>
+                                    <button class="btn-tiny" id="btn-ble-scan"
+                                        onclick="window.app.transport.startBLEScan()"
+                                        style="display:flex; align-items:center; gap:5px; border-radius: 20px;">
+                                        <i data-lucide="bluetooth-searching" style="width:12px;"></i>
+                                        <span id="btn-ble-label">Scan</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="chat-feed" id="chat-feed">
+                                <!-- Messages go here -->
+                            </div>
+
+                            <div class="chat-controls">
+                                <input type="file" id="chat-file" hidden>
+                                <button class="chat-attach-btn" onclick="UI.promptFileType()" title="Attach File">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round">
+                                        <path
+                                            d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                                    </svg>
+                                </button>
+                                <input type="text" id="chat-input" placeholder="Type a secure message...">
+                                <div class="chat-modes">
+                                    <button class="mode-btn active" data-mode="PERSIST" title="Save">Save</button>
+                                    <button class="mode-btn" data-mode="EPHEMERAL" title="Burn 30s">Burn</button>
+                                </div>
+                                <button id="chat-send">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+                                        style="vertical-align: -2px; margin-right: 4px;">
+                                        <line x1="22" y1="2" x2="11" y2="13" />
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                                    </svg>
+                                    SEND
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- VAULT SECTION -->
+            <section id="view-vault" class="view-section">
+                <div class="home-hero" style="margin-bottom: 24px;">
+                    <div class="home-hero-left">
+                        <h1 class="home-title">File Vault</h1>
+                        <p class="home-subtitle">Encrypted decentralized storage</p>
+                    </div>
+                    <div class="home-hero-right">
+                        <span class="home-badge">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>
+                            AES-256-GCM
+                        </span>
+                    </div>
+                </div>
+                <div class="section-container">
+
+                    <!-- Upload Drop Zone -->
+                    <div class="vault-upload-zone" id="vault-drop-zone">
+                        <div class="vault-upload-icon">
+                            <i data-lucide="upload-cloud"></i>
+                        </div>
+                        <p class="vault-upload-title">Drag files to encrypt & scatter</p>
+                        <p class="vault-upload-subtitle">End-to-end encrypted • Blockchain anchored • Zero-knowledge</p>
+                        <button class="btn-primary small" id="vault-browse-btn" style="margin-top: 12px;">
+                            <i data-lucide="folder-open" style="width:14px;"></i> Browse Files
+                        </button>
+                        <input type="file" id="vault-file-input" multiple hidden>
+                    </div>
+
+                    <!-- Upload Progress Overlay (hidden by default) -->
+                    <div class="vault-upload-progress" id="vault-upload-progress" style="display:none;">
+                        <div class="vault-progress-card">
+                            <div class="vault-progress-icon" id="vault-progress-icon">
+                                <i data-lucide="shield" style="width:32px; height:32px;"></i>
+                            </div>
+                            <p class="vault-progress-stage" id="vault-progress-stage">Encrypting...</p>
+                            <div class="vault-progress-bar-track">
+                                <div class="vault-progress-bar-fill" id="vault-progress-bar"></div>
+                            </div>
+                            <p class="vault-progress-detail" id="vault-progress-detail">AES-256-GCM encryption in
+                                browser</p>
+                        </div>
+                    </div>
+
+                    <!-- Vault Stats Bar -->
+                    <div class="vault-stats" id="vault-stats" style="display:none;">
+                        <div class="vault-stat">
+                            <i data-lucide="files" style="width:14px; color:var(--accent);"></i>
+                            <span id="vault-stat-count">0</span> files
+                        </div>
+                        <div class="vault-stat">
+                            <i data-lucide="hard-drive" style="width:14px; color:var(--accent);"></i>
+                            <span id="vault-stat-size">0 B</span>
+                        </div>
+                        <div class="vault-stat">
+                            <i data-lucide="link" style="width:14px; color:#10b981;"></i>
+                            <span id="vault-stat-anchored">0</span> on-chain
+                        </div>
+                    </div>
+
+                    <!-- File Grid -->
+                    <div id="vault-file-list" class="vault-file-grid">
+                        <!-- Populated by VaultUI.renderFiles() -->
+                    </div>
+
+                    <!-- Empty State -->
+                    <div id="vault-empty" class="vault-empty-state">
+                        <div class="vault-empty-icon">
+                            <i data-lucide="lock" style="width:48px; height:48px;"></i>
+                        </div>
+                        <h3>Your vault is empty</h3>
+                        <p>Drop a file above to encrypt and store it securely.</p>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- PROFILE / IDENTITY SECTION -->
+            <section id="view-profile" class="view-section">
+                <div class="home-hero" style="margin-bottom: 24px;">
+                    <div class="home-hero-left">
+                        <h1 class="home-title">Node Identity</h1>
+                        <p class="home-subtitle">Cryptographic self-sovereign identity</p>
+                    </div>
+                    <div class="home-hero-right">
+                        <span class="home-badge">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                            </svg>
+                            Zero-Knowledge
+                        </span>
+                    </div>
+                </div>
+
+                <div class="id-container" id="id-container">
+
+                    <!-- ═══ SCREEN: PIN UNLOCK (Returning User) ═══ -->
+                    <div class="id-screen" id="id-screen-pin" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                                            stroke="var(--accent)" stroke-width="2">
+                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title">Welcome Back</h2>
+                                <p class="auth-subtitle" id="pin-unlock-name"></p>
+                                <div class="auth-input-group">
+                                    <label class="auth-label" style="text-align:center;">ENTER YOUR PIN</label>
+                                    <div class="pin-inputs" id="pin-unlock-inputs"></div>
+                                </div>
+                                <div id="pin-unlock-error" class="id-error"></div>
+                                <p id="pin-unlock-attempts"
+                                    style="color:var(--text-muted); font-size:0.72rem; text-align:center; margin-top:4px;">
+                                </p>
+                                <div style="text-align:center; margin-top:15px; margin-bottom:15px;">
+                                    <label style="color:var(--text-muted); font-size:0.85rem; cursor:pointer;">
+                                        <input type="checkbox" id="remember-session" checked
+                                            style="accent-color:var(--accent);">
+                                        Remember me for 7 days
+                                    </label>
+                                </div>
+                                <button class="auth-btn-primary" id="btn-pin-unlock"
+                                    onclick="IdentityUI.unlockWithPin()">UNLOCK</button>
+                                <p style="text-align:center; margin-top:20px;">
+                                    <a href="#" class="auth-link"
+                                        onclick="IdentityUI.showScreen('locked'); return false;">Forgot PIN? Restore
+                                        with Seed Phrase</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN: LOCKED (5 wrong PINs) ═══ -->
+                    <div class="id-screen" id="id-screen-locked" style="display:none;">
+                        <div class="auth-card-outer"
+                            style="background: linear-gradient(135deg, rgba(239,68,68,0.3), var(--border), rgba(239,68,68,0.2));">
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap"
+                                    style="background: conic-gradient(from 0deg, #ef4444, transparent 40%, #ef4444 60%, transparent);">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ef4444"
+                                            stroke-width="2">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                            <line x1="12" y1="8" x2="12" y2="12" />
+                                            <line x1="12" y1="16" x2="12.01" y2="16" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title" style="color:#ef4444;">Identity Locked</h2>
+                                <p class="auth-subtitle">Too many wrong PIN attempts. You must restore your identity
+                                    using your 12-word seed phrase.</p>
+                                <button class="auth-btn-primary" onclick="IdentityUI.showScreen('restore')"
+                                    style="background:linear-gradient(90deg, #ef4444, #f97316);">RESTORE WITH SEED
+                                    PHRASE</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN 1: WELCOME ═══ -->
+                    <div class="id-screen" id="id-screen-welcome" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card" style="text-align:center;">
+                                <div style="margin-bottom:24px;">
+                                    <div class="id-logo-ring">
+                                        <div class="id-logo-inner">
+                                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+                                                stroke="var(--accent)" stroke-width="1.5">
+                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                                <path d="M12 8v4" />
+                                                <circle cx="12" cy="16" r="0.5" fill="var(--accent)" />
+                                            </svg>
+                                        </div>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title" style="font-size:1.6rem;">GhostNet</h2>
+                                <p class="auth-subtitle" style="margin-bottom:28px;">Your decentralized identity lives
+                                    on your device. No servers, no passwords, no tracking.</p>
+                                <button class="auth-btn-primary" onclick="IdentityUI.showScreen('name')"
+                                    style="margin-bottom:12px;">
+                                    <span style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <path d="M12 5v14" />
+                                            <path d="M5 12h14" />
+                                        </svg>
+                                        Create New Identity
+                                    </span>
+                                </button>
+                                <button class="auth-logout-btn" onclick="IdentityUI.showScreen('restore')"
+                                    style="color:var(--accent); border-color:color-mix(in srgb, var(--accent) 30%, transparent);">
+                                    <span style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="currentColor" stroke-width="2">
+                                            <polyline points="1 4 1 10 7 10" />
+                                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                                        </svg>
+                                        Restore With Seed Phrase
+                                    </span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Divider -->
+                    <div style="display:flex; align-items:center; gap:12px; margin:16px auto; max-width:300px;">
+                        <div style="flex:1; height:1px; background:var(--border);"></div>
+                        <span
+                            style="color:var(--text-muted); font-size:0.72rem; font-weight:600; letter-spacing:0.5px;">ALREADY
+                            HAVE AN IDENTITY?</span>
+                        <div style="flex:1; height:1px; background:var(--border);"></div>
+                    </div>
+                    <div style="text-align:center;">
+                        <button class="auth-btn-primary" onclick="IdentityUI.trySignIn()"
+                            style="max-width:300px; margin:0 auto; background:var(--bg-panel); border:1px solid var(--border); color:var(--text-primary);">
+                            <span style="display:flex;align-items:center;justify-content:center;gap:8px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                    stroke-width="2">
+                                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                                    <polyline points="10 17 15 12 10 7" />
+                                    <line x1="15" y1="12" x2="3" y2="12" />
+                                </svg>
+                                Sign In With PIN
+                            </span>
+                        </button>
+                    </div>
+
+                    <!-- ═══ SCREEN 2: DISPLAY NAME ═══ -->
+                    <div class="id-screen" id="id-screen-name" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                                            stroke="var(--accent)" stroke-width="2">
+                                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                                            <circle cx="12" cy="7" r="4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title">Choose Your Name</h2>
+                                <p class="auth-subtitle">This is how other users will see you on the GhostNet mesh
+                                    network.</p>
+                                <div class="id-warning-box">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b"
+                                        stroke-width="2">
+                                        <path
+                                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        <line x1="12" y1="9" x2="12" y2="13" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                    <span>This name is permanent and cannot be changed later.</span>
+                                </div>
+                                <div class="auth-input-group">
+                                    <label class="auth-label">DISPLAY NAME</label>
+                                    <input type="text" id="id-display-name" class="auth-input" placeholder="e.g. Madbo"
+                                        maxlength="24" autocomplete="off">
+                                </div>
+                                <div id="id-name-error" class="id-error"></div>
+                                <button class="auth-btn-primary" onclick="IdentityUI.submitName()">CONTINUE</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN 3: GENERATING IDENTITY ═══ -->
+                    <div class="id-screen" id="id-screen-generating" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card">
+                                <div style="text-align:center; margin-bottom:20px;">
+                                    <div class="id-spinner"></div>
+                                </div>
+                                <h2 class="auth-title" style="text-align:center;">Generating Identity</h2>
+                                <p class="auth-subtitle" style="text-align:center;">Creating your cryptographic keys
+                                    locally…</p>
+                                <div class="id-gen-steps">
+                                    <div class="id-gen-step" id="gen-step-1"><span class="id-gen-icon">◌</span>
+                                        Generating private key</div>
+                                    <div class="id-gen-step" id="gen-step-2"><span class="id-gen-icon">◌</span> Deriving
+                                        public key</div>
+                                    <div class="id-gen-step" id="gen-step-3"><span class="id-gen-icon">◌</span> Creating
+                                        node identity</div>
+                                    <div class="id-gen-step" id="gen-step-4"><span class="id-gen-icon">◌</span>
+                                        Generating seed phrase</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN 4: SHOW SEED PHRASE ═══ -->
+                    <div class="id-screen" id="id-screen-seed" style="display:none;">
+                        <div class="auth-card-outer"
+                            style="max-width:520px; background: linear-gradient(135deg, rgba(245,158,11,0.25), var(--border), rgba(239,68,68,0.2));">
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap"
+                                    style="background: conic-gradient(from 0deg, #f59e0b, transparent 40%, #ef4444 60%, transparent);">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f59e0b"
+                                            stroke-width="2">
+                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title" style="color:#f59e0b;">Recovery Seed Phrase</h2>
+                                <div class="id-warning-box"
+                                    style="background:rgba(239,68,68,0.08); border-color:rgba(239,68,68,0.3);">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef4444"
+                                        stroke-width="2">
+                                        <path
+                                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                        <line x1="12" y1="9" x2="12" y2="13" />
+                                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                                    </svg>
+                                    <span style="color:#ef4444;"><strong>CRITICAL:</strong> Write these 12 words down on
+                                        paper. They are the <strong>ONLY</strong> way to recover your identity. Never
+                                        share them with anyone.</span>
+                                </div>
+                                <div class="seed-grid" id="seed-grid">
+                                    <!-- 12 word cells populated by JS -->
+                                </div>
+                                <div class="id-warning-box" style="margin-top:16px;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b"
+                                        stroke-width="2">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <line x1="12" y1="8" x2="12" y2="12" />
+                                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                                    </svg>
+                                    <span>This phrase will <strong>never be shown again</strong> after you leave this
+                                        screen.</span>
+                                </div>
+                                <button class="auth-btn-primary" onclick="IdentityUI.showScreen('confirm')"
+                                    style="margin-top:16px; background:linear-gradient(90deg, #f59e0b, #ef4444);">I HAVE
+                                    WRITTEN THESE DOWN</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN 5: CONFIRM SEED PHRASE ═══ -->
+                    <div class="id-screen" id="id-screen-confirm" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap"
+                                    style="background: conic-gradient(from 0deg, #8b5cf6, transparent 40%, #8b5cf6 60%, transparent);">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6"
+                                            stroke-width="2">
+                                            <polyline points="9 11 12 14 22 4" />
+                                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title">Confirm Seed Phrase</h2>
+                                <p class="auth-subtitle">Enter the requested words from your seed phrase to confirm you
+                                    saved them.</p>
+                                <div id="confirm-inputs">
+                                    <!-- 3 input fields populated by JS -->
+                                </div>
+                                <div id="confirm-error" class="id-error"></div>
+                                <button class="auth-btn-primary"
+                                    onclick="IdentityUI.verifySeedConfirm()">VERIFY</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN 6: SET PIN ═══ -->
+                    <div class="id-screen" id="id-screen-setpin" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none"
+                                            stroke="var(--accent)" stroke-width="2">
+                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title">Set Your PIN</h2>
+                                <p class="auth-subtitle">This 6-digit PIN encrypts your private key. You'll need it
+                                    every time you open GhostNet.</p>
+                                <div class="auth-input-group">
+                                    <label class="auth-label" style="text-align:center;">CREATE PIN</label>
+                                    <div class="pin-inputs" id="pin-set-inputs"></div>
+                                </div>
+                                <div class="auth-input-group" style="margin-top:12px;">
+                                    <label class="auth-label" style="text-align:center;">CONFIRM PIN</label>
+                                    <div class="pin-inputs" id="pin-confirm-inputs"></div>
+                                </div>
+                                <div id="pin-set-error" class="id-error"></div>
+                                <div style="text-align:center; margin-top:15px; margin-bottom:15px;">
+                                    <label style="color:var(--text-muted); font-size:0.85rem; cursor:pointer;">
+                                        <input type="checkbox" id="remember-session-new" checked
+                                            style="accent-color:var(--accent);">
+                                        Remember me for 7 days
+                                    </label>
+                                </div>
+                                <button class="auth-btn-primary" onclick="IdentityUI.submitPin()">SET PIN & ENCRYPT
+                                    KEY</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN 7: SUCCESS ═══ -->
+                    <div class="id-screen" id="id-screen-success" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card" style="text-align:center;">
+                                <div style="margin-bottom:16px;">
+                                    <div class="id-success-check">
+                                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#10b981"
+                                            stroke-width="2">
+                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                                            <polyline points="22 4 12 14.01 9 11.01" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title" style="color:#10b981;">Identity Created!</h2>
+                                <p id="success-name"
+                                    style="font-size:1.3rem; font-weight:700; color:var(--text-primary); margin-bottom:4px;">
+                                </p>
+                                <p id="success-key"
+                                    style="font-family:'SF Mono',monospace; font-size:0.82rem; color:var(--accent); margin-bottom:20px;">
+                                </p>
+                                <div class="id-info-grid">
+                                    <div class="id-info-item">
+                                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                                            <span class="id-info-label" style="margin:0;">NODE ID</span>
+                                            <button onclick="IdentityUI.copyNodeId('success-nodeid', this)"
+                                                style="background: linear-gradient(180deg, #10b981, #059669); border: none; border-radius: 6px; padding: 2px 6px; cursor: pointer; color: white; display: flex; align-items: center; gap: 3px; font-size: 0.55rem; font-weight: bold; box-shadow: 0 4px 6px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 -2px 0 rgba(0,0,0,0.2) inset; text-shadow: 0 1px 1px rgba(0,0,0,0.2); transition: all 0.1s ease;"
+                                                onmousedown="this.style.transform='translateY(2px)'; this.style.boxShadow='0 1px 2px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.1)';"
+                                                onmouseup="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px rgba(16,185,129,0.3), inset 0 1px 0 rgba(255,255,255,0.3), 0 -2px 0 rgba(0,0,0,0.2) inset';">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
+                                                    </path>
+                                                </svg>
+                                                COPY
+                                            </button>
+                                        </div>
+                                        <span class="id-info-value" id="success-nodeid"></span>
+                                    </div>
+                                    <div class="id-info-item">
+                                        <span class="id-info-label">SECURITY</span>
+                                        <span class="id-info-value" style="color:#10b981;">AES-256-GCM ✓</span>
+                                    </div>
+                                </div>
+                                <button class="auth-btn-primary" onclick="IdentityUI.enterApp()"
+                                    style="margin-top:20px;">ENTER GHOSTNET</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ SCREEN: RESTORE FROM SEED ═══ -->
+                    <div class="id-screen" id="id-screen-restore" style="display:none;">
+                        <div class="auth-card-outer" style="max-width:520px;">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card">
+                                <div class="auth-icon-wrap"
+                                    style="background: conic-gradient(from 0deg, #8b5cf6, transparent 40%, #8b5cf6 60%, transparent);">
+                                    <div class="auth-icon-inner">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6"
+                                            stroke-width="2">
+                                            <polyline points="1 4 1 10 7 10" />
+                                            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+                                        </svg>
+                                    </div>
+                                </div>
+                                <h2 class="auth-title">Restore Identity</h2>
+                                <p class="auth-subtitle">Enter your 12-word seed phrase to recover your identity on this
+                                    device.</p>
+                                <div class="seed-restore-grid" id="seed-restore-grid">
+                                    <!-- 12 input fields populated by JS -->
+                                </div>
+                                <div class="auth-input-group" style="margin-top:16px;">
+                                    <label class="auth-label">DISPLAY NAME</label>
+                                    <input type="text" id="restore-display-name" class="auth-input"
+                                        placeholder="Your original display name" maxlength="24">
+                                </div>
+                                <div id="restore-error" class="id-error"></div>
+                                <button class="auth-btn-primary" onclick="IdentityUI.submitRestore()">RESTORE
+                                    IDENTITY</button>
+                                <p style="text-align:center; margin-top:16px;">
+                                    <a href="#" class="auth-link"
+                                        onclick="IdentityUI.showScreen('welcome'); return false;">← Back</a>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══ LOGGED IN: IDENTITY DASHBOARD ═══ -->
+                    <div class="id-screen" id="id-screen-dashboard" style="display:none;">
+                        <div class="auth-card-outer">
+                            <div class="auth-card-orb"></div>
+                            <div class="auth-card" style="padding:24px;">
+                                <div class="auth-status-bar">
+                                    <div style="position:relative;">
+                                        <div class="auth-status-icon"
+                                            style="background:rgba(16,185,129,0.15); color:#10b981; position:relative; overflow:hidden; cursor:pointer;"
+                                            title="Click to update profile picture"
+                                            onclick="document.getElementById('avatar-upload').click()">
+                                            <div id="dash-avatar-placeholder"
+                                                style="display:flex; justify-content:center; align-items:center; width:100%; height:100%;">
+                                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                                </svg>
+                                            </div>
+                                            <img id="dash-avatar-img" src=""
+                                                style="display:none; width:100%; height:100%; object-fit:cover; position:absolute; top:0; left:0; pointer-events:none;" />
+                                        </div>
+                                        <div onclick="document.getElementById('avatar-upload').click()"
+                                            style="position:absolute; bottom:-2px; right:-2px; background:#10b981; color:#0f172a; width:16px; height:16px; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.4); border:2px solid #1e293b;"
+                                            title="Upload Avatar">
+                                            <svg width="8" height="8" viewBox="0 0 24 24" fill="none"
+                                                stroke="currentColor" stroke-width="3">
+                                                <path
+                                                    d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                                                </path>
+                                                <circle cx="12" cy="13" r="4"></circle>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                    <input type="file" id="avatar-upload" accept="image/*" style="display:none;"
+                                        onchange="IdentityUI.handleAvatarUpload(event)" />
+                                    <div style="flex:1; min-width:0;">
+                                        <h3 class="auth-status-title" id="dash-name"></h3>
+                                        <p id="dash-key"
+                                            style="color:var(--accent); font-family:'SF Mono',monospace; font-size:0.78rem; margin:0;">
+                                        </p>
+                                    </div>
+                                    <span class="home-badge home-badge--live" style="font-size:0.65rem;">
+                                        <span class="home-pulse"></span>
+                                        ONLINE
+                                    </span>
+                                </div>
+
+                                <div class="auth-profile-box">
+                                    <h3
+                                        style="font-family:var(--font-heading); font-size:1rem; font-weight:800; color:var(--text-primary); margin-bottom:16px; display:flex; align-items:center; gap:8px;">
+                                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                                            stroke="var(--accent)" stroke-width="2">
+                                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                        </svg>
+                                        Identity Details
+                                    </h3>
+                                    <div class="id-detail-row">
+                                        <span class="id-detail-label">Public Key</span>
+                                        <span class="id-detail-value secret-clickable" id="dash-pubkey"
+                                            onclick="IdentityUI.revealSecret('pubkey', 'dash-pubkey')"
+                                            style="cursor: pointer; transition: color 0.2s;"
+                                            title="Click to reveal/copy"></span>
+                                    </div>
+                                    <div class="id-detail-row">
+                                        <span class="id-detail-label">Address</span>
+                                        <span class="id-detail-value secret-clickable" id="dash-address"
+                                            onclick="IdentityUI.revealSecret('address', 'dash-address')"
+                                            style="cursor: pointer; transition: color 0.2s;"
+                                            title="Click to reveal/copy"></span>
+                                    </div>
+                                    <div class="id-detail-row">
+                                        <span class="id-detail-label">Node ID</span>
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <span class="id-detail-value" id="dash-nodeid"></span>
+                                            <button onclick="IdentityUI.copyNodeId('dash-nodeid', this)"
+                                                style="background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: #10b981; display: flex; align-items: center; gap: 4px; font-size: 0.6rem; transition: all 0.2s;">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
+                                                    </path>
+                                                </svg>
+                                                COPY
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="id-detail-row">
+                                        <span class="id-detail-label">Encryption</span>
+                                        <span class="id-detail-value" style="color:#10b981;">AES-256-GCM ✓</span>
+                                    </div>
+                                    <div class="id-detail-row">
+                                        <span class="id-detail-label">Key Storage</span>
+                                        <span class="id-detail-value" style="color:#10b981;">Local Only ✓</span>
+                                    </div>
+                                </div>
+
+                                <button onclick="IdentityUI.lockIdentity()" class="auth-logout-btn"
+                                    style="margin-top:12px;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                                        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                    </svg>
+                                    LOCK IDENTITY
+                                </button>
+                                <button onclick="IdentityUI.destroyIdentity()" class="auth-logout-btn"
+                                    style="color:#ef4444; border-color:rgba(239,68,68,0.3); margin-top:8px;">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path
+                                            d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                    DESTROY IDENTITY
+                                </button>
+
+                                <div style="display:flex; align-items:center; gap:12px; margin:20px 0 12px 0;">
+                                    <div style="flex:1; height:1px; background:var(--border);"></div>
+                                    <span
+                                        style="color:var(--text-muted); font-size:0.68rem; font-weight:600; letter-spacing:0.5px;">SESSION</span>
+                                    <div style="flex:1; height:1px; background:var(--border);"></div>
+                                </div>
+
+                                <button onclick="IdentityUI.signOut()" class="auth-logout-btn"
+                                    style="color:var(--accent); border-color:color-mix(in srgb, var(--accent) 30%, transparent);">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2">
+                                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                                        <polyline points="16 17 21 12 16 7" />
+                                        <line x1="21" y1="12" x2="9" y2="12" />
+                                    </svg>
+                                    SIGN OUT
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- Identity UI Logic -->
+            <script src="crypto-identity.js"></script>
+            <script>
+                window.IdentityUI = (() => {
+                    let _pendingIdentity = null; // holds mnemonic + keys during onboarding
+                    let _confirmPositions = [];  // 3 random seed word positions to verify
+
+                    function copyNodeId(elementId, btn) {
+                        const el = document.getElementById(elementId);
+                        const val = el.dataset.fullid || el.textContent;
+                        navigator.clipboard.writeText(val).then(() => {
+                            if (btn) {
+                                const originalHTML = btn.innerHTML;
+                                btn.innerHTML = '<span>COPIED!</span>';
+                                setTimeout(() => { btn.innerHTML = originalHTML; }, 2000);
+                            } else {
+                                const originalHTML = el.textContent;
+                                el.textContent = 'COPIED!';
+                                el.style.color = '#10b981';
+                                setTimeout(() => {
+                                    el.textContent = originalHTML;
+                                    el.style.color = '';
+                                }, 2000);
+                            }
+                        });
+                    }
+
+                    async function revealSecret(type, elementId) {
+                        const stored = GhostIdentity.getStoredIdentity();
+                        if (!stored) return;
+
+                        const pin = prompt('Enter 6-digit PIN to copy this secret:');
+                        if (!pin) return;
+
+                        try {
+                            await GhostIdentity.decryptWithPin(stored.encryptedPK, pin);
+
+                            const val = type === 'pubkey' ? stored.publicKey : stored.address;
+                            navigator.clipboard.writeText(val).then(() => {
+                                const el = document.getElementById(elementId);
+                                const originalHTML = el.textContent;
+                                el.textContent = 'COPIED!';
+                                el.style.color = '#10b981';
+                                setTimeout(() => {
+                                    el.textContent = originalHTML;
+                                    el.style.color = '';
+                                }, 2000);
+                            });
+                        } catch (e) {
+                            alert('Incorrect PIN. Access denied.');
+                        }
+                    }
+
+                    // ─── PIN INPUT HELPER ─────────────────────────
+                    function _createPinBoxes(containerId, count = 6) {
+                        const c = document.getElementById(containerId);
+                        if (!c) return;
+                        c.innerHTML = '';
+                        for (let i = 0; i < count; i++) {
+                            const inp = document.createElement('input');
+                            inp.type = 'password';
+                            inp.className = 'otp-box';
+                            inp.maxLength = 1;
+                            inp.inputMode = 'numeric';
+                            inp.autocomplete = 'off';
+                            inp.dataset.idx = i;
+                            c.appendChild(inp);
+                        }
+                        _bindPinNavigation(c);
+                    }
+
+                    function _bindPinNavigation(container) {
+                        const boxes = container.querySelectorAll('.otp-box');
+                        boxes.forEach((box, idx) => {
+                            box.addEventListener('input', () => {
+                                box.value = box.value.replace(/[^0-9]/g, '').slice(0, 1);
+                                box.classList.toggle('filled', !!box.value);
+                                if (box.value && idx < boxes.length - 1) boxes[idx + 1].focus();
+                            });
+                            box.addEventListener('keydown', (e) => {
+                                if (e.key === 'Backspace' && !box.value && idx > 0) {
+                                    boxes[idx - 1].focus();
+                                    boxes[idx - 1].value = '';
+                                    boxes[idx - 1].classList.remove('filled');
+                                }
+                            });
+                            box.addEventListener('focus', () => box.select());
+                        });
+                    }
+
+                    function _getPinValue(containerId) {
+                        const boxes = document.querySelectorAll(`#${containerId} .otp-box`);
+                        let val = '';
+                        boxes.forEach(b => val += b.value);
+                        return val;
+                    }
+
+                    function _clearPinBoxes(containerId) {
+                        document.querySelectorAll(`#${containerId} .otp-box`).forEach(b => {
+                            b.value = '';
+                            b.classList.remove('filled');
+                        });
+                    }
+
+                    // ─── SCREEN MANAGEMENT ────────────────────────
+                    function showScreen(name) {
+                        document.querySelectorAll('.id-screen').forEach(s => s.style.display = 'none');
+                        const target = document.getElementById('id-screen-' + name);
+                        if (target) target.style.display = 'block';
+
+                        // Init PIN boxes when showing PIN screens
+                        if (name === 'pin') {
+                            _createPinBoxes('pin-unlock-inputs');
+                            const stored = GhostIdentity.getStoredIdentity();
+                            if (stored) {
+                                document.getElementById('pin-unlock-name').textContent =
+                                    `Enter your PIN to unlock as ${stored.displayName}`;
+                            }
+                            const attempts = GhostIdentity.getPinAttempts();
+                            const remaining = GhostIdentity.MAX_PIN_ATTEMPTS - attempts;
+                            document.getElementById('pin-unlock-attempts').textContent =
+                                attempts > 0 ? `${remaining} attempt${remaining !== 1 ? 's' : ''} remaining` : '';
+                            document.getElementById('pin-unlock-error').textContent = '';
+                        }
+                        if (name === 'setpin') {
+                            _createPinBoxes('pin-set-inputs');
+                            _createPinBoxes('pin-confirm-inputs');
+                            document.getElementById('pin-set-error').textContent = '';
+                        }
+                        if (name === 'confirm') _setupConfirmScreen();
+                        if (name === 'restore') _setupRestoreScreen();
+                        if (name === 'locked') {
+                            // Also clear identity if locked
+                        }
+                    }
+
+                    // ─── SCREEN 2: Name ───────────────────────────
+                    function submitName() {
+                        const name = document.getElementById('id-display-name').value.trim();
+                        const err = document.getElementById('id-name-error');
+                        if (!name || name.length < 2) {
+                            err.textContent = 'Name must be at least 2 characters.';
+                            return;
+                        }
+                        err.textContent = '';
+                        _pendingIdentity = { displayName: name };
+                        showScreen('generating');
+                        _runGeneration(name);
+                    }
+
+                    // ─── SCREEN 3: Generating (animated) ──────────
+                    async function _runGeneration(displayName) {
+                        const steps = ['gen-step-1', 'gen-step-2', 'gen-step-3', 'gen-step-4'];
+                        for (let i = 0; i < steps.length; i++) {
+                            await _sleep(500 + Math.random() * 400);
+                            const el = document.getElementById(steps[i]);
+                            if (el) {
+                                el.classList.add('done');
+                                el.querySelector('.id-gen-icon').textContent = '✓';
+                            }
+                        }
+                        // Actually generate
+                        const identity = await GhostIdentity.generateIdentity(displayName);
+                        _pendingIdentity = { ...identity };
+
+                        await _sleep(600);
+                        _showSeedPhrase(identity.mnemonic);
+                        showScreen('seed');
+                    }
+
+                    function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+                    // ─── SCREEN 4: Seed Phrase ────────────────────
+                    function _showSeedPhrase(mnemonic) {
+                        const words = mnemonic.split(' ');
+                        const grid = document.getElementById('seed-grid');
+                        grid.innerHTML = '';
+                        words.forEach((word, i) => {
+                            const cell = document.createElement('div');
+                            cell.className = 'seed-word';
+                            cell.innerHTML = `<span class="seed-num">${i + 1}</span><span class="seed-text">${word}</span>`;
+                            grid.appendChild(cell);
+                        });
+                    }
+
+                    // ─── SCREEN 5: Confirm Seed ───────────────────
+                    function _setupConfirmScreen() {
+                        if (!_pendingIdentity || !_pendingIdentity.mnemonic) return;
+                        const words = _pendingIdentity.mnemonic.split(' ');
+                        // Pick 3 random unique positions
+                        const positions = [];
+                        while (positions.length < 3) {
+                            const p = Math.floor(Math.random() * 12);
+                            if (!positions.includes(p)) positions.push(p);
+                        }
+                        positions.sort((a, b) => a - b);
+                        _confirmPositions = positions;
+
+                        const container = document.getElementById('confirm-inputs');
+                        container.innerHTML = '';
+                        positions.forEach(pos => {
+                            const group = document.createElement('div');
+                            group.className = 'auth-input-group';
+                            group.innerHTML = `
+                                <label class="auth-label">WORD #${pos + 1}</label>
+                                <input type="text" class="auth-input confirm-word-input" data-pos="${pos}" placeholder="Enter word ${pos + 1}" autocomplete="off" autocapitalize="off">
+                            `;
+                            container.appendChild(group);
+                        });
+                        document.getElementById('confirm-error').textContent = '';
+                    }
+
+                    function verifySeedConfirm() {
+                        if (!_pendingIdentity || !_pendingIdentity.mnemonic) return;
+                        const words = _pendingIdentity.mnemonic.split(' ');
+                        const inputs = document.querySelectorAll('.confirm-word-input');
+                        const err = document.getElementById('confirm-error');
+                        let allCorrect = true;
+
+                        inputs.forEach(inp => {
+                            const pos = parseInt(inp.dataset.pos);
+                            if (inp.value.trim().toLowerCase() !== words[pos]) allCorrect = false;
+                        });
+
+                        if (!allCorrect) {
+                            err.textContent = 'One or more words are incorrect. Please check your seed phrase.';
+                            return;
+                        }
+                        err.textContent = '';
+                        showScreen('setpin');
+                    }
+
+                    // ─── SCREEN 6: Set PIN ────────────────────────
+                    async function submitPin() {
+                        const pin = _getPinValue('pin-set-inputs');
+                        const confirmPin = _getPinValue('pin-confirm-inputs');
+                        const err = document.getElementById('pin-set-error');
+
+                        if (pin.length !== 6) { err.textContent = 'PIN must be exactly 6 digits.'; return; }
+                        if (pin !== confirmPin) { err.textContent = 'PINs do not match.'; return; }
+                        err.textContent = '';
+
+                        try {
+                            const encrypted = await GhostIdentity.encryptWithPin(_pendingIdentity.privateKey, pin);
+                            GhostIdentity.saveIdentity(
+                                _pendingIdentity.publicKey,
+                                _pendingIdentity.address,
+                                _pendingIdentity.displayName,
+                                _pendingIdentity.nodeId,
+                                encrypted
+                            );
+
+                            // Register node with backend
+                            fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    nodeId: GhostIdentity.getStoredIdentity().nodeId,
+                                    displayName: GhostIdentity.getStoredIdentity().displayName,
+                                    address: GhostIdentity.getStoredIdentity().address,
+                                    publicKey: GhostIdentity.getStoredIdentity().publicKey
+                                })
+                            }).catch(e => console.warn('Node registration failed:', e));
+
+                            // Save 7-day session token if checked
+                            const remember = document.getElementById('remember-session-new');
+                            if (remember && remember.checked) {
+                                await GhostIdentity.saveSessionToken(pin, _pendingIdentity.nodeId);
+                            } else {
+                                GhostIdentity.clearSessionToken();
+                            }
+
+                            // Show success
+                            document.getElementById('success-name').textContent = _pendingIdentity.displayName;
+                            document.getElementById('success-key').textContent = GhostIdentity.shortenKey(_pendingIdentity.address);
+                            const successNodeEl = document.getElementById('success-nodeid');
+                            successNodeEl.dataset.fullid = _pendingIdentity.nodeId;
+                            successNodeEl.textContent = GhostIdentity.shortenNodeId(_pendingIdentity.nodeId);
+
+                            // Update sidebar
+                            _updateSidebar(_pendingIdentity);
+
+                            // Set global identity state
+                            if (window.AppState) {
+                                AppState.identity = {
+                                    displayName: _pendingIdentity.displayName,
+                                    publicKey: _pendingIdentity.publicKey,
+                                    address: _pendingIdentity.address,
+                                    nodeId: _pendingIdentity.nodeId,
+                                    id: _pendingIdentity.nodeId,
+                                };
+                            }
+                            window.dispatchEvent(new Event('identity:updated'));
+
+                            // Clear sensitive data from memory
+                            _pendingIdentity = null;
+
+                            showScreen('success');
+                        } catch (e) {
+                            err.textContent = 'Encryption failed: ' + e.message;
+                        }
+                    }
+
+                    // ─── PIN UNLOCK (Returning User) ──────────────
+                    async function unlockWithPin(autoPin = null) {
+                        const pin = autoPin || _getPinValue('pin-unlock-inputs');
+                        const err = document.getElementById('pin-unlock-error');
+
+                        if (pin.length !== 6) { err.textContent = 'Enter all 6 digits.'; return; }
+
+                        const stored = GhostIdentity.getStoredIdentity();
+                        if (!stored) { showScreen('welcome'); return; }
+
+                        try {
+                            const privateKey = await GhostIdentity.decryptWithPin(stored.encryptedPK, pin);
+                            GhostIdentity.resetPinAttempts();
+
+                            // Set global identity state
+                            if (window.AppState) {
+                                AppState.identity = {
+                                    displayName: stored.displayName,
+                                    publicKey: stored.publicKey,
+                                    address: stored.address,
+                                    nodeId: stored.nodeId,
+                                    id: stored.nodeId,
+                                };
+                            }
+
+                            // Save 7-day session token if checked (and this isn't an auto-login)
+                            if (!autoPin) {
+                                const remember = document.getElementById('remember-session');
+                                if (remember && remember.checked) {
+                                    await GhostIdentity.saveSessionToken(pin, stored.nodeId);
+                                } else {
+                                    GhostIdentity.clearSessionToken();
+                                }
+                            }
+
+                            // Notify app.js to update mesh identity
+                            window.dispatchEvent(new Event('identity:updated'));
+
+                            _showDashboard(stored);
+                            _updateSidebar(stored);
+
+                            // Re-register node with backend on every sign-in
+                            fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    nodeId: stored.nodeId,
+                                    displayName: stored.displayName,
+                                    address: stored.address,
+                                    publicKey: stored.publicKey
+                                })
+                            }).catch(e => console.warn('Node registration failed:', e));
+                        } catch (e) {
+                            const attempts = GhostIdentity.incrementPinAttempts();
+                            const remaining = GhostIdentity.MAX_PIN_ATTEMPTS - attempts;
+
+                            if (GhostIdentity.isLocked()) {
+                                showScreen('locked');
+                            } else {
+                                err.textContent = `Wrong PIN`;
+                                document.getElementById('pin-unlock-attempts').textContent =
+                                    `${remaining} attempt${remaining !== 1 ? 's' : ''} remaining`;
+                                _clearPinBoxes('pin-unlock-inputs');
+                            }
+                        }
+                    }
+
+                    // ─── RESTORE FLOW ─────────────────────────────
+                    function _setupRestoreScreen() {
+                        const grid = document.getElementById('seed-restore-grid');
+                        grid.innerHTML = '';
+                        for (let i = 0; i < 12; i++) {
+                            const cell = document.createElement('div');
+                            cell.className = 'seed-restore-cell';
+                            cell.innerHTML = `
+                                <span class="seed-num">${i + 1}</span>
+                                <input type="text" class="seed-restore-input" data-idx="${i}" placeholder="word" autocomplete="off" autocapitalize="off">
+                            `;
+                            grid.appendChild(cell);
+                        }
+                        document.getElementById('restore-error').textContent = '';
+                    }
+
+                    async function submitRestore() {
+                        const inputs = document.querySelectorAll('.seed-restore-input');
+                        const err = document.getElementById('restore-error');
+                        const displayName = document.getElementById('restore-display-name').value.trim();
+
+                        let words = [];
+                        inputs.forEach(inp => words.push(inp.value.trim().toLowerCase()));
+
+                        if (words.some(w => !w)) { err.textContent = 'Please fill in all 12 words.'; return; }
+                        if (!displayName) { err.textContent = 'Display name is required.'; return; }
+
+                        const mnemonic = words.join(' ');
+
+                        try {
+                            const identity = await GhostIdentity.restoreFromMnemonic(mnemonic, displayName);
+                            _pendingIdentity = identity;
+                            err.textContent = '';
+                            showScreen('setpin');
+                        } catch (e) {
+                            err.textContent = e.message || 'Invalid seed phrase.';
+                        }
+                    }
+
+                    // ─── DASHBOARD ────────────────────────────────
+                    function _showDashboard(identity) {
+                        document.getElementById('dash-name').textContent = identity.displayName;
+                        document.getElementById('dash-key').textContent = GhostIdentity.shortenKey(identity.address);
+
+                        const avatarData = localStorage.getItem('ghostnet_avatar_' + identity.address);
+                        const placeholder = document.getElementById('dash-avatar-placeholder');
+                        const img = document.getElementById('dash-avatar-img');
+                        if (avatarData) {
+                            img.src = avatarData;
+                            img.style.display = 'block';
+                            placeholder.style.display = 'none';
+                        } else {
+                            img.style.display = 'none';
+                            placeholder.style.display = 'flex';
+                        }
+
+                        document.getElementById('dash-pubkey').dataset.fullid = identity.publicKey;
+                        document.getElementById('dash-pubkey').textContent = GhostIdentity.shortenKey(identity.publicKey);
+
+                        document.getElementById('dash-address').dataset.fullid = identity.address;
+                        document.getElementById('dash-address').textContent = GhostIdentity.shortenKey(identity.address);
+
+                        const dashNodeEl = document.getElementById('dash-nodeid');
+                        dashNodeEl.dataset.fullid = identity.nodeId;
+                        dashNodeEl.textContent = GhostIdentity.shortenNodeId(identity.nodeId);
+                        showScreen('dashboard');
+                    }
+
+                    function handleAvatarUpload(e) {
+                        const file = e.target.files[0];
+                        if (!file) return;
+
+                        const reader = new FileReader();
+                        reader.onload = function (event) {
+                            const avatarData = event.target.result;
+                            const stored = GhostIdentity.getStoredIdentity();
+                            if (stored) {
+                                localStorage.setItem('ghostnet_avatar_' + stored.address, avatarData);
+                                document.getElementById('dash-avatar-img').src = avatarData;
+                                document.getElementById('dash-avatar-img').style.display = 'block';
+                                document.getElementById('dash-avatar-placeholder').style.display = 'none';
+
+                                if (window.AppState && window.AppState.identity) {
+                                    window.AppState.identity.avatar = avatarData;
+                                }
+                            }
+                        };
+                        reader.readAsDataURL(file);
+                    }
+
+                    function _updateSidebar(identity) {
+                        const sidebarProfile = document.getElementById('sidebar-profile');
+                        const sidebarAddress = document.getElementById('sidebar-address');
+                        const sidebarId = document.getElementById('sidebar-id');
+                        const sidebarAvatar = document.getElementById('sidebar-avatar');
+
+                        if (sidebarProfile) sidebarProfile.style.display = 'flex';
+                        if (sidebarAddress) sidebarAddress.textContent = identity.displayName;
+                        if (sidebarId) sidebarId.textContent = GhostIdentity.shortenKey(identity.address || identity.publicKey);
+                        if (sidebarAvatar) {
+                            // Generate a simple identicon-style avatar from address
+                            sidebarAvatar.style.display = 'none';
+                        }
+                    }
+
+                    function enterApp() {
+                        // Navigate to home
+                        if (window.UI && UI.navigate) UI.navigate('home');
+                    }
+
+                    function lockIdentity() {
+                        GhostIdentity.clearSessionToken();
+                        _pendingIdentity = null;
+                        showScreen('pin');
+                    }
+
+                    function destroyIdentity() {
+                        if (!confirm('⚠️ This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase. Are you sure?')) return;
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        window.location.reload();
+                    }
+
+                    function signOut() {
+                        GhostIdentity.clearSessionToken();
+                        _pendingIdentity = null;
+                        const sidebarProfile = document.getElementById('sidebar-profile');
+                        if (sidebarProfile) sidebarProfile.style.display = 'none';
+                        showScreen('welcome');
+                    }
+
+                    function trySignIn() {
+                        if (GhostIdentity.isIdentityStored()) {
+                            showScreen('pin');
+                        } else {
+                            alert('No identity found on this device. Please create a new one or restore from a seed phrase.');
+                        }
+                    }
+
+                    // ─── INIT ─────────────────────────────────────
+                    async function init() {
+                        if (GhostIdentity.isLocked()) {
+                            showScreen('locked');
+                        } else if (GhostIdentity.isIdentityStored()) {
+                            // Check for valid 7-day session token
+                            const stored = GhostIdentity.getStoredIdentity();
+                            if (stored && stored.nodeId) {
+                                const sessionPin = await GhostIdentity.getSessionPin(stored.nodeId);
+                                if (sessionPin) {
+                                    console.log("🔓 Valid session found, auto-unlocking...");
+                                    return unlockWithPin(sessionPin);
+                                }
+                            }
+                            showScreen('pin');
+                        } else {
+                            showScreen('welcome');
+                        }
+                    }
+                    if (document.readyState === 'loading') {
+                        document.addEventListener('DOMContentLoaded', init);
+                    } else {
+                        init();
+                    }
+
+                    return {
+                        copyNodeId,
+                        revealSecret,
+                        showScreen,
+                        submitName,
+                        verifySeedConfirm,
+                        submitPin,
+                        unlockWithPin,
+                        submitRestore,
+                        enterApp,
+                        lockIdentity,
+                        destroyIdentity,
+                        signOut,
+                        trySignIn,
+                        init,
+                        handleAvatarUpload
+                    };
+                })();
+            </script>
+
+        </main>
+    </div>
+
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <button class="mobile-nav-item active" data-target="home" onclick="UI.navigate('home')">
+            <i data-lucide="globe"></i>
+            <span>Home</span>
+        </button>
+        <button class="mobile-nav-item" data-target="chat" onclick="UI.navigate('chat')">
+            <i data-lucide="message-square"></i>
+            <span>Chat</span>
+        </button>
+        <button class="mobile-nav-item" data-target="wallet" onclick="UI.navigate('wallet')">
+            <i data-lucide="wallet"></i>
+            <span>Wallet</span>
+        </button>
+        <button class="mobile-nav-item" data-target="nodes" onclick="UI.navigate('nodes')">
+            <i data-lucide="network"></i>
+            <span>Nodes</span>
+        </button>
+        <button class="mobile-nav-item" data-target="profile" onclick="UI.navigate('profile')">
+            <i data-lucide="user"></i>
+            <span>Profile</span>
+        </button>
+    </nav>
+
+    <script src="ui.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+
+</html>

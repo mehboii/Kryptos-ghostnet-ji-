@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GhostNet | Decentralized Mesh</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="ui.css">
+
+    <!-- Core Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Logic Scripts -->
+    <script src="ghostnet-identity.js"></script>
+    <script src="ghostnet-chat.js"></script>
+    <script src="ghostnet-mesh.js"></script>
+    <script src="app.js"></script>
+</head>
+
+<body>
+
+    <div class="app-container">
+        <!-- MOBILE HAMBURGER -->
+        <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="UI.toggleMobileMenu()">
+            <i data-lucide="menu"></i>
+        </button>
+
+        <!-- MOBILE OVERLAY (tap to close sidebar) -->
+        <div class="sidebar-overlay" id="sidebar-overlay" onclick="UI.toggleMobileMenu()"></div>
+
+        <!-- SIDEBAR -->
+        <aside class="sidebar" id="app-sidebar">
+            <div class="brand">
+                <div class="logo-glow">GHOST<br>NET</div>
+            </div>
+
+            <!-- PROFILE WIDGET -->
+            <div id="sidebar-profile"
+                style="display:none; flex-direction: column; align-items: center; padding: 15px 0; border-bottom: 1px solid var(--border); margin-bottom: 15px;">
+                <img id="sidebar-avatar" src=""
+                    style="width: 60px; height: 60px; border-radius: 50%; border: 2px solid var(--accent); margin-bottom: 10px; object-fit: cover;">
+                <div id="sidebar-address"
+                    style="color: var(--text-primary); font-weight: 500; font-size: 0.9rem; text-align: center; word-break: break-all; padding: 0 10px;">
+                </div>
+                <div id="sidebar-id"
+                    style="color: var(--text-muted); font-family: monospace; font-size: 0.7rem; margin-top: 5px;"></div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-btn active" data-target="home">
+                    <i data-lucide="globe"></i> <span>Home</span>
+                </button>
+                <button class="nav-btn" data-target="nodes">
+                    <i data-lucide="network"></i> <span>Nodes</span>
+                </button>
+                <button class="nav-btn" data-target="wallet">
+                    <i data-lucide="wallet"></i> <span>Wallet</span>
+                </button>
+                <button class="nav-btn" data-target="chat">
+                    <i data-lucide="message-square"></i> <span>Chat</span>
+                </button>
+                <button class="nav-btn" data-target="vault">
+                    <i data-lucide="hard-drive"></i> <span>Vault</span>
+                </button>
+                <button class="nav-btn" data-target="profile">
+                    <i data-lucide="user"></i> <span>Profile</span>
+                </button>
+            </nav>
+
+            <div style="flex:1;"></div>
+
+            <div class="status-panel" style="margin-top:0;">
+                <div class="status-indicator"></div>
+                <span>MESH CONNECTED</span>
+            </div>
+        </aside>
+
+        <!-- MAIN VIEWPORT -->
+        <main id="main-content" class="main-content" style="position: relative;">
+
+            <!-- THEME TOGGLE (TOP RIGHT) -->
+            <button class="btn-tiny theme-toggle-btn" onclick="UI.toggleTheme()"
+                style="position: absolute; top: 15px; right: 15px; z-index: 100; display:flex; align-items:center; gap:8px; padding: 8px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor:pointer; box-shadow: var(--glow);">
+                <i id="theme-icon" data-lucide="moon" style="width: 16px;"></i> <span id="theme-label"
+                    style="font-size: 0.8rem; font-weight: 500;">Dark Mode</span>
+            </button>
+
+            <!-- HOME SECTION (Mesh Visualization) -->
+            <section id="view-home" class="view-section active">
+                <div class="hero-header">
+                    <h1 class="glow-text">MESH OVERVIEW</h1>
+                    <p class="subtitle">Live Decentralized Topology</p>
+                </div>
+                <div class="canvas-container">
+                    <canvas id="mesh"></canvas>
+                    <div class="mesh-overlay">
+                        <div class="stat-item">
+                            <span class="label">NODES</span>
+                            <span class="value" id="stat-nodes">12</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="label">LATENCY</span>
+                            <span class="value">24ms</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- NODES SECTION -->
+            <section id="view-nodes" class="view-section">
+                <h1 class="glow-text">DISCOVERED PEERS</h1>
+                <div class="section-container">
+                    <div id="discover-nodes" class="grid-list">
+                        <!-- Populated by renderDiscoverNodes() -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- WALLET SECTION -->
+            <section id="view-wallet" class="view-section">
+                <h1 class="glow-text">CRYPTO WALLET</h1>
+                <div class="section-container">
+                    <div id="wallet" class="wallet-container">
+                        <!-- Populated by renderWallet() -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- CHAT SECTION -->
+            <section id="view-chat" class="view-section">
+                <!-- <h1 class="glow-text">ENCRYPTED COMMS</h1> -->
+                <div class="section-container chat-layout-split">
+
+                    <!-- LEFT PANEL - Conversation List -->
+                    <div class="chat-sidebar">
+                        <div class="chat-sidebar-header">
+                            <h2 style="font-size: 1.2rem; margin: 0; color: var(--text-primary);">Messages</h2>
+                            <button class="btn-tiny" onclick="UI.openNewChat()"
+                                style="display:flex; align-items:center; gap:5px;">
+                                <i data-lucide="edit"></i>
+                            </button>
+                        </div>
+                        <div class="chat-search">
+                            <i data-lucide="search" style="width: 16px; color: var(--text-muted);"></i>
+                            <input type="text" placeholder="Search messages..." class="chat-search-input">
+                        </div>
+                        <div class="chat-user-list" id="chat-user-list">
+                            <!-- Populated dynamically via JS -->
+
+                            <!-- Static mockup example for initial render -->
+                            <div class="chat-user-row active" onclick="UI.selectChat('mock_1')">
+                                <div class="chat-avatar-wrap">
+                                    <div class="chat-avatar" style="background: var(--bg-panel);"></div>
+                                    <div class="unread-dot"></div>
+                                </div>
+                                <div class="chat-user-info">
+                                    <div class="chat-user-top">
+                                        <span class="chat-username">Phantom_99</span>
+                                        <span class="chat-time">10:42 AM</span>
+                                    </div>
+                                    <div class="chat-user-bottom">
+                                        <span class="chat-preview">Encryption verified.</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RIGHT PANEL - Active Chat -->
+                    <div id="chat" class="chat-wrapper chat-main-panel">
+
+                        <!-- EMPTY STATE -->
+                        <div id="chat-empty-state" class="chat-empty-state">
+                            <div class="empty-icon">
+                                <i data-lucide="message-square" style="width: 48px; height: 48px;"></i>
+                            </div>
+                            <h2>Your messages</h2>
+                            <p>Send a message to start a chat.</p>
+                            <button class="btn-primary" onclick="UI.openNewChat()"
+                                style="max-width: 200px; margin-top: 20px;">Send Message</button>
+                        </div>
+
+                        <!-- ACTIVE STATE (hidden by default) -->
+                        <div id="chat-active-state" style="display: none; height: 100%; flex-direction: column;">
+                            <div id="chat-transport-bar" class="chat-main-header">
+                                <div class="active-chat-user">
+                                    <button class="chat-back-btn" onclick="UI.chatBackToList()">
+                                        <i data-lucide="arrow-left" style="width:20px;height:20px;"></i>
+                                    </button>
+                                    <div class="chat-avatar" id="active-chat-avatar"
+                                        style="background: var(--bg-panel);"></div>
+                                    <div style="display:flex; flex-direction: column;">
+                                        <span id="label-transport"
+                                            style="font-weight: 600; color: var(--text-primary);">Select a
+                                            chat</span>
+                                        <span
+                                            style="font-size: 0.75rem; color: #10b981; display: flex; align-items: center; gap: 4px;">
+                                            <i data-lucide="bluetooth" style="width: 10px;"></i> Mesh Active
+                                        </span>
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:10px;">
+                                    <button class="btn-tiny" id="btn-ble-scan"
+                                        onclick="window.app.transport.startBLEScan()"
+                                        style="display:flex; align-items:center; gap:5px;">
+                                        <i data-lucide="bluetooth-searching" style="width:12px;"></i>
+                                        <span id="btn-ble-label">Scan</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="chat-feed" id="chat-feed">
+                                <!-- Messages go here -->
+                            </div>
+
+                            <div class="chat-controls">
+                                <input type="file" id="chat-file" hidden>
+                                <button class="chat-attach-btn" onclick="UI.promptFileType()" title="Attach File">
+                                    <i data-lucide="paperclip"></i>
+                                </button>
+                                <input type="text" id="chat-input" placeholder="Type secure message...">
+                                <div class="chat-modes">
+                                    <button class="mode-btn active" data-mode="PERSIST" title="Save">Save</button>
+                                    <button class="mode-btn" data-mode="EPHEMERAL" title="Burn 30s">Burn</button>
+                                </div>
+                                <button id="chat-send">SEND</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- VAULT SECTION -->
+            <section id="view-vault" class="view-section">
+                <h1 class="glow-text">FILE VAULT</h1>
+                <div class="section-container">
+                    <div class="upload-area">
+                        <i data-lucide="upload-cloud"></i>
+                        <span>Drag files to encrypt & scatter</span>
+                    </div>
+                    <div id="storage" class="file-list">
+                        <!-- Populated by renderStorage() -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- PROFILE SECTION -->
+            <section id="view-profile" class="view-section">
+                <h1 class="glow-text">NODE PROFILE</h1>
+                <div class="section-container"
+                    style="max-width: 500px; margin: 0 auto; background:var(--bg-panel); padding:20px; border-radius:16px; border:1px solid var(--border); box-shadow:var(--glow);">
+                    <div style="text-align: center; margin-bottom: 20px;">
+                        <img id="profile-preview" src=""
+                            style="width: 100px; height: 100px; border-radius: 50%; border: 2px solid var(--accent); display: none; margin: 0 auto 15px auto; object-fit: cover;">
+                        <div id="profile-id-display"
+                            style="color:var(--text-muted); font-family:monospace; font-size: 0.8rem;">
+                        </div>
+                    </div>
+
+                    <div class="input-group" style="margin-bottom: 20px;">
+                        <label class="input-label"
+                            style="display:block; margin-bottom: 8px; color: var(--text-muted); font-size: 0.8rem;">CUSTOM
+                            ADDRESS
+                            / ALIAS</label>
+                        <input type="text" id="profile-address" class="modal-input" placeholder="e.g. 👾 CipherPunk#99"
+                            style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px;">
+                    </div>
+
+                    <div class="input-group" style="margin-bottom: 20px;">
+                        <label class="input-label"
+                            style="display:block; margin-bottom: 8px; color: var(--text-muted); font-size: 0.8rem;">PROFILE
+                            PICTURE</label>
+                        <input type="file" id="profile-avatar-upload" accept="image/*"
+                            style="width: 100%; padding: 10px; background: var(--bg-dark); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px;">
+                    </div>
+
+                    <button class="btn-primary" onclick="UI.saveProfile()"
+                        style="width: 100%; padding: 12px; background: var(--accent); color: #ffffff; border: none; font-weight: bold; border-radius: 8px; cursor: pointer; box-shadow:0 4px 6px -1px var(--accent-dim);">SAVE
+                        PROFILE</button>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- MOBILE BOTTOM NAV -->
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <button class="mobile-nav-item active" data-target="home" onclick="UI.navigate('home')">
+            <i data-lucide="globe"></i>
+            <span>Home</span>
+        </button>
+        <button class="mobile-nav-item" data-target="chat" onclick="UI.navigate('chat')">
+            <i data-lucide="message-square"></i>
+            <span>Chat</span>
+        </button>
+        <button class="mobile-nav-item" data-target="wallet" onclick="UI.navigate('wallet')">
+            <i data-lucide="wallet"></i>
+            <span>Wallet</span>
+        </button>
+        <button class="mobile-nav-item" data-target="nodes" onclick="UI.navigate('nodes')">
+            <i data-lucide="network"></i>
+            <span>Nodes</span>
+        </button>
+        <button class="mobile-nav-item" data-target="profile" onclick="UI.navigate('profile')">
+            <i data-lucide="user"></i>
+            <span>Profile</span>
+        </button>
+    </nav>
+
+    <script src="ui.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+
+</html>

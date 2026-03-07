@@ -1,0 +1,251 @@
+# ============================================
+# GhostNet — Docker Compose Orchestration
+# ============================================
+# Replaces PM2 ecosystem with container-native services.
+#
+# Usage:
+#   docker compose up -d              → start all services
+#   docker compose up -d ghostnet-server  → single service
+#   docker compose logs -f            → live tail all logs
+#   docker compose down               → stop everything
+#   docker compose build              → rebuild all images
+#
+# ============================================
+
+services:
+
+  # ══════════════════════════════════════════
+  #  CORE: Main API + WebSocket + Auth
+  # ══════════════════════════════════════════
+  ghostnet-server:
+    build: .
+    container_name: ghostnet-server
+    command: ["node", "ghostnet-server.js"]
+    ports:
+      - "${GHOSTNET_SERVER_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - GHOSTNET_MODE=${GHOSTNET_MODE:-development}
+      - PORT=8080
+      - GHOSTNET_BRIDGE_URL=http://ghostnet-bridge:3001
+    volumes:
+      - ghostnet-data:/app/data
+      - ghostnet-logs:/app/logs
+      - ./messages.json:/app/messages.json
+      - ./conversations.json:/app/conversations.json
+      - ./users.json:/app/users.json
+      - ./auth-users.json:/app/auth-users.json
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - ghostnet
+    depends_on:
+      ghostnet-messages:
+        condition: service_healthy
+
+  # ══════════════════════════════════════════
+  #  BRIDGE: Multi-chain Blockchain Bridge
+  # ══════════════════════════════════════════
+  ghostnet-bridge:
+    build: .
+    container_name: ghostnet-bridge
+    command: ["node", "ghostnet-bridge/bridge.js"]
+    ports:
+      - "${GHOSTNET_BRIDGE_PORT:-3001}:3001"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3001
+    volumes:
+      - ghostnet-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/wallet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  # ══════════════════════════════════════════
+  #  CLIENT: UI Static File Server
+  # ══════════════════════════════════════════
+  ghostnet-client:
+    build: .
+    container_name: ghostnet-client
+    command: ["node", "ghostnet-client/server.js"]
+    ports:
+      - "${GHOSTNET_CLIENT_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  # ══════════════════════════════════════════
+  #  MESSAGES: SQLite Persistence Service
+  # ══════════════════════════════════════════
+  ghostnet-messages:
+    build: .
+    container_name: ghostnet-messages
+    command: ["node", "ghostnet-messages/server.js"]
+    ports:
+      - "${GHOSTNET_MESSAGES_PORT:-8090}:8090"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8090
+    volumes:
+      - ghostnet-sqlite:/app/ghostnet-messages
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/users"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  # ══════════════════════════════════════════
+  #  RELAY NODES: Onion Routing Chain
+  # ══════════════════════════════════════════
+  ghostnet-relay-1:
+    build: .
+    container_name: ghostnet-relay-1
+    command: ["node", "ghostnet-bridge/relay/server.js"]
+    ports:
+      - "${GHOSTNET_RELAY_1_PORT:-8081}:8081"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8081
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  ghostnet-relay-2:
+    build: .
+    container_name: ghostnet-relay-2
+    command: ["node", "ghostnet-bridge/relay/server.js"]
+    ports:
+      - "${GHOSTNET_RELAY_2_PORT:-8082}:8082"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8082
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  ghostnet-relay-3:
+    build: .
+    container_name: ghostnet-relay-3
+    command: ["node", "ghostnet-bridge/relay/server.js"]
+    ports:
+      - "${GHOSTNET_RELAY_3_PORT:-8083}:8083"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8083
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  # ══════════════════════════════════════════
+  #  REGISTRY: Node Discovery
+  # ══════════════════════════════════════════
+  ghostnet-registry:
+    build: .
+    container_name: ghostnet-registry
+    command: ["node", "ghostnet-bridge/registry.js"]
+    ports:
+      - "${GHOSTNET_REGISTRY_PORT:-9000}:9000"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - GHOSTNET_RELAY_NODES=ws://ghostnet-server:8080,ws://ghostnet-relay-1:8081,ws://ghostnet-relay-2:8082,ws://ghostnet-relay-3:8083
+    restart: unless-stopped
+    networks:
+      - ghostnet
+    depends_on:
+      - ghostnet-relay-1
+      - ghostnet-relay-2
+      - ghostnet-relay-3
+
+  # ══════════════════════════════════════════
+  #  CHAIN: Blockchain Abstraction Layer
+  # ══════════════════════════════════════════
+  ghostnet-chain:
+    build: .
+    container_name: ghostnet-chain
+    command: ["node", "ghostnet-chain/chain-service.js"]
+    ports:
+      - "${GHOSTNET_CHAIN_PORT:-4000}:4000"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - GHOSTNET_CHAIN_PORT=4000
+      - GHOSTNET_CHAIN_PROVIDER=${GHOSTNET_CHAIN_PROVIDER:-evm}
+      - ETH_RPC_URL=${ETH_RPC_URL:-http://127.0.0.1:8545}
+    restart: unless-stopped
+    networks:
+      - ghostnet
+
+  # ══════════════════════════════════════════
+  #  VAULT: Encrypted File Storage
+  # ══════════════════════════════════════════
+  ghostnet-vault:
+    build: .
+    container_name: ghostnet-vault
+    command: ["node", "ghostnet-vault/vault-service.js"]
+    ports:
+      - "${GHOSTNET_VAULT_PORT:-4001}:4001"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - GHOSTNET_VAULT_PORT=4001
+      - GHOSTNET_CHAIN_URL=http://ghostnet-chain:4000
+    volumes:
+      - ghostnet-vault:/app/ghostnet-vault/vault-data
+    restart: unless-stopped
+    networks:
+      - ghostnet
+    depends_on:
+      - ghostnet-chain
+
+# ══════════════════════════════════════════
+#  VOLUMES
+# ══════════════════════════════════════════
+volumes:
+  ghostnet-data:
+    driver: local
+  ghostnet-logs:
+    driver: local
+  ghostnet-sqlite:
+    driver: local
+  ghostnet-vault:
+    driver: local
+
+# ══════════════════════════════════════════
+#  NETWORKS
+# ══════════════════════════════════════════
+networks:
+  ghostnet:
+    driver: bridge
+    name: ghostnet-network

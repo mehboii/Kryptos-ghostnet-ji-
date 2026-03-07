@@ -1,0 +1,12 @@
+{
+  "dependencies": {
+    "@abandonware/bleno": "latest",
+    "@abandonware/noble": "^1.9.2-26",
+    "cors": "^2.8.6",
+    "express": "^4.22.1",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.19.0"
+  },
+  "type": "module"
+}

@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files (secrets)
+.env
+*/.env
+
+# Runtime data
+*.sqlite
+*.log
+logs/
+
+# PM2
+ecosystem.config.cjs.bak
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Build artifacts
+dist/
+build/
