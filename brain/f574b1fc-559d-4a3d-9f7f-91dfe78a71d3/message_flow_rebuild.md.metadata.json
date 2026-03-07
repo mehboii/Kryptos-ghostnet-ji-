@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary":  "Complete walkthrough of all changes made to fix the GhostNet message flow, covering 4 files with 7 specific fixes across server, frontend, and UI layers.",
+  "updatedAt":  "2026-03-06T16:19:55.479725300Z",
+  "version":  "1"
+}

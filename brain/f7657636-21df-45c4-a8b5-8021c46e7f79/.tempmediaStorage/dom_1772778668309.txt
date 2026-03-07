@@ -1,0 +1,33 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+GHOST
+NET
+[0] (115,124)<button class='nav-btn' />
+	[1] (97,124)<span >Home />
+[2] (115,167)<button class='nav-btn' />
+	[3] (99,167)<span >Nodes />
+[4] (115,210)<button class='nav-btn' />
+	[5] (98,210)<span >Wallet />
+[6] (115,253)<button class='nav-btn' />
+	[7] (93,253)<span >Chat />
+[8] (115,296)<button class='nav-btn' />
+	[9] (93,296)<span >Vault />
+[10] (115,338)<button class='nav-btn active' />
+	[11] (99,338)<span >Profile />
+MESH CONNECTED
+[12] (917,25)<button class='btn-tiny theme-toggle-btn' />
+	[13] (931,25)<span >Light Mode />
+Node Identity
+Cryptographic self-sovereign identity
+Zero-Knowledge
+ALREADY
+                            HAVE AN IDENTITY?
+[14] (616,131)<button class='auth-btn-primary' />
+	[15] (616,131)<span >Sign In With PIN />
+[16] (616,421)<label class='auth-label' />
+[17] (616,447)<input class='auth-input' id='id-display-name' placeholder='e.g. Madbo' />
+[18] (616,511)<button class='auth-btn-primary' />
+
+</current_dom>

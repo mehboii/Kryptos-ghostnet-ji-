@@ -1,0 +1,11 @@
+# Task: Verify COPY button and Camera overlay on production
+## Checklist
+- [ ] Open https://ghostnet-ji.vercel.app
+- [ ] Take screenshot
+- [ ] Check DOM for "COPY" button next to Node ID
+- [ ] Check DOM for camera overlay icon on profile picture
+- [ ] Report findings
+
+## Findings
+- URL: https://ghostnet-ji.vercel.app
+- Status: In Progress
