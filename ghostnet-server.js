@@ -107,7 +107,7 @@ const MAX_CONTENT_LENGTH = 64 * 1024; // [16] 64 KB message body cap
 const MAX_BODY_SIZE = '64kb';    // [23]
 
 // [20] Explicit CORS allowlist
-const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
+const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://ghostnet-ji.vercel.app')
     .split(',').map(o => o.trim()).filter(Boolean);
 
 // [17][18][19] File ID allowlist — hex UUID-like strings only
