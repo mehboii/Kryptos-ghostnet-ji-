@@ -200,7 +200,7 @@ const RateLimit = {
     }
 };
 
-const BACKEND = (() => {
+var BACKEND = (() => {
     const base = 'https://ghostnet-ji-production.up.railway.app';
     return { url: (path) => `${base}${path}` };
 })();

@@ -52,12 +52,12 @@ function generateSecureId(prefix = 'user') {
     return `${prefix}_${hex}`;
 }
 
-const sanitize = (str) => {
+function sanitize(str) {
     if (str === null || str === undefined) return '';
     const div = document.createElement('div');
     div.textContent = String(str);
     return div.innerHTML;
-};
+}
 
 var isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 var log = {
@@ -82,7 +82,7 @@ const MsgRateLimit = (() => {
     };
 })();
 
-const BACKEND = {
+var BACKEND = {
     http: 'https://ghostnet-ji-production.up.railway.app',
     ws: 'wss://ghostnet-ji-production.up.railway.app/ws',
     url: (path) => `https://ghostnet-ji-production.up.railway.app${path}`
