@@ -60,7 +60,7 @@ const sanitize = (str) => {
 };
 
 var isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const log = {
+var log = {
     info: (...a) => isDev && console.log('[GN]', ...a),
     warn: (...a) => isDev && console.warn('[GN]', ...a),
     error: (...a) => console.error('[GN:ERR]', ...a),

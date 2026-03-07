@@ -164,7 +164,7 @@ var isDev = (
     window.location.protocol === 'file:'
 );
 
-const log = {
+var log = {
     info: (...a) => isDev && console.log('[GN]', ...a),
     warn: (...a) => isDev && console.warn('[GN]', ...a),
     error: (...a) => console.error('[GN:ERR]', ...a),
