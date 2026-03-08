@@ -233,6 +233,7 @@ function secureId(prefix = '') {
 // ─── App setup ───────────────────────────────────────────────────────────────
 
 const app = express();
+app.set('trust proxy', 1); // Required for express-rate-limit behind Railway/reverse proxy
 
 // [33] Security headers
 app.use(helmet());
@@ -493,7 +494,8 @@ app.post('/message', requireAuth, (req, res) => { // [02]
 app.get('/conversations', requireAuth, (req, res) => { // [05]
     const userId = req.user.id; // [05] always own user — ignores query param
 
-    const userConvos = conversations.filter(c => c.participants.includes(userId));
+    const list = Array.isArray(conversations) ? conversations : Object.values(conversations || {});
+    const userConvos = list.filter(c => c.participants.includes(userId));
     const enriched = userConvos.map(c => {
         const otherId = c.participants.find(p => p !== userId) || userId;
         const reg = registeredNodes[otherId];
