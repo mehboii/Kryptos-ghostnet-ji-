@@ -209,9 +209,15 @@ function loadJson(filePath, fallback) {
     return fallback;
 }
 
-messages = loadJson(MESSAGES_FILE, []);
+messages      = loadJson(MESSAGES_FILE, []);
 conversations = loadJson(CONVOS_FILE, []);
-users = loadJson(USERS_FILE, []);
+users         = loadJson(USERS_FILE, []);
+
+// Normalize: files may have been written as objects instead of arrays
+if (!Array.isArray(messages))      messages      = Object.values(messages      || {});
+if (!Array.isArray(conversations)) conversations = Object.values(conversations || {});
+if (!Array.isArray(users))         users         = Object.values(users         || {});
+
 // pendingQueue: Map<receiverId, msgId[]> — offline message queue persisted to disk
 const pendingQueue = new Map(Object.entries(loadJson(PENDING_FILE, {})));
 {
@@ -458,7 +464,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     }
 
     let convo = conversations.find(c =>
-        c && c.participants && c.participants.includes(senderId) && c.participants.includes(receiverId)
+        c?.participants?.includes(senderId) && c.participants.includes(receiverId)
     );
 
     if (!convo) {
@@ -518,8 +524,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
 app.get('/conversations', requireAuth, (req, res) => { // [05]
     const userId = req.user.id; // [05] always own user — ignores query param
 
-    const list = Array.isArray(conversations) ? conversations : Object.values(conversations || {});
-    const userConvos = list.filter(c => c && c.participants && c.participants.includes(userId));
+    const userConvos = conversations.filter(c => c?.participants?.includes(userId));
     const enriched = userConvos.map(c => {
         const otherId = c.participants.find(p => p !== userId) || userId;
         const reg = registeredNodes[otherId];
@@ -539,9 +544,9 @@ app.get('/history', requireAuth, (req, res) => { // [04][13]
     if (!convoId) return res.status(400).json({ error: 'convoId required' }); // [13]
 
     // [04] Ownership: caller must be a participant in the conversation
-    const convo = conversations.find(c => c.id === convoId);
+    const convo = conversations.find(c => c?.id === convoId);
     if (!convo) return res.status(404).json({ error: 'Conversation not found' });
-    if (!convo.participants.includes(userId)) {
+    if (!convo.participants?.includes(userId)) {
         return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -758,16 +763,12 @@ function safeSend(ws, payload) {
 
 function deliverPendingMessages(nodeId, ws) {
     // [34] Called synchronously after registration — no setTimeout race
-    // Use pendingQueue for O(1) lookup; fall back to full scan for legacy unqueued messages
+    // Drain the queue; also scan for any legacy unqueued undelivered messages
     const queuedIds = new Set(dequeuePending(nodeId));
+    // Deliver all undelivered messages for this node (queue or legacy scan)
     const pending = messages.filter(m =>
-        m.receiverId === nodeId && !m.delivered && (queuedIds.size === 0 || queuedIds.has(m.id))
+        m?.receiverId === nodeId && !m.delivered
     );
-    // Also catch any unqueued undelivered messages (e.g. from before pending queue existed)
-    if (queuedIds.size === 0) {
-        const legacy = messages.filter(m => m.receiverId === nodeId && !m.delivered);
-        legacy.forEach(m => { if (!pending.includes(m)) pending.push(m); });
-    }
     if (!pending.length) return;
 
     pending.forEach(m => {
@@ -786,7 +787,7 @@ function deliverPendingMessages(nodeId, ws) {
 
     scheduleWrite(MESSAGES_FILE, messages); // [12]
 
-    conversations.filter(c => c && c.participants && c.participants.includes(nodeId)).forEach(c => {
+    conversations.filter(c => c?.participants?.includes(nodeId)).forEach(c => {
         const otherId = c.participants.find(p => p !== nodeId) || nodeId;
         safeSend(ws, {
             type: 'NEW_CONVERSATION',
@@ -804,7 +805,13 @@ wss.on('connection', (ws) => {
 
     ws.on('pong', () => { ws.isAlive = true; });
 
+    // Prevent unhandled socket errors from crashing the connection
+    ws.on('error', err => {
+        console.error('[WS] Socket error:', err.message);
+    });
+
     ws.on('message', data => {
+        try {
         // [23] WS message size cap
         if (data.length > MAX_CONTENT_LENGTH * 2) return;
 
@@ -886,12 +893,15 @@ wss.on('connection', (ws) => {
                 try { safeTarget = validateNodeId(targetId); } // [07]
                 catch (_) { return; }
 
-                const content = msg.content || msg.data;
+                let content = msg.content || msg.data;
                 if (!content) return;
+                // Ensure content is always a string before storage and size check
+                if (typeof content !== 'string') content = JSON.stringify(content);
                 // [16] Size cap on WS messages too
-                if (typeof content === 'string' && Buffer.byteLength(content, 'utf8') > MAX_CONTENT_LENGTH) return;
+                if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT_LENGTH) return;
 
-                const senderId = clientId || ws._user.id;
+                const senderId = clientId || ws._user?.id;
+                if (!senderId) return; // must have an identity to send
                 const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Date.now();
                 let wsDelivered = false;
 
@@ -903,9 +913,8 @@ wss.on('connection', (ws) => {
                 // Offline queueing happens after newMsg is created below
 
                 // Persist
-                const convArray = Array.isArray(conversations) ? conversations : Object.values(conversations || {});
-                let convo = convArray.find(c =>
-                    c && c.participants && c.participants.includes(senderId) && c.participants.includes(safeTarget)
+                let convo = conversations.find(c =>
+                    c?.participants?.includes(senderId) && c.participants.includes(safeTarget)
                 );
                 if (!convo) {
                     convo = {
@@ -944,6 +953,10 @@ wss.on('connection', (ws) => {
             default:
                 // [26] Drop unknown message types — do NOT broadcast to all clients
                 break;
+        }
+        } catch (err) {
+            // Never let a message-handling error disconnect the client
+            console.error('[WS] Message handler error:', err.message);
         }
     });
 
