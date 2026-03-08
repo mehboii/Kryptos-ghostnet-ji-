@@ -554,13 +554,15 @@ app.post('/message', requireAuth, (req, res) => { // [02]
 
     // Real-time delivery
     const recipientPeer = meshPeers.get(receiverId);
-    if (recipientPeer?.ws?.readyState === 1) {
+    const activeWs = clients.get(receiverId) || recipientPeer?.ws;
+
+    if (activeWs?.readyState === 1) {
         const displayName = contactName || registeredNodes[senderId]?.displayName || senderId.slice(0, 10);
-        safeSend(recipientPeer.ws, {
+        safeSend(activeWs, {
             type: 'CHAT_MESSAGE', id: msg.id, convoId: convo.id,
             senderId, receiverId, content, contactName: displayName, timestamp: msg.timestamp,
         });
-        safeSend(recipientPeer.ws, {
+        safeSend(activeWs, {
             type: 'NEW_CONVERSATION',
             convo: { ...convo, otherUser: { id: senderId, username: displayName } },
         });
@@ -569,6 +571,9 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     } else {
         // Recipient offline — add to pending queue for delivery on reconnect
         enqueuePending(receiverId, msg.id);
+
+        if (!pendingMessages[receiverId]) pendingMessages[receiverId] = [];
+        pendingMessages[receiverId].push(msg);
     }
 
     res.json({ success: true, message: { id: msg.id, convoId: convo.id, timestamp: msg.timestamp } });
@@ -807,6 +812,8 @@ server.on('upgrade', (req, socket, head) => {
 
 // [11] Map (not plain object) for peers
 const meshPeers = new Map();
+const clients = new Map();
+const pendingMessages = {};
 
 // ─── WS helpers ──────────────────────────────────────────────────────────────
 
@@ -857,6 +864,31 @@ wss.on('connection', (ws) => {
     // [08] ws._user is set by the upgrade handler — always authenticated
     let clientId = null;
     ws.isAlive = true;
+
+    // Track active connection by user ID
+    if (ws._user && ws._user.id) {
+        clients.set(ws._user.id, ws);
+
+        // Deliver any transient pending messages stored in the pendingMessages object
+        if (pendingMessages[ws._user.id] && pendingMessages[ws._user.id].length > 0) {
+            const msgs = pendingMessages[ws._user.id];
+            msgs.forEach(m => {
+                safeSend(ws, {
+                    type: 'CHAT_MESSAGE', id: m.id, convoId: m.convoId,
+                    senderId: m.senderId, receiverId: m.receiverId, content: m.content,
+                    contactName: registeredNodes[m.senderId]?.displayName || m.senderId.slice(0, 10),
+                    timestamp: m.timestamp,
+                });
+                m.delivered = true;
+            });
+            pendingMessages[ws._user.id] = [];
+            scheduleWrite(MESSAGES_FILE, messages);
+        }
+    }
+
+    ws.on('close', () => {
+        if (ws._user && ws._user.id) clients.delete(ws._user.id);
+    });
 
     ws.on('pong', () => { ws.isAlive = true; });
 
