@@ -89,7 +89,7 @@ class GhostMesh {
         if (typeof id !== 'string') return null;
         const clean = id.trim();
         if (!/^[a-zA-Z0-9_\-]{1,512}$/.test(clean)) return null;
-        return clean;
+        return clean.toLowerCase();
     }
 
     /** [S8] Strip HTML tags from any string before passing to UI */

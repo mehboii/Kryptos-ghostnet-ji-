@@ -138,7 +138,7 @@ function validateNodeId(id) {
     if (typeof id !== 'string' || !NODE_ID_RE.test(id)) {
         throw Object.assign(new Error('Invalid nodeId'), { status: 400 });
     }
-    return id;
+    return id.toLowerCase();
 }
 
 function validateDisplayName(name) {
