@@ -869,7 +869,8 @@ wss.on('connection', (ws) => {
                 }
 
                 // Persist
-                let convo = conversations.find(c =>
+                const convArray = Array.isArray(conversations) ? conversations : Object.values(conversations || {});
+                let convo = convArray.find(c =>
                     c.participants.includes(senderId) && c.participants.includes(safeTarget)
                 );
                 if (!convo) {
