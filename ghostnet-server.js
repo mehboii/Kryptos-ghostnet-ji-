@@ -683,31 +683,19 @@ app.post('/vault/upload', requireAuth, async (req, res) => { // [10]
     }
 
     try {
-        const chunks = [];
-        req.on('data', c => chunks.push(c));
-        req.on('end', async () => {
-            try {
-                const body = Buffer.concat(chunks);
-                if (body.length > 100 * 1024 * 1024) { // 100 MB hard cap
-                    return res.status(413).json({ error: 'Upload too large' });
-                }
-                // [10] Only forward sanitized content-type — never raw client header
-                const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/upload`, {
-                    method: 'POST',
-                    headers: {
-                        'content-type': req.headers['content-type'], // safe: validated above
-                        'content-length': String(body.length),
-                    },
-                    body,
-                });
-                const data = await proxyRes.json();
-                res.status(proxyRes.status).json(data);
-            } catch (_) {
-                res.status(502).json({ error: 'Vault service unavailable' }); // [32]
-            }
+        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/upload`, {
+            method: 'POST',
+            headers: {
+                'content-type': req.headers['content-type'],
+                'content-length': req.headers['content-length'] || '0',
+            },
+            body: req,
+            duplex: 'half'
         });
-    } catch (_) {
-        res.status(502).json({ error: 'Vault proxy error' }); // [32]
+        const data = await proxyRes.json();
+        res.status(proxyRes.status).json(data);
+    } catch (e) {
+        res.status(502).json({ error: 'Vault service unavailable or payload too large' });
     }
 });
 
