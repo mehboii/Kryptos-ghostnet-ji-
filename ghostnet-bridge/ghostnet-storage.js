@@ -168,7 +168,7 @@ const MAX_FILE_BYTES = 256 * 1024 * 1024;  // [FIX E] 256 MB hard ceiling
 const KEY_BYTES = 32;                  // AES-256 key length
 const IV_BYTES = 12;                  // AES-GCM IV length
 const AUTH_TAG_BYTES = 16;                  // AES-GCM authentication tag length
-const NODE_ID_RE = /^[a-zA-Z0-9_\-]{1,128}$/; // [FIX H]
+const NODE_ID_RE = /^[a-zA-Z0-9_\-]{1,512}$/; // [FIX H]
 
 // ─── Validation helpers ───────────────────────────────────────────────────────
 
