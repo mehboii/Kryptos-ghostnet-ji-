@@ -112,8 +112,8 @@ const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3
 
 // [17][18][19] File ID allowlist — hex UUID-like strings only
 const FILE_ID_RE = /^[a-zA-Z0-9_\-]{1,128}$/;
-// [06][07] Node ID allowlist
-const NODE_ID_RE = /^[a-zA-Z0-9_\-]{1,128}$/;
+// [06][07] Node ID allowlist (supports 132-char uncompressed hex public keys)
+const NODE_ID_RE = /^[a-zA-Z0-9_\-]{1,512}$/;
 // Display name allowlist
 const DISPLAY_NAME_RE = /^[\w\s\-\.]{1,64}$/;
 
@@ -209,14 +209,14 @@ function loadJson(filePath, fallback) {
     return fallback;
 }
 
-messages      = loadJson(MESSAGES_FILE, []);
+messages = loadJson(MESSAGES_FILE, []);
 conversations = loadJson(CONVOS_FILE, []);
-users         = loadJson(USERS_FILE, []);
+users = loadJson(USERS_FILE, []);
 
 // Normalize: files may have been written as objects instead of arrays
-if (!Array.isArray(messages))      messages      = Object.values(messages      || {});
+if (!Array.isArray(messages)) messages = Object.values(messages || {});
 if (!Array.isArray(conversations)) conversations = Object.values(conversations || {});
-if (!Array.isArray(users))         users         = Object.values(users         || {});
+if (!Array.isArray(users)) users = Object.values(users || {});
 
 // pendingQueue: Map<receiverId, msgId[]> — offline message queue persisted to disk
 const pendingQueue = new Map(Object.entries(loadJson(PENDING_FILE, {})));
@@ -401,7 +401,12 @@ app.get('/validate-node/:nodeId', requireAuth, (req, res) => { // [01]
         scheduleWrite(NODES_FILE, registeredNodes);
         res.json({ valid: true, displayName: node.displayName, address: node.address || null, online: isOnline });
     } else {
-        res.json({ valid: false });
+        // Fallback 3: If it's a validly formatted hex address/pubkey (e.g. 0x...), allow it
+        if (typeof nodeId === 'string' && nodeId.startsWith('0x') && nodeId.length >= 42) {
+            res.json({ valid: true, displayName: 'Unknown Contact', address: nodeId, online: false });
+        } else {
+            res.json({ valid: false });
+        }
     }
 });
 
@@ -478,9 +483,11 @@ app.post('/message', requireAuth, (req, res) => { // [02]
         ? req.body.contactName.slice(0, 64) : null;
 
     if (receiverId !== 'broadcast') {
+        const isHexId = typeof receiverId === 'string' && receiverId.startsWith('0x') && receiverId.length >= 42;
         const knownReceiver = registeredNodes[receiverId]
             || meshPeers.has(receiverId)
-            || users.find(u => u.id === receiverId || u.username === receiverId);
+            || users.find(u => u.id === receiverId || u.username === receiverId)
+            || isHexId;
         if (!knownReceiver) {
             return res.status(404).json({ error: 'Node not found' });
         }
@@ -860,148 +867,148 @@ wss.on('connection', (ws) => {
 
     ws.on('message', data => {
         try {
-        // [23] WS message size cap
-        if (data.length > MAX_CONTENT_LENGTH * 2) return;
+            // [23] WS message size cap
+            if (data.length > MAX_CONTENT_LENGTH * 2) return;
 
-        let msg;
-        try { msg = JSON.parse(data.toString()); }
-        catch (_) { return; }
+            let msg;
+            try { msg = JSON.parse(data.toString()); }
+            catch (_) { return; }
 
-        switch (msg.type) {
-            case 'register':
-            case 'HELLO':
-            case 'MESH_HELLO': {
-                let newId;
-                try { newId = validateNodeId(msg.nodeId || msg.id); } // [07]
-                catch (_) { safeSend(ws, { type: 'ERROR', error: 'Invalid nodeId' }); return; }
+            switch (msg.type) {
+                case 'register':
+                case 'HELLO':
+                case 'MESH_HELLO': {
+                    let newId;
+                    try { newId = validateNodeId(msg.nodeId || msg.id); } // [07]
+                    catch (_) { safeSend(ws, { type: 'ERROR', error: 'Invalid nodeId' }); return; }
 
-                // [08] Node must be owned by the authenticated WS user
-                const node = registeredNodes[newId];
-                if (node && node.ownerId && node.ownerId !== ws._user.id) {
-                    safeSend(ws, { type: 'ERROR', error: 'Not authorized to claim this nodeId' });
-                    return;
-                }
-
-                if (clientId && clientId !== newId && meshPeers.has(clientId)) {
-                    meshPeers.delete(clientId);
-                }
-
-                clientId = newId;
-                const peerEntry = { id: clientId, ws, capabilities: {}, lastSeen: Date.now() };
-                meshPeers.set(clientId, peerEntry);
-
-                // Auto-register
-                if (!registeredNodes[clientId]) {
-                    registeredNodes[clientId] = {
-                        nodeId: clientId,
-                        displayName: clientId.slice(0, 10),
-                        ownerId: ws._user.id,
-                        registeredAt: Date.now(),
-                        lastSeen: Date.now(),
-                    };
-                } else {
-                    registeredNodes[clientId].lastSeen = Date.now();
-                }
-                saveNodeRegistry();
-
-                // Send peer list (deduplicated by ws reference)
-                const seenWs = new Set();
-                const peerList = [];
-                for (const [, peer] of meshPeers) {
-                    if (peer.ws !== ws && !seenWs.has(peer.ws)) {
-                        seenWs.add(peer.ws);
-                        peerList.push({ id: peer.id, capabilities: peer.capabilities, lastSeen: peer.lastSeen });
+                    // [08] Node must be owned by the authenticated WS user
+                    const node = registeredNodes[newId];
+                    if (node && node.ownerId && node.ownerId !== ws._user.id) {
+                        safeSend(ws, { type: 'ERROR', error: 'Not authorized to claim this nodeId' });
+                        return;
                     }
+
+                    if (clientId && clientId !== newId && meshPeers.has(clientId)) {
+                        meshPeers.delete(clientId);
+                    }
+
+                    clientId = newId;
+                    const peerEntry = { id: clientId, ws, capabilities: {}, lastSeen: Date.now() };
+                    meshPeers.set(clientId, peerEntry);
+
+                    // Auto-register
+                    if (!registeredNodes[clientId]) {
+                        registeredNodes[clientId] = {
+                            nodeId: clientId,
+                            displayName: clientId.slice(0, 10),
+                            ownerId: ws._user.id,
+                            registeredAt: Date.now(),
+                            lastSeen: Date.now(),
+                        };
+                    } else {
+                        registeredNodes[clientId].lastSeen = Date.now();
+                    }
+                    saveNodeRegistry();
+
+                    // Send peer list (deduplicated by ws reference)
+                    const seenWs = new Set();
+                    const peerList = [];
+                    for (const [, peer] of meshPeers) {
+                        if (peer.ws !== ws && !seenWs.has(peer.ws)) {
+                            seenWs.add(peer.ws);
+                            peerList.push({ id: peer.id, capabilities: peer.capabilities, lastSeen: peer.lastSeen });
+                        }
+                    }
+                    safeSend(ws, { type: 'MESH_PEERS', peers: peerList });
+
+                    // Broadcast join
+                    for (const client of wss.clients) {
+                        if (client !== ws) safeSend(client, { type: 'PEER_JOIN', id: clientId });
+                    }
+
+                    // [34] Synchronous delivery — no setTimeout race
+                    deliverPendingMessages(clientId, ws);
+                    break;
                 }
-                safeSend(ws, { type: 'MESH_PEERS', peers: peerList });
 
-                // Broadcast join
-                for (const client of wss.clients) {
-                    if (client !== ws) safeSend(client, { type: 'PEER_JOIN', id: clientId });
-                }
+                case 'HEARTBEAT':
+                    ws.isAlive = true;
+                    if (clientId && meshPeers.has(clientId)) {
+                        meshPeers.get(clientId).lastSeen = Date.now();
+                    }
+                    break;
 
-                // [34] Synchronous delivery — no setTimeout race
-                deliverPendingMessages(clientId, ws);
-                break;
-            }
+                case 'message':
+                case 'MESH_DIRECT': {
+                    const targetId = typeof msg.to === 'string' ? msg.to : null;
+                    if (!targetId) return;
 
-            case 'HEARTBEAT':
-                ws.isAlive = true;
-                if (clientId && meshPeers.has(clientId)) {
-                    meshPeers.get(clientId).lastSeen = Date.now();
-                }
-                break;
+                    let safeTarget;
+                    try { safeTarget = validateNodeId(targetId); } // [07]
+                    catch (_) { return; }
 
-            case 'message':
-            case 'MESH_DIRECT': {
-                const targetId = typeof msg.to === 'string' ? msg.to : null;
-                if (!targetId) return;
+                    let content = msg.content || msg.data;
+                    if (!content) return;
+                    // Ensure content is always a string before storage and size check
+                    if (typeof content !== 'string') content = JSON.stringify(content);
+                    // [16] Size cap on WS messages too
+                    if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT_LENGTH) return;
 
-                let safeTarget;
-                try { safeTarget = validateNodeId(targetId); } // [07]
-                catch (_) { return; }
+                    const senderId = clientId || ws._user?.id;
+                    if (!senderId) return; // must have an identity to send
+                    const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Date.now();
+                    let wsDelivered = false;
 
-                let content = msg.content || msg.data;
-                if (!content) return;
-                // Ensure content is always a string before storage and size check
-                if (typeof content !== 'string') content = JSON.stringify(content);
-                // [16] Size cap on WS messages too
-                if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT_LENGTH) return;
+                    const target = meshPeers.get(safeTarget);
+                    if (target?.ws?.readyState === 1) {
+                        safeSend(target.ws, msg);
+                        wsDelivered = true;
+                    }
+                    // Offline queueing happens after newMsg is created below
 
-                const senderId = clientId || ws._user?.id;
-                if (!senderId) return; // must have an identity to send
-                const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Date.now();
-                let wsDelivered = false;
+                    // Persist
+                    let convo = conversations.find(c =>
+                        c?.participants?.includes(senderId) && c.participants.includes(safeTarget)
+                    );
+                    if (!convo) {
+                        convo = {
+                            id: secureId('convo_'), // [14][25]
+                            participants: [senderId, safeTarget],
+                            contactName: null,
+                            lastMessage: content,
+                            updated: Date.now(),
+                        };
+                        conversations.push(convo);
+                    } else {
+                        convo.lastMessage = content;
+                        convo.updated = Date.now();
+                    }
+                    scheduleWrite(CONVOS_FILE, conversations); // [12]
 
-                const target = meshPeers.get(safeTarget);
-                if (target?.ws?.readyState === 1) {
-                    safeSend(target.ws, msg);
-                    wsDelivered = true;
-                }
-                // Offline queueing happens after newMsg is created below
-
-                // Persist
-                let convo = conversations.find(c =>
-                    c?.participants?.includes(senderId) && c.participants.includes(safeTarget)
-                );
-                if (!convo) {
-                    convo = {
-                        id: secureId('convo_'), // [14][25]
-                        participants: [senderId, safeTarget],
-                        contactName: null,
-                        lastMessage: content,
-                        updated: Date.now(),
+                    const newMsg = {
+                        id: secureId('msg_'), // [14]
+                        convoId: convo.id,
+                        senderId,
+                        receiverId: safeTarget,
+                        content,
+                        timestamp,
+                        delivered: wsDelivered,
                     };
-                    conversations.push(convo);
-                } else {
-                    convo.lastMessage = content;
-                    convo.updated = Date.now();
-                }
-                scheduleWrite(CONVOS_FILE, conversations); // [12]
+                    messages.push(newMsg);
+                    scheduleWrite(MESSAGES_FILE, messages); // [12]
 
-                const newMsg = {
-                    id: secureId('msg_'), // [14]
-                    convoId: convo.id,
-                    senderId,
-                    receiverId: safeTarget,
-                    content,
-                    timestamp,
-                    delivered: wsDelivered,
-                };
-                messages.push(newMsg);
-                scheduleWrite(MESSAGES_FILE, messages); // [12]
-
-                // Recipient offline — enqueue for delivery on reconnect
-                if (!wsDelivered) {
-                    enqueuePending(safeTarget, newMsg.id);
+                    // Recipient offline — enqueue for delivery on reconnect
+                    if (!wsDelivered) {
+                        enqueuePending(safeTarget, newMsg.id);
+                    }
+                    break;
                 }
-                break;
+
+                default:
+                    // [26] Drop unknown message types — do NOT broadcast to all clients
+                    break;
             }
-
-            default:
-                // [26] Drop unknown message types — do NOT broadcast to all clients
-                break;
-        }
         } catch (err) {
             // Never let a message-handling error disconnect the client
             console.error('[WS] Message handler error:', err.message);
