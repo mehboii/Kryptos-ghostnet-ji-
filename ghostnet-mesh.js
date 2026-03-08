@@ -133,8 +133,8 @@ class GhostMesh {
 
     getAuthToken() {
         // Try sessionStorage first (set by auth flow), then localStorage fallback
-        return sessionStorage.getItem('ghostnet_jwt') ||
-            localStorage.getItem('ghostnet_jwt') ||
+        return sessionStorage.getItem('ghostnet_token') ||
+            localStorage.getItem('ghostnet_token') ||
             null;
     }
 

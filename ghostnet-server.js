@@ -273,8 +273,10 @@ app.use('/auth', authRouter);
 // [01][02][03][04][05][08]
 
 function requireAuth(req, res, next) {
-    const header = req.headers.authorization || '';
-    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    // Accept both 'Authorization: Bearer <token>' and 'X-Auth-Token: <token>'
+    const authHeader = req.headers.authorization || '';
+    const xAuthToken = req.headers['x-auth-token'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (xAuthToken || null);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
     try {
         req.user = jwt.verify(token, JWT_SECRET);
@@ -283,6 +285,19 @@ function requireAuth(req, res, next) {
         res.status(401).json({ error: 'Invalid or expired token' });
     }
 }
+
+// ─── DECENTRALIZED NODE AUTH ──────────────────────────────────────────────────
+
+app.post('/auth/node', (req, res) => {
+    let nodeId;
+    try { nodeId = validateNodeId(req.body?.nodeId); }
+    catch (e) { return res.status(400).json({ error: e.message }); }
+
+    // Issue a JWT representing the node itself (replaces centralized email auth)
+    // Using expiresIn 7d, same as the frontend session
+    const token = jwt.sign({ id: nodeId, isNode: true }, JWT_SECRET, { expiresIn: '7d' });
+    res.json({ success: true, token });
+});
 
 // ─── NODE REGISTRATION ───────────────────────────────────────────────────────
 

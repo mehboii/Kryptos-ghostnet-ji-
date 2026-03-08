@@ -1334,10 +1334,26 @@
                         try {
                             await GhostIdentity.saveNewIdentity(_pendingIdentity, pin);
 
+                            // --- Authenticate Node with Server ---
+                            try {
+                                const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ nodeId: _pendingIdentity.nodeId })
+                                });
+                                if (authRes.ok) {
+                                    const { token } = await authRes.json();
+                                    sessionStorage.setItem('ghostnet_token', token);
+                                }
+                            } catch (e) { console.warn('Node auth failed:', e); }
+
                             // Register node with backend
                             fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
+                                },
                                 body: JSON.stringify({
                                     nodeId: GhostIdentity.getStoredIdentity().nodeId,
                                     displayName: GhostIdentity.getStoredIdentity().displayName,
@@ -1423,10 +1439,26 @@
                             _showDashboard(stored);
                             _updateSidebar(stored);
 
+                            // --- Authenticate Node with Server ---
+                            try {
+                                const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ nodeId: stored.nodeId })
+                                });
+                                if (authRes.ok) {
+                                    const { token } = await authRes.json();
+                                    sessionStorage.setItem('ghostnet_token', token);
+                                }
+                            } catch (e) { console.warn('Node auth failed:', e); }
+
                             // Re-register node with backend on every sign-in
                             fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
                                 method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
+                                },
                                 body: JSON.stringify({
                                     nodeId: stored.nodeId,
                                     displayName: stored.displayName,
@@ -1607,12 +1639,29 @@
                                             id: stored.nodeId,
                                         };
                                     }
+                                    if (!sessionStorage.getItem('ghostnet_token')) {
+                                        try {
+                                            const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ nodeId: stored.nodeId })
+                                            });
+                                            if (authRes.ok) {
+                                                const { token } = await authRes.json();
+                                                sessionStorage.setItem('ghostnet_token', token);
+                                            }
+                                        } catch (e) { console.warn('Node auth failed:', e); }
+                                    }
+
                                     window.dispatchEvent(new Event('identity:updated'));
                                     _showDashboard(stored);
                                     _updateSidebar(stored);
                                     fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
                                         method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
+                                        },
                                         body: JSON.stringify({
                                             nodeId: stored.nodeId,
                                             displayName: stored.displayName,
