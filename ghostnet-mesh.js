@@ -145,9 +145,8 @@ class GhostMesh {
         const meta = document.querySelector('meta[name="ghostnet-ws-url"]');
         if (meta && meta.content) return meta.content;
 
-        // Derive from current page origin
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/ws`;
+        // Vercel doesn't support WebSockets — always use the Railway backend.
+        return 'wss://ghostnet-ji-production.up.railway.app/ws';
     }
 
     // ─────────────────────────────────────────────────────────────────────────
