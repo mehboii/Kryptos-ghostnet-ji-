@@ -262,7 +262,9 @@ const UI = {
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
-            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet');
+            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet', {
+                headers: { 'X-Auth-Token': getAuthToken() }
+            });
 
             if (!res.ok) throw new Error("Bridge Error");
 
@@ -418,7 +420,9 @@ const UI = {
         try {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
-            const res = await fetch(validateUrl);
+            const res = await fetch(validateUrl, {
+                headers: { 'X-Auth-Token': getAuthToken() }
+            });
 
             if (!res.ok) {
                 console.error('Validation HTTP error:', res.status, res.statusText);
@@ -480,7 +484,9 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`);
+            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`, {
+                headers: { 'X-Auth-Token': getAuthToken() }
+            });
             if (res.ok) {
                 const convos = await res.json();
                 UI.renderConversations(convos);
