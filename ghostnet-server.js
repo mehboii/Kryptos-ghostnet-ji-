@@ -363,13 +363,43 @@ app.get('/validate-node/:nodeId', requireAuth, (req, res) => { // [01]
     catch (e) { return res.status(400).json({ error: e.message }); }
 
     const isOnline = meshPeers.has(nodeId);
-    const node = registeredNodes[nodeId];
+    let node = registeredNodes[nodeId];
+
+    // Fallback 1: node is live on WS but not yet in registeredNodes — auto-register it
+    if (!node && isOnline) {
+        const peer = meshPeers.get(nodeId);
+        node = {
+            nodeId,
+            displayName: nodeId.slice(0, 10),
+            ownerId: peer?.ws?._user?.id || nodeId,
+            registeredAt: Date.now(),
+            lastSeen: Date.now(),
+        };
+        registeredNodes[nodeId] = node;
+        saveNodeRegistry();
+    }
+
+    // Fallback 2: node matches a registered user account
+    if (!node) {
+        const user = users.find(u => u.id === nodeId || u.username === nodeId);
+        if (user) {
+            node = {
+                nodeId,
+                displayName: user.username || nodeId.slice(0, 10),
+                ownerId: user.id,
+                registeredAt: Date.now(),
+                lastSeen: Date.now(),
+            };
+            registeredNodes[nodeId] = node;
+            saveNodeRegistry();
+        }
+    }
 
     if (node) {
         // [29] Update lastSeen in-memory only; debounced write will flush later
         node.lastSeen = Date.now();
         scheduleWrite(NODES_FILE, registeredNodes);
-        res.json({ valid: true, displayName: node.displayName, address: node.address, online: isOnline });
+        res.json({ valid: true, displayName: node.displayName, address: node.address || null, online: isOnline });
     } else {
         res.json({ valid: false });
     }
@@ -447,8 +477,26 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     contactName = typeof req.body?.contactName === 'string'
         ? req.body.contactName.slice(0, 64) : null;
 
-    if (receiverId !== 'broadcast' && !registeredNodes[receiverId] && !meshPeers.has(receiverId)) {
-        return res.status(404).json({ error: 'Node not found' });
+    if (receiverId !== 'broadcast') {
+        const knownReceiver = registeredNodes[receiverId]
+            || meshPeers.has(receiverId)
+            || users.find(u => u.id === receiverId || u.username === receiverId);
+        if (!knownReceiver) {
+            return res.status(404).json({ error: 'Node not found' });
+        }
+        // Auto-register receiver if they're a known user but have no node entry yet
+        if (!registeredNodes[receiverId]) {
+            const user = typeof knownReceiver === 'object' && knownReceiver.username
+                ? knownReceiver : null;
+            registeredNodes[receiverId] = {
+                nodeId: receiverId,
+                displayName: user?.username || receiverId.slice(0, 10),
+                ownerId: user?.id || receiverId,
+                registeredAt: Date.now(),
+                lastSeen: Date.now(),
+            };
+            saveNodeRegistry();
+        }
     }
 
     // Auto-register sender if absent (bound to authenticated user)
