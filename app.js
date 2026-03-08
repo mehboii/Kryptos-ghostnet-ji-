@@ -190,6 +190,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                 nodeId: window.app.identity.nodeId,
                 capabilities: { ble: false, ws: true }
             });
+        } else if (window.app.mesh && !window.app.mesh.wsReady) {
+            // Mesh was deferred because no auth token was present at startup — retry now.
+            window.app.mesh.connectWebSocket();
         }
         if (window.UI) {
             setTimeout(() => UI.loadConversations(real.nodeId), 500);
