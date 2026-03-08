@@ -55,8 +55,11 @@ function saveMeta() {
 
 // ─── Multer Config ──────────────────────────────────────────
 const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, VAULT_DIR),
+        filename: (req, file, cb) => cb(null, `tmp_${Date.now()}_${Math.random().toString(36).substring(7)}`)
+    }),
+    limits: { fileSize: 3 * 1024 * 1024 * 1024 } // 3GB max
 });
 
 app.use(cors());
@@ -88,21 +91,28 @@ app.post('/vault/upload', upload.single('file'), async (req, res) => {
 
     try {
         const fileId = crypto.randomUUID();
-        const encryptedBuffer = req.file.buffer;
+        const tmpPath = req.file.path;
+        const fileSize = req.file.size;
 
-        // SHA-256 hash of the encrypted content (for blockchain integrity verification)
-        const fileHash = crypto.createHash('sha256').update(encryptedBuffer).digest('hex');
+        // Hash file using streams to support 3GB without crashing RAM
+        const fileHash = await new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const stream = fs.createReadStream(tmpPath);
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('end', () => resolve(hash.digest('hex')));
+            stream.on('error', reject);
+        });
 
         // Store encrypted file to disk
         const filePath = path.join(VAULT_DIR, `${fileId}.enc`);
-        fs.writeFileSync(filePath, encryptedBuffer);
+        fs.renameSync(tmpPath, filePath);
 
         // Build metadata record
         const record = {
             fileId,
             fileName: fileName || req.file.originalname || 'encrypted_file',
-            fileSize: encryptedBuffer.length,
-            originalSize: parseInt(originalSize) || encryptedBuffer.length,
+            fileSize: fileSize,
+            originalSize: parseInt(originalSize) || fileSize,
             fileHash,
             owner,
             iv: iv || null,

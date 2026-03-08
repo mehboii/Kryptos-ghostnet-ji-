@@ -906,7 +906,25 @@ const UI = {
 
         const msg = document.createElement('div');
         msg.className = `message ${type}`;
-        msg.innerText = text;
+
+        const fileMatch = typeof text === 'string' && text.match(/^\[FILE:([^:]+):([^:]+):(.+)\]$/);
+        if (fileMatch) {
+            const fileId = fileMatch[1];
+            const mimeType = fileMatch[2];
+            const fileName = fileMatch[3];
+
+            msg.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
+                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${fileName.replace(/</g, '&lt;')}</div>
+                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.innerHTML='Decrypting...'; window.GhostVault.downloadFile('${fileId}').then(() => this.innerHTML='Decrypted & Downloaded!').catch(e => { alert(e.message); this.innerHTML='Download Failed'; })">
+                        Secure Download
+                    </button>
+                </div>
+            `;
+        } else {
+            msg.innerText = text;
+        }
+
         feed.appendChild(msg);
         feed.scrollTop = feed.scrollHeight;
     },

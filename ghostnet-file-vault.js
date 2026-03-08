@@ -126,7 +126,7 @@
     const DB_NAME = 'ghostnet_vault';
     const DB_STORE = 'keys';
     const DB_VERSION = 1;
-    const MAX_FILE_BYTES = 500 * 1024 * 1024;   // [FIX F] 500 MB hard ceiling
+    const MAX_FILE_BYTES = 3 * 1024 * 1024 * 1024;   // 3 GB max ceiling
 
     // ─── Validation helpers ───────────────────────────────────────────────────
 
