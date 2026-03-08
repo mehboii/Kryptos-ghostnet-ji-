@@ -129,6 +129,7 @@ const MESSAGES_FILE = path.join(__dirname, 'messages.json');
 const CONVOS_FILE = path.join(__dirname, 'conversations.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
 const NODES_FILE = path.join(__dirname, 'nodes.json');
+const PENDING_FILE = path.join(__dirname, 'pending.json');
 const VAULT_URL = process.env.GHOSTNET_VAULT_URL || 'http://127.0.0.1:4001';
 
 // ─── Validators ──────────────────────────────────────────────────────────────
@@ -211,6 +212,8 @@ function loadJson(filePath, fallback) {
 messages = loadJson(MESSAGES_FILE, []);
 conversations = loadJson(CONVOS_FILE, []);
 users = loadJson(USERS_FILE, []);
+// pendingQueue: Map<receiverId, msgId[]> — offline message queue persisted to disk
+const pendingQueue = new Map(Object.entries(loadJson(PENDING_FILE, {})));
 {
     const raw = loadJson(NODES_FILE, {});
     // Re-populate into null-prototype object [11]
@@ -221,6 +224,24 @@ users = loadJson(USERS_FILE, []);
 
 function saveNodeRegistry() { // [29] debounced
     scheduleWrite(NODES_FILE, registeredNodes);
+}
+
+function savePendingQueue() {
+    scheduleWrite(PENDING_FILE, Object.fromEntries(pendingQueue));
+}
+
+function enqueuePending(receiverId, msgId) {
+    if (!pendingQueue.has(receiverId)) pendingQueue.set(receiverId, []);
+    pendingQueue.get(receiverId).push(msgId);
+    savePendingQueue();
+}
+
+function dequeuePending(receiverId) {
+    const ids = pendingQueue.get(receiverId);
+    if (!ids || !ids.length) return [];
+    pendingQueue.delete(receiverId);
+    savePendingQueue();
+    return ids;
 }
 
 // ─── Secure ID generator ─────────────────────────────────────────────────────
@@ -437,7 +458,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     }
 
     let convo = conversations.find(c =>
-        c.participants.includes(senderId) && c.participants.includes(receiverId)
+        c && c.participants && c.participants.includes(senderId) && c.participants.includes(receiverId)
     );
 
     if (!convo) {
@@ -484,6 +505,9 @@ app.post('/message', requireAuth, (req, res) => { // [02]
         });
         msg.delivered = true;
         scheduleWrite(MESSAGES_FILE, messages); // [12]
+    } else {
+        // Recipient offline — add to pending queue for delivery on reconnect
+        enqueuePending(receiverId, msg.id);
     }
 
     res.json({ success: true, message: { id: msg.id, convoId: convo.id, timestamp: msg.timestamp } });
@@ -734,7 +758,16 @@ function safeSend(ws, payload) {
 
 function deliverPendingMessages(nodeId, ws) {
     // [34] Called synchronously after registration — no setTimeout race
-    const pending = messages.filter(m => m.receiverId === nodeId && !m.delivered);
+    // Use pendingQueue for O(1) lookup; fall back to full scan for legacy unqueued messages
+    const queuedIds = new Set(dequeuePending(nodeId));
+    const pending = messages.filter(m =>
+        m.receiverId === nodeId && !m.delivered && (queuedIds.size === 0 || queuedIds.has(m.id))
+    );
+    // Also catch any unqueued undelivered messages (e.g. from before pending queue existed)
+    if (queuedIds.size === 0) {
+        const legacy = messages.filter(m => m.receiverId === nodeId && !m.delivered);
+        legacy.forEach(m => { if (!pending.includes(m)) pending.push(m); });
+    }
     if (!pending.length) return;
 
     pending.forEach(m => {
@@ -753,7 +786,7 @@ function deliverPendingMessages(nodeId, ws) {
 
     scheduleWrite(MESSAGES_FILE, messages); // [12]
 
-    conversations.filter(c => c.participants.includes(nodeId)).forEach(c => {
+    conversations.filter(c => c && c.participants && c.participants.includes(nodeId)).forEach(c => {
         const otherId = c.participants.find(p => p !== nodeId) || nodeId;
         safeSend(ws, {
             type: 'NEW_CONVERSATION',
@@ -867,11 +900,12 @@ wss.on('connection', (ws) => {
                     safeSend(target.ws, msg);
                     wsDelivered = true;
                 }
+                // Offline queueing happens after newMsg is created below
 
                 // Persist
                 const convArray = Array.isArray(conversations) ? conversations : Object.values(conversations || {});
                 let convo = convArray.find(c =>
-                    c.participants.includes(senderId) && c.participants.includes(safeTarget)
+                    c && c.participants && c.participants.includes(senderId) && c.participants.includes(safeTarget)
                 );
                 if (!convo) {
                     convo = {
@@ -899,6 +933,11 @@ wss.on('connection', (ws) => {
                 };
                 messages.push(newMsg);
                 scheduleWrite(MESSAGES_FILE, messages); // [12]
+
+                // Recipient offline — enqueue for delivery on reconnect
+                if (!wsDelivered) {
+                    enqueuePending(safeTarget, newMsg.id);
+                }
                 break;
             }
 
