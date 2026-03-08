@@ -495,7 +495,7 @@ app.get('/conversations', requireAuth, (req, res) => { // [05]
     const userId = req.user.id; // [05] always own user — ignores query param
 
     const list = Array.isArray(conversations) ? conversations : Object.values(conversations || {});
-    const userConvos = list.filter(c => c.participants.includes(userId));
+    const userConvos = list.filter(c => c && c.participants && c.participants.includes(userId));
     const enriched = userConvos.map(c => {
         const otherId = c.participants.find(p => p !== userId) || userId;
         const reg = registeredNodes[otherId];
