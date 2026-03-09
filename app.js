@@ -95,6 +95,9 @@ const ALLOWED_ATTACHMENT_MIME = new Set([
     'image/png', 'image/jpeg', 'image/gif', 'image/webp',
     'application/pdf',
     'text/plain',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'video/mp4', 'video/webm', 'video/ogg', 'video/quicktime', 'video/x-matroska'
 ]);
 
 // ─────────────────────────────────────────────
@@ -334,26 +337,43 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const file = e.target.files[0];
                 if (!file) return;
 
-                if (file.size > 10 * 1024 * 1024) {
-                    // ─── [FIX B] Replace alert() with banner. ────────────────
-                    _showDevWarning('⚠ File too large — maximum size is 10 MB.');
+                const isVideo = file.type?.startsWith('video/');
+                const isDoc = file.type && !file.type.startsWith('image/') && !isVideo;
+                const maxBytes = isVideo ? (3 * 1024 * 1024 * 1024) : (10 * 1024 * 1024);
+
+                if (file.size > maxBytes) {
+                    _showDevWarning(`⚠ File too large — maximum size is ${isVideo ? '3 GB' : '10 MB'}.`);
                     fileInput.value = '';
                     return;
                 }
 
-                // ─── [FIX F] Validate MIME type against allowlist. ───────────
-                if (!ALLOWED_ATTACHMENT_MIME.has(file.type)) {
-                    _showDevWarning(
-                        `⚠ File type "${sanitize(file.type)}" is not allowed. ` +
-                        `Permitted: images, PDF, plain text.`
-                    );
-                    fileInput.value = '';
-                    return;
+                // Warn but allow if missing from direct Set
+                if (file.type && !ALLOWED_ATTACHMENT_MIME.has(file.type)) {
+                    _showDevWarning(`⚠ File type "${sanitize(file.type)}" is unexpected, attempting upload anyway.`);
                 }
 
-                const safeName = sanitize(file.name);
-                const sizeKB = (file.size / 1024).toFixed(1);
-                if (window.UI) UI.addMessage(`📎 FILE: ${safeName} (${sizeKB} KB)`, 'me');
+                if (window.GhostVault) {
+                    try {
+                        _showDevWarning(`Encrypting and Uploading ${sanitize(file.name)}...`);
+                        const vaultResult = await window.GhostVault.uploadFile(file);
+
+                        if (vaultResult && vaultResult.fileId) {
+                            const chatInput = document.getElementById('chat-input');
+                            const safeName = sanitize(file.name).replace(/:/g, '_');
+                            chatInput.value = `[FILE:${vaultResult.fileId}:${file.type || 'unknown'}:${safeName}]`;
+                            const sendBtn = document.getElementById('chat-send');
+                            if (sendBtn) sendBtn.click();
+                            _showDevWarning(`Upload Complete!`);
+                        }
+                    } catch (e) {
+                        _showDevWarning(`⚠ Upload failed: ${e.message}`);
+                    }
+                } else {
+                    const safeName = sanitize(file.name);
+                    const sizeKB = (file.size / 1024).toFixed(1);
+                    if (window.UI) UI.addMessage(`📎 FILE: ${safeName} (${sizeKB} KB)`, 'me');
+                }
+
                 fileInput.value = '';
             }, { signal });
         }
