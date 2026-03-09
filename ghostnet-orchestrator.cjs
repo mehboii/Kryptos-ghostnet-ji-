@@ -58,6 +58,16 @@ const SERVICES = {
         cwd: path.join(ROOT, 'ghostnet-messages'), healthUrl: null,
         modes: ['local', 'development'], critical: false, order: 4,
     },
+    'ghostnet-chain': {
+        port: 4000, script: path.join('ghostnet-chain', 'chain-service.js'),
+        cwd: path.join(ROOT, 'ghostnet-chain'), healthUrl: null,
+        modes: ['cloud', 'local', 'development'], critical: false, order: 5,
+    },
+    'ghostnet-vault': {
+        port: 4001, script: path.join('ghostnet-vault', 'vault-service.js'),
+        cwd: path.join(ROOT, 'ghostnet-vault'), healthUrl: 'http://127.0.0.1:4001/health',
+        modes: ['cloud', 'local', 'development'], critical: false, order: 6,
+    },
 };
 
 // ─── [R] PATH SAFETY ─────────────────────────────────────────────────────────
