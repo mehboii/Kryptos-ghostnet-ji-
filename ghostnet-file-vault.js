@@ -336,6 +336,54 @@
         const encrypted = await encryptFile(file);
         if (onProgress) onProgress({ stage: 'encrypting', percent: 100 });
 
+        let encKeyStr = '';
+        try {
+            if (window.app && window.app.chatTarget && window.app.chatTarget !== 'broadcast') {
+                const targetId = window.app.chatTarget;
+                let targetPub = targetId;
+                if (!targetPub.startsWith('0x')) {
+                    const valRes = await fetch(`${VAULT_API.replace('/vault', '')}/validate-node/${encodeURIComponent(targetId)}`, { headers: _secureHeaders() });
+                    if (valRes.ok) {
+                        const valData = await valRes.json();
+                        targetPub = valData.publicKey || valData.address || targetId;
+                    }
+                }
+
+                if (targetPub.startsWith('0x') && window.GhostIdentity && window.GhostIdentity.getSessionPrivateKey) {
+                    const myPriv = await window.GhostIdentity.getSessionPrivateKey();
+                    if (myPriv && typeof ethers !== 'undefined') {
+                        const sharedSecretHex = ethers.utils.computeSharedSecret(myPriv, targetPub);
+                        const sharedSecret = hexToBuf(sharedSecretHex.slice(2));
+
+                        const derivedKey = await crypto.subtle.importKey(
+                            'raw', sharedSecret.slice(0, 32),
+                            { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+                        );
+
+                        const rawFileKey = hexToBuf(encrypted.keyHex);
+                        const wrapIv = crypto.getRandomValues(new Uint8Array(12));
+
+                        const material = new Uint8Array(44);
+                        material.set(rawFileKey, 0);
+                        material.set(hexToBuf(encrypted.ivHex), 32);
+
+                        const wrappedCiphertext = await crypto.subtle.encrypt(
+                            { name: 'AES-GCM', iv: wrapIv },
+                            derivedKey,
+                            material
+                        );
+
+                        const combo = new Uint8Array(wrapIv.length + wrappedCiphertext.byteLength);
+                        combo.set(wrapIv, 0);
+                        combo.set(new Uint8Array(wrappedCiphertext), wrapIv.length);
+                        encKeyStr = btoa(String.fromCharCode(...combo));
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Could not encrypt file key for recipient:', e.message);
+        }
+
         if (onProgress) onProgress({ stage: 'uploading', percent: 0 });
 
         const formData = new FormData();
@@ -380,16 +428,66 @@
         });
 
         if (onProgress) onProgress({ stage: 'complete', percent: 100 });
-        return result.file;
+        return { ...result.file, encKeyStr };
     }
 
     // ─── Download & Decrypt ───────────────────────────────────────────────────
 
-    async function downloadFile(fileId) {
+    async function downloadFile(fileId, encKeyStr = '') {
         // [FIX C] Validate before use in URL.
         _validateFileId(fileId);
 
-        const keyData = await getKey(fileId);
+        let keyData = await getKey(fileId);
+
+        if (!keyData && encKeyStr) {
+            try {
+                const targetId = window.app?.chatTarget;
+                if (!targetId) throw new Error("No chat target");
+                let senderPub = targetId;
+                if (!senderPub.startsWith('0x')) {
+                    const valRes = await fetch(`${VAULT_API.replace('/vault', '')}/validate-node/${encodeURIComponent(targetId)}`, { headers: _secureHeaders() });
+                    if (valRes.ok) {
+                        const valData = await valRes.json();
+                        senderPub = valData.publicKey || valData.address || targetId;
+                    }
+                }
+
+                if (senderPub.startsWith('0x') && window.GhostIdentity && window.GhostIdentity.getSessionPrivateKey) {
+                    const myPriv = await window.GhostIdentity.getSessionPrivateKey();
+                    if (myPriv && typeof ethers !== 'undefined') {
+                        const sharedSecretHex = ethers.utils.computeSharedSecret(myPriv, senderPub);
+                        const sharedSecret = hexToBuf(sharedSecretHex.slice(2));
+
+                        const derivedKey = await crypto.subtle.importKey(
+                            'raw', sharedSecret.slice(0, 32),
+                            { name: 'AES-GCM', length: 256 }, false, ['decrypt']
+                        );
+
+                        const comboBytes = Uint8Array.from(atob(encKeyStr), c => c.charCodeAt(0));
+                        const wrapIv = comboBytes.slice(0, 12);
+                        const wrappedCiphertext = comboBytes.slice(12);
+
+                        const materialBuf = await crypto.subtle.decrypt(
+                            { name: 'AES-GCM', iv: wrapIv },
+                            derivedKey,
+                            wrappedCiphertext
+                        );
+                        const material = new Uint8Array(materialBuf);
+                        const rawFileKey = material.slice(0, 32);
+                        const rawIv = material.slice(32, 44);
+
+                        keyData = {
+                            keyHex: bufToHex(rawFileKey),
+                            ivHex: bufToHex(rawIv),
+                            fileName: 'decrypted_shared_file'
+                        };
+                    }
+                }
+            } catch (e) {
+                console.warn('Could not decrypt shared file key:', e.message);
+            }
+        }
+
         if (!keyData) throw new Error('Encryption key not found. This file was encrypted on another device.');
 
         let response;

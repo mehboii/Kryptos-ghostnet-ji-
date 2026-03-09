@@ -360,7 +360,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                         if (vaultResult && vaultResult.fileId) {
                             const chatInput = document.getElementById('chat-input');
                             const safeName = sanitize(file.name).replace(/:/g, '_');
-                            chatInput.value = `[FILE:${vaultResult.fileId}:${file.type || 'unknown'}:${safeName}]`;
+                            chatInput.value = `[FILE:${vaultResult.fileId}:${file.type || 'unknown'}:${vaultResult.encKeyStr || ''}:${safeName}]`;
                             const sendBtn = document.getElementById('chat-send');
                             if (sendBtn) sendBtn.click();
                             _showDevWarning(`Upload Complete!`);

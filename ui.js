@@ -907,16 +907,27 @@ const UI = {
         const msg = document.createElement('div');
         msg.className = `message ${type}`;
 
-        const fileMatch = typeof text === 'string' && text.match(/^\[FILE:([^:]+):([^:]+):(.+)\]$/);
-        if (fileMatch) {
-            const fileId = fileMatch[1];
-            const mimeType = fileMatch[2];
-            const fileName = fileMatch[3];
+        let fileId, mimeType, encKeyStr, fileName;
+        if (typeof text === 'string' && text.startsWith('[FILE:') && text.endsWith(']')) {
+            const parts = text.slice(6, -1).split(':');
+            if (parts.length >= 4) {
+                fileId = parts[0];
+                mimeType = parts[1];
+                encKeyStr = parts[2] || '';
+                fileName = parts.slice(3).join(':');
+            } else if (parts.length === 3) {
+                fileId = parts[0];
+                mimeType = parts[1];
+                encKeyStr = '';
+                fileName = parts[2];
+            }
+        }
 
+        if (fileId) {
             msg.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
                     <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${fileName.replace(/</g, '&lt;')}</div>
-                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.innerHTML='Decrypting...'; window.GhostVault.downloadFile('${fileId}').then(() => this.innerHTML='Decrypted & Downloaded!').catch(e => { alert(e.message); this.innerHTML='Download Failed'; })">
+                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.innerHTML='Decrypting...'; window.GhostVault.downloadFile('${fileId}', '${encKeyStr}').then(() => this.innerHTML='Decrypted & Downloaded!').catch(e => { alert(e.message); this.innerHTML='Download Failed'; })">
                         Secure Download
                     </button>
                 </div>
