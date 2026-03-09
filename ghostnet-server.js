@@ -188,7 +188,7 @@ function assertLoopbackUrl(rawUrl, envVarName) {
     return parsed.origin; // scheme + host + port only; no path
 }
 
-const VAULT_ORIGIN = assertLoopbackUrl(VAULT_URL, 'GHOSTNET_VAULT_URL');
+const VAULT_ORIGIN = process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL || null;
 const BRIDGE_ORIGIN = assertLoopbackUrl(
     process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001',
     'GHOSTNET_BRIDGE_URL'
