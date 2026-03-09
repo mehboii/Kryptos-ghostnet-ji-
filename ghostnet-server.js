@@ -91,6 +91,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
+import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -130,7 +131,28 @@ const CONVOS_FILE = path.join(__dirname, 'conversations.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
 const NODES_FILE = path.join(__dirname, 'nodes.json');
 const PENDING_FILE = path.join(__dirname, 'pending.json');
-const VAULT_URL = process.env.GHOSTNET_VAULT_URL || 'http://127.0.0.1:4001';
+
+const VAULT_DIR = path.join(__dirname, 'vault-data');
+const META_FILE = path.join(__dirname, 'vault-meta.json');
+if (!fs.existsSync(VAULT_DIR)) fs.mkdirSync(VAULT_DIR, { recursive: true });
+
+// Vault Metadata Store
+let fileMeta = [];
+try {
+    if (fs.existsSync(META_FILE)) fileMeta = JSON.parse(fs.readFileSync(META_FILE, 'utf-8'));
+} catch { fileMeta = []; }
+
+function saveMeta() {
+    scheduleWrite(META_FILE, fileMeta);
+}
+
+const vaultUpload = multer({
+    storage: multer.diskStorage({
+        destination: (req, file, cb) => cb(null, VAULT_DIR),
+        filename: (req, file, cb) => cb(null, `tmp_${Date.now()}_${Math.random().toString(36).substring(7)}`)
+    }),
+    limits: { fileSize: 3 * 1024 * 1024 * 1024 } // 3GB max
+});
 
 // ─── Validators ──────────────────────────────────────────────────────────────
 
@@ -671,75 +693,90 @@ app.get('/health/bridge', requireAuth, async (_req, res) => { // [09]
     }
 });
 
-// ─── VAULT PROXY ─────────────────────────────────────────────────────────────
+// ─── VAULT (DIRECT IN MAIN SERVER) ─────────────────────────────────────────────
 
 // [10] Allowed Content-Type values for vault upload
 const VAULT_UPLOAD_MIME_ALLOW = new Set(['multipart/form-data', 'application/octet-stream']);
 
-app.post('/vault/upload', requireAuth, async (req, res) => { // [10]
+app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, res) => { // [10]
     const rawCT = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     if (!VAULT_UPLOAD_MIME_ALLOW.has(rawCT)) {
         return res.status(415).json({ error: 'Unsupported content type for vault upload' });
     }
 
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    const owner = req.user.id;
+    const { fileName, iv, authTag, originalSize } = req.body;
+
     try {
-        const httpLib = await import(VAULT_ORIGIN.startsWith('https') ? 'https' : 'http');
-        const vaultUrl = new URL(`${VAULT_ORIGIN}/vault/upload`);
+        const fileId = crypto.randomUUID();
+        const tmpPath = req.file.path;
+        const fileSize = req.file.size;
 
-        const proxyReq = httpLib.request({
-            hostname: vaultUrl.hostname,
-            port: vaultUrl.port,
-            path: vaultUrl.pathname,
-            method: 'POST',
-            headers: {
-                'content-type': req.headers['content-type'],
-                ...(req.headers['content-length'] ? { 'content-length': req.headers['content-length'] } : {})
-            }
-        }, (proxyRes) => {
-            res.status(proxyRes.statusCode);
-            proxyRes.pipe(res);
+        const fileHash = await new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const stream = fs.createReadStream(tmpPath);
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('end', () => resolve(hash.digest('hex')));
+            stream.on('error', reject);
         });
 
-        proxyReq.on('error', (e) => {
-            console.error('Vault Proxy Streaming Error:', e.message);
-            if (!res.headersSent) res.status(502).json({ error: 'Vault service unavailable or disconnected' });
+        const filePath = path.join(VAULT_DIR, `${fileId}.enc`);
+        fs.renameSync(tmpPath, filePath);
+
+        const record = {
+            fileId,
+            fileName: fileName || req.file.originalname || 'encrypted_file',
+            fileSize,
+            originalSize: parseInt(originalSize) || fileSize,
+            fileHash,
+            owner,
+            iv: iv || null,
+            authTag: authTag || null,
+            uploadedAt: Date.now(),
+            chainAnchored: false, // Chain anchoring omitted for main server local vault
+            txHash: null,
+            deleted: false
+        };
+
+        fileMeta.push(record);
+        saveMeta();
+
+        res.json({
+            success: true,
+            file: record
         });
-
-        req.pipe(proxyReq);
-
     } catch (e) {
-        console.error('Vault connection setup error:', e.message);
-        if (!res.headersSent) res.status(502).json({ error: 'Vault proxy setup error' });
+        console.error('Vault direct upload error:', e.message);
+        res.status(502).json({ error: 'Vault processing failed' });
     }
 });
 
-app.get('/vault/download/:fileId', requireAuth, async (req, res) => { // [17]
+
+
+app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
     let fileId;
     try { fileId = validateFileId(req.params.fileId); }
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
 
-    try {
-        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/download/${encodeURIComponent(fileId)}`);
-        if (!proxyRes.ok) return res.status(proxyRes.status).json({ error: 'File not found' });
+    const record = fileMeta.find(f => f.fileId === fileId && !f.deleted);
+    if (!record) return res.status(404).json({ error: 'File not found' });
 
-        const ALLOWED_HEADERS = new Set([
-            'x-file-id', 'x-file-name', 'x-file-hash', 'x-iv', 'x-auth-tag',
-            'x-original-size', 'content-type', 'content-disposition',
-        ]);
-        for (const h of ALLOWED_HEADERS) {
-            const v = proxyRes.headers.get(h);
-            if (v) res.setHeader(h, v);
-        }
+    const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File data missing' });
 
-        const reader = proxyRes.body.getReader();
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) { res.end(); break; }
-            res.write(value);
-        }
-    } catch (_) {
-        res.status(502).json({ error: 'Vault download unavailable' }); // [32]
-    }
+    res.setHeader('X-File-Id', record.fileId);
+    res.setHeader('X-File-Name', encodeURIComponent(record.fileName));
+    res.setHeader('X-File-Hash', record.fileHash);
+    res.setHeader('X-IV', record.iv || '');
+    res.setHeader('X-Auth-Tag', record.authTag || '');
+    res.setHeader('X-Original-Size', record.originalSize);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${record.fileId}.enc"`);
+
+    const stream = fs.createReadStream(filePath);
+    stream.pipe(res);
 });
 
 app.get('/vault/files/:owner', requireAuth, async (_req, res) => {
