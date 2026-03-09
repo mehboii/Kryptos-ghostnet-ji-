@@ -683,19 +683,33 @@ app.post('/vault/upload', requireAuth, async (req, res) => { // [10]
     }
 
     try {
-        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/upload`, {
+        const httpLib = await import(VAULT_ORIGIN.startsWith('https') ? 'https' : 'http');
+        const vaultUrl = new URL(`${VAULT_ORIGIN}/vault/upload`);
+
+        const proxyReq = httpLib.request({
+            hostname: vaultUrl.hostname,
+            port: vaultUrl.port,
+            path: vaultUrl.pathname,
             method: 'POST',
             headers: {
                 'content-type': req.headers['content-type'],
-                'content-length': req.headers['content-length'] || '0',
-            },
-            body: req,
-            duplex: 'half'
+                ...(req.headers['content-length'] ? { 'content-length': req.headers['content-length'] } : {})
+            }
+        }, (proxyRes) => {
+            res.status(proxyRes.statusCode);
+            proxyRes.pipe(res);
         });
-        const data = await proxyRes.json();
-        res.status(proxyRes.status).json(data);
+
+        proxyReq.on('error', (e) => {
+            console.error('Vault Proxy Streaming Error:', e.message);
+            if (!res.headersSent) res.status(502).json({ error: 'Vault service unavailable or disconnected' });
+        });
+
+        req.pipe(proxyReq);
+
     } catch (e) {
-        res.status(502).json({ error: 'Vault service unavailable or payload too large' });
+        console.error('Vault connection setup error:', e.message);
+        if (!res.headersSent) res.status(502).json({ error: 'Vault proxy setup error' });
     }
 });
 
