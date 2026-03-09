@@ -421,11 +421,11 @@ app.get('/validate-node/:nodeId', requireAuth, (req, res) => { // [01]
         // [29] Update lastSeen in-memory only; debounced write will flush later
         node.lastSeen = Date.now();
         scheduleWrite(NODES_FILE, registeredNodes);
-        res.json({ valid: true, displayName: node.displayName, address: node.address || null, online: isOnline });
+        res.json({ valid: true, displayName: node.displayName, address: node.address || null, publicKey: node.publicKey || null, online: isOnline });
     } else {
         // Fallback 3: If it's a validly formatted hex address/pubkey (e.g. 0x...), allow it
         if (typeof nodeId === 'string' && nodeId.startsWith('0x') && nodeId.length >= 42) {
-            res.json({ valid: true, displayName: 'Unknown Contact', address: nodeId, online: false });
+            res.json({ valid: true, displayName: 'Unknown Contact', address: nodeId, publicKey: nodeId, online: false });
         } else {
             res.json({ valid: false });
         }
