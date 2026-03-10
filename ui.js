@@ -977,6 +977,56 @@ const UI = {
         document.querySelector('.modal-overlay').remove();
     },
 
+    promptVaultKeyRecovery: async (serverKeyData) => {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = "modal-overlay";
+            const action = serverKeyData ? 'Recover Vault Key' : 'Create Vault Key';
+            const subtitle = serverKeyData
+                ? 'Your file vault key was found on the network. Enter your PIN to decrypt and restore it.'
+                : 'Your file vault key is missing. Enter your PIN to generate a new one. <br><span style="color:#ef4444;font-size:0.8rem;">Warning: Previous files will not be decryptable.</span>';
+            modal.innerHTML = `
+                <div class="modal-card">
+                    <div class="modal-title">${action}</div>
+                    <div style="font-size:0.9rem; color:var(--text-muted); margin-bottom:15px;">${subtitle}</div>
+                    <input type="password" id="vault-pin-input" class="wlt-input" placeholder="Enter 6-digit PIN" maxlength="6" style="text-align:center; letter-spacing:4px; font-size:1.2rem;">
+                    <div id="vault-pin-error" style="color:#ef4444; font-size:0.8rem; height:20px; text-align:center; margin-top:10px;"></div>
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <button class="btn-primary" style="background:var(--border);" onclick="this.closest('.modal-overlay').remove(); window._vaultKeyResolver(null)">Cancel</button>
+                        <button class="btn-primary" id="vault-pin-submit">Confirm</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            window._vaultKeyResolver = resolve;
+
+            document.getElementById('vault-pin-submit').onclick = async () => {
+                const pin = document.getElementById('vault-pin-input').value;
+                if (pin.length < 6) {
+                    document.getElementById('vault-pin-error').textContent = 'Enter full 6-digit PIN';
+                    return;
+                }
+                document.getElementById('vault-pin-error').textContent = 'Processing...';
+                document.getElementById('vault-pin-submit').disabled = true;
+
+                try {
+                    let finalKey = null;
+                    if (serverKeyData) {
+                        finalKey = await window.GhostVault._recoverVaultKey(pin, serverKeyData);
+                    } else {
+                        finalKey = await window.GhostVault._generateVaultKey(pin);
+                    }
+                    modal.remove();
+                    resolve(finalKey);
+                } catch (e) {
+                    document.getElementById('vault-pin-error').textContent = e.message || 'Incorrect PIN';
+                    document.getElementById('vault-pin-submit').disabled = false;
+                }
+            };
+        });
+    },
+
     loadProfile: () => {
         const stored = localStorage.getItem('ghostnet_user');
         if (stored) {
