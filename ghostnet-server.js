@@ -367,6 +367,8 @@ app.post('/register-node', requireAuth, (req, res) => { // [01]
     // Basic policy: node owner is the authenticated user
     const address = typeof req.body.address === 'string' ? req.body.address.slice(0, 64) : null;
     const publicKey = typeof req.body.publicKey === 'string' ? req.body.publicKey.slice(0, 512) : null;
+    // Avatar is a base64 string, usually < 200KB. Let's clip to 512KB.
+    const avatar = typeof req.body.avatar === 'string' ? req.body.avatar.slice(0, 512 * 1024) : null;
 
     registeredNodes[nodeId] = {
         nodeId,
@@ -374,6 +376,7 @@ app.post('/register-node', requireAuth, (req, res) => { // [01]
         ownerId: req.user.id, // bind to authenticated user
         address,
         publicKey,
+        avatar,
         registeredAt: Date.now(),
         lastSeen: Date.now(),
     };
@@ -424,7 +427,7 @@ app.get('/validate-node/:nodeId', requireAuth, (req, res) => { // [01]
         // [29] Update lastSeen in-memory only; debounced write will flush later
         node.lastSeen = Date.now();
         scheduleWrite(NODES_FILE, registeredNodes);
-        res.json({ valid: true, displayName: node.displayName, address: node.address || null, publicKey: node.publicKey || null, online: isOnline });
+        res.json({ valid: true, displayName: node.displayName, address: node.address || null, publicKey: node.publicKey || null, avatar: node.avatar || null, online: isOnline });
     } else {
         // Fallback 3: If it's a validly formatted hex address/pubkey (e.g. 0x...), allow it
         if (typeof nodeId === 'string' && nodeId.startsWith('0x') && nodeId.length >= 42) {
@@ -613,7 +616,7 @@ app.get('/conversations', requireAuth, (req, res) => { // [05]
     const enriched = userConvos.map(c => {
         const otherId = c.participants.find(p => p !== userId) || userId;
         const reg = registeredNodes[otherId];
-        const otherUser = { id: otherId, username: reg?.displayName || c.contactName || otherId.slice(0, 10) };
+        const otherUser = { id: otherId, username: reg?.displayName || c.contactName || otherId.slice(0, 10), avatar: reg?.avatar || null };
         return { ...c, otherUser };
     });
     enriched.sort((a, b) => b.updated - a.updated);
