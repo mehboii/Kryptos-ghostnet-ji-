@@ -528,19 +528,21 @@ const UI = {
         const list = document.getElementById('chat-user-list');
         if (!list) return;
 
-        list.innerHTML = '';
+        list.replaceChildren();
 
         if (convos.length === 0) {
-            list.innerHTML = `<div style="padding:20px; text-align:center; color:#64748b; font-size:0.8rem;">No conversations yet.</div>`;
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '20px';
+            emptyState.style.textAlign = 'center';
+            emptyState.style.color = '#64748b';
+            emptyState.style.fontSize = '0.8rem';
+            emptyState.textContent = 'No conversations yet.';
+            list.appendChild(emptyState);
             return;
         }
 
-        let html = '';
         convos.forEach(c => {
             const timeStr = new Date(c.updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const avatar = c.otherUser && c.otherUser.avatar
-                ? `<img src="${c.otherUser.avatar}" class="chat-avatar" style="object-fit:cover;" onclick="event.stopPropagation(); UI.viewLargeAvatar(this.src)">`
-                : `<div class="chat-avatar" style="background: #3f3f46;"></div>`;
 
             const username = c.otherUser ? (c.otherUser.username || c.otherUser.address || c.otherUser.id) : 'Unknown';
             let preview = c.lastMessage || 'Message...';
@@ -549,26 +551,49 @@ const UI = {
                 try { preview = JSON.parse(preview).body; } catch (e) { }
             }
 
-            const activeClass = (AppState.activeConvoId === c.id) ? 'active' : '';
+            const row = document.createElement('div');
+            row.className = `chat-user-row ${(AppState.activeConvoId === c.id) ? 'active' : ''}`;
+            row.dataset.convo = c.id;
+            row.onclick = () => UI.selectChat(c.id, username, c.otherUser ? c.otherUser.id : '');
 
-            html += `
-                <div class="chat-user-row ${activeClass}" onclick="UI.selectChat('${c.id}', '${username}', '${c.otherUser ? c.otherUser.id : ''}')" data-convo="${c.id}">
-                    <div class="chat-avatar-wrap">
-                        ${avatar}
-                    </div>
-                    <div class="chat-user-info">
-                        <div class="chat-user-top">
-                            <span class="chat-username">${username}</span>
-                            <span class="chat-time">${timeStr}</span>
-                        </div>
-                        <div class="chat-user-bottom">
-                            <span class="chat-preview">${preview}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
+            const avatarWrap = document.createElement('div');
+            avatarWrap.className = 'chat-avatar-wrap';
+            avatarWrap.appendChild(UI.renderAvatar(c.otherUser, 40));
+
+            const userInfo = document.createElement('div');
+            userInfo.className = 'chat-user-info';
+
+            const userTop = document.createElement('div');
+            userTop.className = 'chat-user-top';
+
+            const usernameSpan = document.createElement('span');
+            usernameSpan.className = 'chat-username';
+            usernameSpan.textContent = username;
+
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'chat-time';
+            timeSpan.textContent = timeStr;
+
+            userTop.appendChild(usernameSpan);
+            userTop.appendChild(timeSpan);
+
+            const userBottom = document.createElement('div');
+            userBottom.className = 'chat-user-bottom';
+
+            const previewSpan = document.createElement('span');
+            previewSpan.className = 'chat-preview';
+            previewSpan.textContent = preview;
+
+            userBottom.appendChild(previewSpan);
+
+            userInfo.appendChild(userTop);
+            userInfo.appendChild(userBottom);
+
+            row.appendChild(avatarWrap);
+            row.appendChild(userInfo);
+
+            list.appendChild(row);
         });
-        list.innerHTML = html;
     },
 
     selectChat: async (convoId, nameStr = null, targetUserId = null) => {
@@ -604,13 +629,23 @@ const UI = {
         // Setup Header Avatar
         const activeRow = document.querySelector(`.chat-user-row[data-convo="${convoId}"]`);
         const headerAvatar = document.getElementById('active-chat-avatar');
-        if (headerAvatar && activeRow) {
-            const rowAvatar = activeRow.querySelector('.chat-avatar');
-            if (rowAvatar && rowAvatar.tagName === 'IMG') {
-                headerAvatar.outerHTML = `<img src="${rowAvatar.src}" class="chat-avatar" id="active-chat-avatar" style="object-fit:cover; width: 38px; height: 38px; cursor: pointer;" onclick="UI.viewLargeAvatar(this.src)">`;
-            } else {
-                headerAvatar.outerHTML = `<div class="chat-avatar" id="active-chat-avatar" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); width: 38px; height: 38px;"></div>`;
+        if (headerAvatar) {
+            let avatarData = null;
+            if (activeRow) {
+                const img = activeRow.querySelector('img');
+                if (img) avatarData = img.src;
             }
+            const activeUser = {
+                displayName: nameStr || targetUserId,
+                username: nameStr || targetUserId,
+                avatar: avatarData
+            };
+
+            headerAvatar.style.background = 'transparent';
+            headerAvatar.style.width = 'auto';
+            headerAvatar.style.height = 'auto';
+            headerAvatar.style.border = 'none';
+            headerAvatar.replaceChildren(UI.renderAvatar(activeUser, 44));
         }
 
         const feed = document.getElementById('chat-feed');
@@ -940,6 +975,70 @@ const UI = {
     },
 
     // Start UI Logic
+
+    stringToColor: (str) => {
+        if (!str) return 'hsl(220, 55%, 40%)';
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+        return `hsl(${hue}, 55%, 40%)`;
+    },
+
+    _renderAvatarText: (container, user) => {
+        const nameStr = (user && (user.displayName || user.username)) ? (user.displayName || user.username) : '?';
+        const initial = nameStr.charAt(0).toUpperCase();
+
+        container.style.background = UI.stringToColor(nameStr);
+        container.style.color = '#ffffff';
+        container.style.fontSize = `${parseInt(container.style.width) * 0.45}px`;
+        container.style.fontWeight = 'bold';
+        container.style.userSelect = 'none';
+
+        const txt = document.createElement('span');
+        txt.textContent = initial;
+        container.appendChild(txt);
+    },
+
+    renderAvatar: (user, size = 40) => {
+        const container = document.createElement('div');
+        container.className = 'chat-avatar-rendered';
+        container.style.width = `${size}px`;
+        container.style.height = `${size}px`;
+        container.style.borderRadius = '50%';
+        container.style.overflow = 'hidden';
+        container.style.background = '#2a2f45';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.flexShrink = '0';
+
+        if (user && user.avatar && /^data:image\/(png|jpeg|webp|gif);base64,/.test(user.avatar)) {
+            const img = document.createElement('img');
+            img.src = user.avatar;
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'cover';
+            img.style.cursor = 'pointer';
+
+            img.onclick = (e) => {
+                e.stopPropagation();
+                if (window.UI) UI.viewLargeAvatar(img.src);
+            };
+
+            img.onerror = () => {
+                img.remove();
+                UI._renderAvatarText(container, user);
+            };
+
+            container.appendChild(img);
+        } else {
+            UI._renderAvatarText(container, user);
+        }
+
+        return container;
+    },
 
     viewLargeAvatar: (src) => {
         const modal = document.createElement('div');
