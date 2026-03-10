@@ -131,6 +131,7 @@ const CONVOS_FILE = path.join(__dirname, 'conversations.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
 const NODES_FILE = path.join(__dirname, 'nodes.json');
 const PENDING_FILE = path.join(__dirname, 'pending.json');
+const VAULT_KEYS_FILE = path.join(__dirname, 'vault-keys.json');
 
 const VAULT_DIR = path.join(__dirname, 'vault-data');
 const META_FILE = path.join(__dirname, 'vault-meta.json');
@@ -249,6 +250,8 @@ const pendingQueue = new Map(Object.entries(loadJson(PENDING_FILE, {})));
         if (NODE_ID_RE.test(k)) registeredNodes[k] = raw[k];
     }
 }
+
+let vaultKeys = loadJson(VAULT_KEYS_FILE, {});
 
 function saveNodeRegistry() { // [29] debounced
     scheduleWrite(NODES_FILE, registeredNodes);
@@ -794,6 +797,27 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
     } catch (_) {
         res.status(502).json({ error: 'Vault service unavailable' }); // [32]
     }
+});
+
+app.get('/vault/key', requireAuth, (req, res) => {
+    const ownerId = req.user.id;
+    const keyData = vaultKeys[ownerId];
+    if (keyData) {
+        res.json({ success: true, keyData: keyData });
+    } else {
+        res.status(404).json({ error: 'Vault key not found' });
+    }
+});
+
+app.post('/vault/key', requireAuth, (req, res) => {
+    const ownerId = req.user.id;
+    const { keyData } = req.body;
+    if (!keyData || typeof keyData.wrappedKey !== 'string') {
+        return res.status(400).json({ error: 'Invalid key format' });
+    }
+    vaultKeys[ownerId] = keyData;
+    scheduleWrite(VAULT_KEYS_FILE, vaultKeys);
+    res.json({ success: true });
 });
 
 app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]

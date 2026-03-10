@@ -259,6 +259,117 @@
         return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
     }
 
+    // ─── MASTER VAULT KEY MANAGER ──────────────────────────────────────────
+
+    const VaultKeyManager = {
+        key: null,
+
+        async getOrGenerateKey() {
+            if (this.key) return this.key;
+
+            const localJwk = localStorage.getItem('ghostnet_vault_master_key');
+            if (localJwk) {
+                try {
+                    this.key = await crypto.subtle.importKey(
+                        'jwk', JSON.parse(localJwk),
+                        { name: 'AES-GCM', length: 256 },
+                        true, ['encrypt', 'decrypt']
+                    );
+                    return this.key;
+                } catch (e) {
+                    console.warn('Local vault key invalid, checking server...', e);
+                }
+            }
+
+            let serverKeyData = null;
+            try {
+                const res = await fetch(`${VAULT_API.replace('/vault', '')}/vault/key`, { headers: _secureHeaders() });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.keyData) serverKeyData = data.keyData;
+                }
+            } catch (e) {
+                console.warn('Could not fetch vault key from server', e);
+            }
+
+            if (window.UI && window.UI.promptVaultKeyRecovery) {
+                this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
+                if (this.key) return this.key;
+            }
+
+            throw new Error('Vault Key unavailable. Cannot encrypt or decrypt files.');
+        },
+
+        async _deriveWrappingKey(pin, saltHexString) {
+            const salt = hexToBuf(saltHexString);
+            const enc = new TextEncoder();
+            const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(pin), 'PBKDF2', false, ['deriveKey']);
+            return crypto.subtle.deriveKey(
+                { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
+                keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+            );
+        },
+
+        async recoverFromData(pin, serverKeyData) {
+            const { wrappedKey, salt, iv } = serverKeyData;
+            const wrapKey = await this._deriveWrappingKey(pin, salt);
+
+            const encryptedBytes = hexToBuf(wrappedKey);
+            const decryptedJwkJson = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: hexToBuf(iv) },
+                wrapKey,
+                encryptedBytes
+            );
+
+            const jwkStr = new TextDecoder().decode(decryptedJwkJson);
+            const key = await crypto.subtle.importKey(
+                'jwk', JSON.parse(jwkStr),
+                { name: 'AES-GCM', length: 256 },
+                true, ['encrypt', 'decrypt']
+            );
+
+            localStorage.setItem('ghostnet_vault_master_key', jwkStr);
+            this.key = key;
+            return key;
+        },
+
+        async generateNew(pin) {
+            const newKey = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 },
+                true, ['encrypt', 'decrypt']
+            );
+
+            const jwk = await crypto.subtle.exportKey('jwk', newKey);
+            const jwkStr = JSON.stringify(jwk);
+
+            const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+            const wrapKey = await this._deriveWrappingKey(pin, bufToHex(saltBytes));
+
+            const ivBytes = crypto.getRandomValues(new Uint8Array(12));
+            const encryptedJwk = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: ivBytes },
+                wrapKey,
+                new TextEncoder().encode(jwkStr)
+            );
+
+            const serverKeyData = {
+                wrappedKey: bufToHex(new Uint8Array(encryptedJwk)),
+                salt: bufToHex(saltBytes),
+                iv: bufToHex(ivBytes)
+            };
+
+            await fetch(`${VAULT_API.replace('/vault', '')}/vault/key`, {
+                method: 'POST',
+                headers: { ..._secureHeaders(), 'Content-Type': 'application/json' },
+                body: JSON.stringify({ keyData: serverKeyData })
+            });
+
+            localStorage.setItem('ghostnet_vault_master_key', jwkStr);
+            this.key = newKey;
+            return newKey;
+        }
+    };
+
     // ─── Crypto: AES-256-GCM ─────────────────────────────────────────────────
 
     async function generateKey() {
@@ -292,7 +403,7 @@
             throw new Error(`File too large. Maximum size is ${formatBytes(MAX_FILE_BYTES)}.`);
         }
 
-        const key = await generateKey();
+        const key = await VaultKeyManager.getOrGenerateKey();
         const iv = crypto.getRandomValues(new Uint8Array(12));
         const plaintext = await file.arrayBuffer();
 
@@ -488,6 +599,22 @@
             }
         }
 
+        let usingMasterKey = false;
+        if (!keyData && !encKeyStr) {
+            try {
+                const masterKeyCrypto = await VaultKeyManager.getOrGenerateKey();
+                const rawArrayBuffer = await crypto.subtle.exportKey('raw', masterKeyCrypto);
+                keyData = {
+                    keyHex: bufToHex(new Uint8Array(rawArrayBuffer)),
+                    fileName: 'decrypted_file',
+                    ivHex: null // Will be parsed from headers
+                };
+                usingMasterKey = true;
+            } catch (err) {
+                throw new Error('Encryption key not found. ' + err.message);
+            }
+        }
+
         if (!keyData) throw new Error('Encryption key not found. This file was encrypted on another device.');
 
         let response;
@@ -503,6 +630,14 @@
         if (!response.ok) {
             console.error('[Vault] Download error:', response.status);
             throw new Error('Download failed. Please try again.');
+        }
+
+        if (usingMasterKey) {
+            keyData.ivHex = response.headers.get('x-iv');
+            if (response.headers.get('x-file-name')) {
+                keyData.fileName = decodeURIComponent(response.headers.get('x-file-name'));
+            }
+            if (!keyData.ivHex) throw new Error('Cannot decrypt file: Missing encryption IV from server');
         }
 
         // [FIX J] Check Content-Length before buffering.
@@ -627,10 +762,13 @@
     }
 
     const GhostVault = {
+        init: _init,
         uploadFile,
         downloadFile,
         listFiles,
         deleteFile,
+        _generateVaultKey: (pin) => VaultKeyManager.generateNew(pin),
+        _recoverVaultKey: (pin, data) => VaultKeyManager.recoverFromData(pin, data),
         verifyFile,
         hasKey,
         formatBytes,
