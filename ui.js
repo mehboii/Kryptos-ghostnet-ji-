@@ -150,6 +150,34 @@ const UI = {
 
         // 7. Init Vault
         UI.initVault();
+
+        // 8. Anti-screenshot and privacy measures
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText('');
+                }
+                alert('Screenshots are discouraged for privacy.');
+            }
+        });
+
+        window.addEventListener('blur', () => {
+            document.body.style.filter = 'blur(12px) grayscale(100%)';
+            document.body.style.opacity = '0.05';
+        });
+        window.addEventListener('focus', () => {
+            document.body.style.filter = 'none';
+            document.body.style.opacity = '1';
+        });
+
+        document.addEventListener('contextmenu', e => {
+            if (e.target.tagName === 'IMG' || e.target.closest('#chat-feed')) {
+                e.preventDefault();
+            }
+        });
+        document.addEventListener('dragstart', e => {
+            if (e.target.tagName === 'IMG') e.preventDefault();
+        });
     },
 
     navigate: (target) => {
@@ -511,7 +539,7 @@ const UI = {
         convos.forEach(c => {
             const timeStr = new Date(c.updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
             const avatar = c.otherUser && c.otherUser.avatar
-                ? `<img src="${c.otherUser.avatar}" class="chat-avatar" style="object-fit:cover;">`
+                ? `<img src="${c.otherUser.avatar}" class="chat-avatar" style="object-fit:cover;" onclick="event.stopPropagation(); UI.viewLargeAvatar(this.src)">`
                 : `<div class="chat-avatar" style="background: #3f3f46;"></div>`;
 
             const username = c.otherUser ? (c.otherUser.username || c.otherUser.address || c.otherUser.id) : 'Unknown';
@@ -572,6 +600,18 @@ const UI = {
             row.classList.remove('active');
             if (row.dataset.convo === convoId) row.classList.add('active');
         });
+
+        // Setup Header Avatar
+        const activeRow = document.querySelector(`.chat-user-row[data-convo="${convoId}"]`);
+        const headerAvatar = document.getElementById('active-chat-avatar');
+        if (headerAvatar && activeRow) {
+            const rowAvatar = activeRow.querySelector('.chat-avatar');
+            if (rowAvatar && rowAvatar.tagName === 'IMG') {
+                headerAvatar.outerHTML = `<img src="${rowAvatar.src}" class="chat-avatar" id="active-chat-avatar" style="object-fit:cover; width: 38px; height: 38px; cursor: pointer;" onclick="UI.viewLargeAvatar(this.src)">`;
+            } else {
+                headerAvatar.outerHTML = `<div class="chat-avatar" id="active-chat-avatar" style="background: linear-gradient(135deg, #3b82f6, #8b5cf6); width: 38px; height: 38px;"></div>`;
+            }
+        }
 
         const feed = document.getElementById('chat-feed');
         if (feed) feed.innerHTML = ''; // clear current feed
@@ -900,6 +940,20 @@ const UI = {
     },
 
     // Start UI Logic
+
+    viewLargeAvatar: (src) => {
+        const modal = document.createElement('div');
+        modal.className = "modal-overlay";
+        modal.style.zIndex = "99999";
+        modal.innerHTML = `
+            <div class="modal-card" style="padding:10px; background: transparent; border: none; text-align:center; max-width:95vw; max-height:95vh;">
+                <button class="modal-close" style="position:absolute; right:15px; top:15px; z-index:100; background:rgba(0,0,0,0.6); padding:5px 12px; border-radius:50%; font-size:1.5rem; border:1px solid #444;" onclick="this.closest('.modal-overlay').remove()">×</button>
+                <img src="${src}" style="max-width:100%; max-height:85vh; border-radius:12px; object-fit:contain; box-shadow: 0 10px 40px rgba(0,0,0,0.8); pointer-events:none;">
+            </div>
+        `;
+        document.body.appendChild(modal);
+    },
+
     addMessage: (text, type) => {
         const feed = document.getElementById('chat-feed');
         if (!feed) return;
