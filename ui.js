@@ -150,14 +150,43 @@ const UI = {
             });
         });
 
-        // 5. Mock Initial Data (for visual validation)
+        // 5. Add Ghost Card buttons dynamically
+        setTimeout(() => {
+            const viewProfile = document.getElementById('view-profile');
+            if (viewProfile) {
+                const pContainer = viewProfile.querySelector('.profile-container') || viewProfile;
+                const gcBtn = document.createElement('button');
+                gcBtn.className = 'btn-primary';
+                gcBtn.style.marginTop = '20px';
+                gcBtn.style.width = '100%';
+                gcBtn.style.background = '#00f0ff';
+                gcBtn.style.color = '#0a0f1e';
+                gcBtn.innerText = 'My Ghost Card';
+                gcBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                pContainer.appendChild(gcBtn);
+            }
+
+            const newChatBtn = document.querySelector('.chat-new-btn');
+            if (newChatBtn && newChatBtn.parentNode) {
+                const qrBtn = document.createElement('button');
+                qrBtn.className = 'chat-new-btn';
+                qrBtn.title = 'Ghost Card';
+                qrBtn.innerHTML = '⊞';
+                qrBtn.style.fontSize = '18px';
+                qrBtn.style.marginRight = '8px';
+                qrBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                newChatBtn.parentNode.insertBefore(qrBtn, newChatBtn);
+            }
+        }, 1500);
+
+        // 6. Mock Initial Data (for visual validation)
         setTimeout(() => {
             UI.mockData();
             // Emit Initial State
             window.dispatchEvent(new Event("app:state"));
         }, 800);
 
-        // 5. State Listener
+        // 7. State Listener
         window.addEventListener("app:state", UI.render);
 
         // 6. Load Profile
@@ -534,7 +563,10 @@ const UI = {
                 
                 <div class="input-group">
                     <label class="input-label">NODE ID / PUBLIC KEY</label>
-                    <input type="text" id="chat-pubkey" class="modal-input" placeholder="0x...">
+                    <div style="display:flex; gap:8px;">
+                        <input type="text" id="chat-pubkey" class="modal-input" placeholder="0x..." style="flex:1;">
+                        <button class="btn-primary" style="padding: 0 12px; width:auto; border-radius:12px; font-size:16px;" title="Scan QR" onclick="if(UI.startQRScanner) UI.startQRScanner();">⊞</button>
+                    </div>
                 </div>
 
                 <div id="chat-new-error" style="color:#ef4444; font-size:0.8rem; margin-top:8px; min-height:1.2em;"></div>
@@ -1680,6 +1712,503 @@ const UI = {
             if (typeof lucide !== 'undefined') lucide.createIcons();
         } catch (err) {
             alert('Verification error: ' + err.message);
+        }
+    },
+
+    // GHOST CARDS - Generate Ghost Card
+    generateGhostCard: async () => {
+        if (!AppState || !AppState.identity || !AppState.identity.nodeId) {
+            const toast = document.createElement('div');
+            toast.textContent = 'Connect to GhostNet first to generate your card';
+            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+            return;
+        }
+
+        if (document.getElementById('ghostcard-modal')) {
+            document.getElementById('ghostcard-modal').focus();
+            return;
+        }
+
+        const nodeId = AppState.identity.nodeId;
+        const rawDisplayName = AppState.identity.displayName || 'Ghost User';
+        const displayName = String(rawDisplayName).slice(0, 32);
+
+        const buildCard = (qrCanvasOrFallbackStr) => {
+            const c = document.createElement('canvas');
+            c.width = 400;
+            c.height = 600;
+            const ctx = c.getContext('2d');
+            if (!ctx) {
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.id = 'ghostcard-modal';
+                fallbackDiv.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+                
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#0a0f1e;border:2px solid #00f0ff;border-radius:20px;padding:30px;text-align:center;max-width:90%;color:#fff;';
+                
+                const nameEl = document.createElement('h2');
+                nameEl.textContent = displayName;
+                card.appendChild(nameEl);
+                
+                const idEl = document.createElement('p');
+                idEl.textContent = nodeId;
+                idEl.style.cssText = 'word-break:break-all;font-family:monospace;color:#00f0ff;margin:20px 0;';
+                card.appendChild(idEl);
+                
+                const copyBtn = document.createElement('button');
+                copyBtn.textContent = 'Copy ID';
+                copyBtn.className = 'btn-primary';
+                copyBtn.onclick = () => {
+                    navigator.clipboard.writeText(nodeId);
+                    alert('Copied to clipboard');
+                };
+                card.appendChild(copyBtn);
+                
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = 'Close';
+                closeBtn.style.cssText = 'margin-top:20px;padding:10px 20px;background:none;border:1px solid #fff;color:#fff;border-radius:12px;cursor:pointer;';
+                closeBtn.onclick = () => fallbackDiv.remove();
+                card.appendChild(closeBtn);
+                
+                fallbackDiv.appendChild(card);
+                document.body.appendChild(fallbackDiv);
+                return;
+            }
+
+            ctx.fillStyle = '#0a0f1e';
+            ctx.fillRect(0, 0, 400, 600);
+            
+            ctx.strokeStyle = 'rgba(0,240,255,0.06)';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            for (let x = 0; x < 400; x += 20) {
+                for (let y = 0; y < 600; y += 34.64) {
+                    ctx.moveTo(x + 10, y);
+                    ctx.lineTo(x + 20, y + 17.32);
+                    ctx.lineTo(x + 10, y + 34.64);
+                    ctx.lineTo(x - 10, y + 34.64);
+                    ctx.lineTo(x - 20, y + 17.32);
+                    ctx.lineTo(x - 10, y);
+                }
+            }
+            ctx.stroke();
+
+            const grd = ctx.createRadialGradient(200, 300, 0, 200, 300, 200);
+            grd.addColorStop(0, 'rgba(0,240,255,0.08)');
+            grd.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(0, 0, 400, 600);
+
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.6;
+            ctx.beginPath();
+            ctx.roundRect(8, 8, 384, 584, 20);
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+
+            ctx.fillStyle = '#ffffff';
+            ctx.textAlign = 'center';
+            ctx.font = 'bold 22px Arial';
+            ctx.fillText('GHOSTNET', 200, 50);
+
+            ctx.fillStyle = 'rgba(0,240,255,0.7)';
+            ctx.font = '10px Arial';
+            const subtitle = "BY N11X LABS";
+            let sx = 200 - (subtitle.length * 3.5);
+            for (let i = 0; i < subtitle.length; i++) {
+                ctx.fillText(subtitle[i], sx + i * 7, 72);
+            }
+
+            ctx.strokeStyle = 'rgba(0,240,255,0.2)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(40, 88);
+            ctx.lineTo(360, 88);
+            ctx.stroke();
+
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.roundRect(102, 102, 196, 196, 12);
+            ctx.fill();
+
+            if (typeof qrCanvasOrFallbackStr === 'string') {
+                ctx.fillStyle = '#0a0f1e';
+                ctx.font = '12px monospace';
+                ctx.fillText('Share this ID manually', 200, 190);
+                ctx.font = '10px monospace';
+                ctx.fillText(nodeId.slice(0, 16) + '...', 200, 210);
+            } else {
+                ctx.drawImage(qrCanvasOrFallbackStr, 110, 110, 180, 180);
+            }
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 26px Arial';
+            ctx.fillText(displayName, 200, 340);
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.font = '13px monospace';
+            const formattedNodeId = nodeId.slice(0, 8) + '....' + nodeId.slice(-6);
+            ctx.fillText(formattedNodeId, 200, 372);
+
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(100, 390);
+            ctx.lineTo(300, 390);
+            ctx.stroke();
+
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.font = '11px Arial';
+            ctx.fillText('Build. Communicate. Operate. Uncensored.', 200, 420);
+
+            ctx.fillStyle = 'rgba(0,240,255,0.5)';
+            ctx.fillText('ghostnet.io', 200, 560);
+
+            ctx.textAlign = 'right';
+            ctx.fillText('v2.0', 380, 580);
+
+            ctx.globalAlpha = 0.03;
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 40px Arial';
+            ctx.textAlign = 'center';
+            ctx.translate(200, 300);
+            ctx.rotate(45 * Math.PI / 180);
+            for (let i = -3; i <= 3; i++) {
+                for (let j = -3; j <= 3; j++) {
+                    ctx.fillText('GHOSTNET', i * 150, j * 100);
+                }
+            }
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.globalAlpha = 1.0;
+
+            const modal = document.createElement('div');
+            modal.id = 'ghostcard-modal';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.95);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+            
+            c.style.cssText = 'max-width:90vw;max-height:70vh;border-radius:20px;box-shadow:0 0 40px rgba(0,240,255,0.2);';
+            modal.appendChild(c);
+
+            const btnContainer = document.createElement('div');
+            btnContainer.style.cssText = 'display:flex;gap:15px;margin-top:25px;';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.className = 'btn-primary';
+            saveBtn.textContent = 'Save Card';
+            saveBtn.onclick = () => {
+                c.toBlob(blob => {
+                    const objUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
+                    a.download = `ghostcard-${safeName}-${Date.now()}.png`;
+                    a.href = objUrl;
+                    a.click();
+                    URL.revokeObjectURL(objUrl);
+                    
+                    const toast = document.createElement('div');
+                    toast.textContent = 'Ghost Card saved to your device';
+                    toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                }, 'image/png', 1.0);
+            };
+            btnContainer.appendChild(saveBtn);
+
+            const shareBtn = document.createElement('button');
+            shareBtn.className = 'btn-primary';
+            shareBtn.textContent = 'Share Card';
+            shareBtn.onclick = () => {
+                if (navigator.canShare) {
+                    c.toBlob(blob => {
+                        const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
+                        const file = new File([blob], `ghostcard-${safeName}.png`, { type: 'image/png' });
+                        if (navigator.canShare({ files: [file] })) {
+                            navigator.share({
+                                title: 'Ghost Card',
+                                text: 'Add me on GhostNet',
+                                files: [file]
+                            }).catch(console.error);
+                            return;
+                        }
+                        fallbackShare();
+                    }, 'image/png', 1.0);
+                } else {
+                    fallbackShare();
+                }
+
+                function fallbackShare() {
+                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                        navigator.clipboard.writeText(`Add me on GhostNet — Node ID: ${nodeId}`).then(() => {
+                            const toast = document.createElement('div');
+                            toast.textContent = 'Node ID copied — paste it to share';
+                            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                            document.body.appendChild(toast);
+                            setTimeout(() => toast.remove(), 3000);
+                        }).catch(() => manualFallback());
+                    } else {
+                        manualFallback();
+                    }
+                }
+
+                function manualFallback() {
+                    const box = document.createElement('textarea');
+                    box.value = nodeId;
+                    box.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100001;padding:20px;width:80%;word-break:break-all;';
+                    document.body.appendChild(box);
+                    box.select();
+                    const btn = document.createElement('button');
+                    btn.textContent = 'Close Box';
+                    btn.style.cssText = 'position:fixed;top:60%;left:50%;transform:translateX(-50%);z-index:100001;';
+                    btn.onclick = () => { box.remove(); btn.remove(); };
+                    document.body.appendChild(btn);
+                }
+            };
+            btnContainer.appendChild(shareBtn);
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = 'Close';
+            closeBtn.style.cssText = 'padding:10px 25px;background:none;border:1px solid #00f0ff;color:#00f0ff;border-radius:12px;cursor:pointer;font-weight:bold;';
+            closeBtn.onclick = () => {
+                ctx.clearRect(0,0,400,600);
+                modal.remove();
+            };
+            btnContainer.appendChild(closeBtn);
+
+            modal.appendChild(btnContainer);
+            document.body.appendChild(modal);
+        };
+
+        if (window.QRCode) {
+            drawQRAndBuild();
+        } else {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+            script.onload = drawQRAndBuild;
+            script.onerror = () => buildCard('fallback');
+            document.head.appendChild(script);
+        }
+
+        function drawQRAndBuild() {
+            try {
+                const tempDiv = document.createElement('div');
+                const expTS = Date.now() + (7 * 24 * 60 * 60 * 1000);
+                const qrData = JSON.stringify({"v":1,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS});
+                new QRCode(tempDiv, {
+                    text: qrData,
+                    width: 180,
+                    height: 180,
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+                
+                setTimeout(() => {
+                    const tempCanvas = tempDiv.querySelector('canvas');
+                    if (tempCanvas) {
+                        buildCard(tempCanvas);
+                    } else {
+                        const tempImg = tempDiv.querySelector('img');
+                        if (tempImg && tempImg.src) {
+                            const dynImg = new Image();
+                            dynImg.src = tempImg.src;
+                            dynImg.onload = () => buildCard(dynImg);
+                        } else {
+                            buildCard('fallback');
+                        }
+                    }
+                }, 50);
+            } catch (e) {
+                console.error('QR code generation failed', e);
+                buildCard('fallback');
+            }
+        }
+    },
+
+    // GHOST CARDS - QR Scanner
+    startQRScanner: () => {
+        const modal = document.createElement('div');
+        modal.id = 'qr-scanner-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+        
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;';
+        
+        const canvas = document.createElement('canvas');
+        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100vw;height:100vh;pointer-events:none;';
+        
+        const infoDiv = document.createElement('div');
+        infoDiv.textContent = 'Point at a Ghost Card QR code';
+        infoDiv.style.cssText = 'position:absolute;bottom:100px;color:#fff;font-family:Arial;font-size:16px;text-align:center;width:100%;z-index:100000;text-shadow:0 2px 4px rgba(0,0,0,0.8);';
+
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position:absolute;bottom:130px;color:#ef4444;font-family:Arial;font-size:14px;text-align:center;width:100%;z-index:100000;';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Cancel';
+        closeBtn.style.cssText = 'position:absolute;bottom:40px;padding:12px 24px;border-radius:12px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);cursor:pointer;z-index:100000;';
+
+        modal.appendChild(video);
+        modal.appendChild(canvas);
+        modal.appendChild(infoDiv);
+        modal.appendChild(errorDiv);
+        modal.appendChild(closeBtn);
+        document.body.appendChild(modal);
+
+        let stream;
+        let rafId;
+
+        const cleanup = () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            video.srcObject = null;
+            modal.remove();
+            window.removeEventListener('resize', resizeCanvas);
+        };
+
+        closeBtn.onclick = cleanup;
+
+        const ctx = canvas.getContext('2d');
+        let offscreenCanvas = document.createElement('canvas');
+        let offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            offscreenCanvas.width = video.videoWidth;
+            offscreenCanvas.height = video.videoHeight;
+        };
+        window.addEventListener('resize', resizeCanvas);
+
+        const initCamera = async (facingMode = 'environment') => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resizeCanvas();
+                    requestAnimationFrame(scanFrame);
+                };
+            } catch (err) {
+                if (facingMode === 'environment') {
+                    initCamera('user');
+                } else {
+                    cleanup();
+                    const errToast = document.createElement('div');
+                    if (err.name === 'NotAllowedError') {
+                        errToast.textContent = 'Camera permission denied — you can still enter a Node ID manually';
+                    } else {
+                        errToast.textContent = 'Camera not available — enter Node ID manually';
+                    }
+                    errToast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                    document.body.appendChild(errToast);
+                    setTimeout(() => errToast.remove(), 4000);
+                }
+            }
+        };
+
+        let bracketOffset = 0;
+        let bracketDir = 1;
+
+        const scanFrame = () => {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                bracketOffset += bracketDir * 0.5;
+                if (bracketOffset > 10 || bracketOffset < 0) bracketDir *= -1;
+
+                ctx.clearRect(0,0, canvas.width, canvas.height);
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0,0, canvas.width, canvas.height);
+
+                const size = 250;
+                const cx = canvas.width/2;
+                const cy = canvas.height/2;
+
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.fillRect(cx - size/2, cy - size/2, size, size);
+                ctx.globalCompositeOperation = 'source-over';
+
+                ctx.strokeStyle = '#00f0ff';
+                ctx.lineWidth = 4;
+                const bs = size/2 + bracketOffset;
+                const bl = 20;
+                
+                ctx.beginPath();
+                ctx.moveTo(cx - bs + bl, cy - bs); ctx.lineTo(cx - bs, cy - bs); ctx.lineTo(cx - bs, cy - bs + bl);
+                ctx.moveTo(cx + bs - bl, cy - bs); ctx.lineTo(cx + bs, cy - bs); ctx.lineTo(cx + bs, cy - bs + bl);
+                ctx.moveTo(cx - bs + bl, cy + bs); ctx.lineTo(cx - bs, cy + bs); ctx.lineTo(cx - bs, cy + bs - bl);
+                ctx.moveTo(cx + bs - bl, cy + bs); ctx.lineTo(cx + bs, cy + bs); ctx.lineTo(cx + bs, cy + bs - bl);
+                ctx.stroke();
+
+                if (window.jsQR) {
+                    offscreenCtx.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                    const imageData = offscreenCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+
+                    if (code) {
+                        try {
+                            const data = JSON.parse(code.data);
+                            if (data.v && data.app === 'ghostnet' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
+                                handleSuccess(data);
+                                return;
+                            } else {
+                                throw new Error('Invalid JSON format');
+                            }
+                        } catch (e) {
+                            if (/^0x[a-fA-F0-9]{8,64}$/.test(code.data)) {
+                                handleSuccess({ nodeId: code.data });
+                                return;
+                            } else {
+                                errorDiv.textContent = 'Invalid QR — this doesn\'t look like a Ghost Card';
+                            }
+                        }
+                    } else {
+                        errorDiv.textContent = '';
+                    }
+                }
+            }
+            rafId = requestAnimationFrame(scanFrame);
+        };
+
+        const handleSuccess = (data) => {
+            if (data.exp && Date.now() > data.exp) {
+                const toast = document.createElement('div');
+                toast.textContent = 'This Ghost Card has expired — ask them to generate a new one';
+                toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            } else {
+                const toast = document.createElement('div');
+                toast.textContent = '✓ Ghost Card scanned — tap Add to connect';
+                toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+            
+            const pkInput = document.getElementById('chat-pubkey');
+            const nameInput = document.getElementById('chat-name');
+            if (pkInput) pkInput.value = data.nodeId;
+            if (nameInput && data.name) nameInput.value = data.name;
+            
+            cleanup();
+        };
+
+        if (window.jsQR) {
+            initCamera();
+        } else {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
+            script.onload = () => initCamera();
+            script.onerror = () => {
+                cleanup();
+                const errToast = document.createElement('div');
+                errToast.textContent = 'Failed to load scanner module (offline). Enter Node ID manually.';
+                errToast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                document.body.appendChild(errToast);
+                setTimeout(() => errToast.remove(), 4000);
+            };
+            document.head.appendChild(script);
         }
     }
 };
