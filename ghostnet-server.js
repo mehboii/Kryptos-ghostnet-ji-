@@ -489,50 +489,63 @@ app.get('/users', requireAuth, (req, res) => { // [03]
 app.get('/user/profile', requireAuth, (req, res) => {
     const user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
     if (!user) {
-        return res.json({ id: req.user.id, displayName: req.user.id.slice(0, 10), avatar: null });
+        return res.status(404).json({ error: 'User not found' });
     }
-    res.json({ id: user.id, displayName: user.displayName || user.username, avatar: user.avatar || null });
+    
+    // Find node registry entry if any, to include nodeId
+    const nodeIdKey = Object.keys(registeredNodes).find(k => registeredNodes[k].ownerId === req.user.id || k === req.user.id);
+    
+    res.json({ 
+        id: user.id, 
+        displayName: user.displayName || user.username || null, 
+        avatar: user.avatar || null,
+        nodeId: nodeIdKey || user.id 
+    });
 });
 
-app.patch('/user/profile', requireAuth, (req, res) => {
+app.patch('/user/profile', requireAuth, express.json({ limit: '600kb' }), (req, res) => {
     const { avatar, displayName } = req.body;
     
-    if (avatar && typeof avatar === 'string') {
+    // Validations
+    if (displayName !== undefined) {
+        if (typeof displayName !== 'string' || displayName.length > 32) {
+            return res.status(400).json({ error: 'displayName must be a string under 32 characters' });
+        }
+    }
+
+    if (avatar !== undefined && avatar !== null) {
+        if (typeof avatar !== 'string') {
+            return res.status(400).json({ error: 'avatar must be a string or null' });
+        }
         if (!/^data:image\/(png|jpeg|webp|gif);base64,/.test(avatar)) {
             return res.status(400).json({ error: 'Invalid avatar format' });
         }
-        if (Buffer.byteLength(avatar, 'utf8') > 512 * 1024) {
-            return res.status(413).json({ error: 'Avatar must be under 512KB' });
+        if (avatar.length > 700000) {
+            return res.status(413).json({ error: 'Avatar must be under 700000 chars' });
         }
     }
 
     let user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
     if (!user) {
-        user = {
-            id: req.user.id,
-            ownerId: req.user.id,
-            username: displayName || req.user.id.slice(0, 10),
-            displayName: displayName || req.user.id.slice(0, 10),
-            avatar: avatar || null
-        };
-        users.push(user);
-    } else {
-        if (displayName) user.displayName = displayName;
-        if (avatar !== undefined) user.avatar = avatar;
+        return res.status(404).json({ error: 'User not found' });
     }
+
+    if (displayName !== undefined) user.displayName = displayName;
+    if (avatar !== undefined) user.avatar = avatar;
+
     scheduleWrite(USERS_FILE, users);
 
-    // Also update the node registry just to be safe if that's what other users see
+    // Sync to node registry
     const nodeIdsToUpdate = Object.keys(registeredNodes).filter(k => registeredNodes[k].ownerId === req.user.id || k === req.user.id);
     let updatedNode = false;
     for (const k of nodeIdsToUpdate) {
-        if (displayName) registeredNodes[k].displayName = displayName;
+        if (displayName !== undefined) registeredNodes[k].displayName = displayName;
         if (avatar !== undefined) registeredNodes[k].avatar = avatar;
         updatedNode = true;
     }
     if (updatedNode) saveNodeRegistry();
 
-    res.json({ user: { id: user.id, displayName: user.displayName || user.username, avatar: user.avatar } });
+    res.json({ success: true, displayName: user.displayName, avatar: user.avatar });
 });
 
 // ─── MESSAGING ───────────────────────────────────────────────────────────────
