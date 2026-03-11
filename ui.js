@@ -1886,13 +1886,53 @@ const UI = {
 
             const modal = document.createElement('div');
             modal.id = 'ghostcard-modal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.95);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.95);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
             
-            c.style.cssText = 'max-width:90vw;max-height:70vh;border-radius:20px;box-shadow:0 0 40px rgba(0,240,255,0.2);';
+            c.style.cssText = 'max-width:90vw;max-height:70vh;border-radius:20px;box-shadow:0 0 40px rgba(0,240,255,0.2);transition:transform 0.1s ease-out;transform-style:preserve-3d;will-change:transform;';
+            
+            // 3D Tilt Effect
+            modal.addEventListener('mousemove', (e) => {
+                const rect = c.getBoundingClientRect();
+                const x = e.clientX - rect.left - (rect.width / 2);
+                const y = e.clientY - rect.top - (rect.height / 2);
+                
+                // Calculate rotation based on cursor position relative to card center
+                const rotateX = -(y / (rect.height / 2)) * 15; // Max 15 degrees tilt
+                const rotateY = (x / (rect.width / 2)) * 15;
+                
+                c.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+            });
+
+            // Reset smoothly on mouse leave
+            modal.addEventListener('mouseleave', () => {
+                c.style.transition = 'transform 0.5s ease-out';
+                c.style.transform = 'rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
+            });
+            
+            // Re-enable snappy transition when entering again
+            modal.addEventListener('mouseenter', () => {
+                c.style.transition = 'transform 0.1s ease-out';
+            });
+
+            // Support device orientation (parallax) for mobile
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', (e) => {
+                    if (!e.gamma || !e.beta) return;
+                    // Limit extreme angles
+                    const gamma = Math.max(-30, Math.min(30, e.gamma)); 
+                    const beta = Math.max(-30, Math.min(30, e.beta - 45)); // Offset 45deg typical holding angle
+
+                    const rotateY = (gamma / 30) * 15;
+                    const rotateX = -(beta / 30) * 15;
+
+                    c.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+                });
+            }
+
             modal.appendChild(c);
 
             const btnContainer = document.createElement('div');
-            btnContainer.style.cssText = 'display:flex;gap:15px;margin-top:25px;';
+            btnContainer.style.cssText = 'display:flex;gap:15px;margin-top:25px;transform:translateZ(30px);';
 
             const saveBtn = document.createElement('button');
             saveBtn.className = 'btn-primary';
