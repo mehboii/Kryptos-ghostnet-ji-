@@ -1341,19 +1341,10 @@ const UI = {
                 const user = await res.json();
                 localStorage.setItem('ghostnet_user', JSON.stringify(user));
             } else {
-                const toast = document.createElement('div');
-                toast.textContent = 'Failed to load profile from server';
-                toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
+                console.warn("Server returned non-200. Falling back to local profile cache.");
             }
         } catch (e) {
-            console.error("Failed to fetch profile from server", e);
-            const toast = document.createElement('div');
-            toast.textContent = 'Network error: could not sync profile';
-            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            console.warn("Network error: could not sync profile. Falling back to local cache.", e);
         }
 
         const stored = localStorage.getItem('ghostnet_user');
