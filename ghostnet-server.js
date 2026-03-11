@@ -486,6 +486,55 @@ app.get('/users', requireAuth, (req, res) => { // [03]
     res.json(users.map(u => ({ id: u.id, username: u.username })));
 });
 
+app.get('/user/profile', requireAuth, (req, res) => {
+    const user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
+    if (!user) {
+        return res.json({ id: req.user.id, displayName: req.user.id.slice(0, 10), avatar: null });
+    }
+    res.json({ id: user.id, displayName: user.displayName || user.username, avatar: user.avatar || null });
+});
+
+app.patch('/user/profile', requireAuth, (req, res) => {
+    const { avatar, displayName } = req.body;
+    
+    if (avatar && typeof avatar === 'string') {
+        if (!/^data:image\/(png|jpeg|webp|gif);base64,/.test(avatar)) {
+            return res.status(400).json({ error: 'Invalid avatar format' });
+        }
+        if (Buffer.byteLength(avatar, 'utf8') > 512 * 1024) {
+            return res.status(413).json({ error: 'Avatar must be under 512KB' });
+        }
+    }
+
+    let user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
+    if (!user) {
+        user = {
+            id: req.user.id,
+            ownerId: req.user.id,
+            username: displayName || req.user.id.slice(0, 10),
+            displayName: displayName || req.user.id.slice(0, 10),
+            avatar: avatar || null
+        };
+        users.push(user);
+    } else {
+        if (displayName) user.displayName = displayName;
+        if (avatar !== undefined) user.avatar = avatar;
+    }
+    scheduleWrite(USERS_FILE, users);
+
+    // Also update the node registry just to be safe if that's what other users see
+    const nodeIdsToUpdate = Object.keys(registeredNodes).filter(k => registeredNodes[k].ownerId === req.user.id || k === req.user.id);
+    let updatedNode = false;
+    for (const k of nodeIdsToUpdate) {
+        if (displayName) registeredNodes[k].displayName = displayName;
+        if (avatar !== undefined) registeredNodes[k].avatar = avatar;
+        updatedNode = true;
+    }
+    if (updatedNode) saveNodeRegistry();
+
+    res.json({ user: { id: user.id, displayName: user.displayName || user.username, avatar: user.avatar } });
+});
+
 // ─── MESSAGING ───────────────────────────────────────────────────────────────
 
 app.post('/message', requireAuth, (req, res) => { // [02]

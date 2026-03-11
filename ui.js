@@ -117,6 +117,12 @@ class MeshNetwork {
 
 // --- APP LOGIC ---
 
+const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+const authHeaders = () => ({
+    'Content-Type': 'application/json',
+    'X-Auth-Token': typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('ghostnet_token') || '')
+});
+
 const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
@@ -135,7 +141,16 @@ const UI = {
         // 3. Setup Chat
         UI.setupChat();
 
-        // 4. Mock Initial Data (for visual validation)
+        // 4. Hook Logout (if exists)
+        document.querySelectorAll('.auth-logout-btn, #logout-btn, [data-action="logout"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (UI.destroyScreenshotProtection) {
+                    UI.destroyScreenshotProtection();
+                }
+            });
+        });
+
+        // 5. Mock Initial Data (for visual validation)
         setTimeout(() => {
             UI.mockData();
             // Emit Initial State
@@ -152,24 +167,6 @@ const UI = {
         UI.initVault();
 
         // 8. Anti-screenshot and privacy measures
-        document.addEventListener('keyup', (e) => {
-            if (e.key === 'PrintScreen' || e.keyCode === 44) {
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText('');
-                }
-                alert('Screenshots are discouraged for privacy.');
-            }
-        });
-
-        window.addEventListener('blur', () => {
-            document.body.style.filter = 'blur(12px) grayscale(100%)';
-            document.body.style.opacity = '0.05';
-        });
-        window.addEventListener('focus', () => {
-            document.body.style.filter = 'none';
-            document.body.style.opacity = '1';
-        });
-
         document.addEventListener('contextmenu', e => {
             if (e.target.tagName === 'IMG' || e.target.closest('#chat-feed')) {
                 e.preventDefault();
@@ -209,6 +206,129 @@ const UI = {
         // Reset chat mobile state (show list by default when entering chat)
         const chatSplit = document.querySelector('.chat-layout-split');
         if (chatSplit) chatSplit.classList.remove('chat-active');
+
+        // Screenshot protection init/destroy
+        if (target === 'chat' && AppState.identity) {
+            UI.initScreenshotProtection();
+        } else {
+            if (UI.destroyScreenshotProtection) {
+                UI.destroyScreenshotProtection();
+            }
+        }
+    },
+
+    initScreenshotProtection: () => {
+        // CSS layer
+        const chatContainer = document.querySelector('.chat-layout-split');
+        if (chatContainer) {
+            chatContainer.style.userSelect = 'none';
+            chatContainer.style.webkitUserSelect = 'none';
+            chatContainer.style.webkitTouchCallout = 'none';
+        }
+
+        // Blur/focus layer
+        const blurHandler = () => {
+            if (document.getElementById('screenshot-overlay')) return;
+            const overlay = document.createElement('div');
+            overlay.id = 'screenshot-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100vw';
+            overlay.style.height = '100vh';
+            overlay.style.zIndex = '99999';
+            overlay.style.background = '#000';
+            overlay.style.opacity = '1';
+            document.body.appendChild(overlay);
+        };
+
+        const focusHandler = () => {
+            const overlay = document.getElementById('screenshot-overlay');
+            if (overlay) overlay.remove();
+        };
+
+        // Keyboard layer
+        const keydownHandler = (e) => {
+            if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText('');
+                }
+                // Custom toast warning
+                const toast = document.createElement('div');
+                toast.textContent = 'Screenshots are protected in GhostNet';
+                toast.style.position = 'fixed';
+                toast.style.bottom = '20px';
+                toast.style.left = '50%';
+                toast.style.transform = 'translateX(-50%)';
+                toast.style.background = '#ef4444';
+                toast.style.color = '#fff';
+                toast.style.padding = '10px 20px';
+                toast.style.borderRadius = '8px';
+                toast.style.zIndex = '100000';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+        };
+
+        // Visibility layer
+        const visibilityHandler = () => {
+            const bubbles = document.querySelectorAll('.message');
+            if (document.hidden) {
+                bubbles.forEach(b => {
+                    b.dataset.originalText = b.innerText;
+                    b.innerText = '🔒 Protected';
+                });
+            } else {
+                bubbles.forEach(b => {
+                    if (b.dataset.originalText !== undefined) {
+                        b.innerText = b.dataset.originalText;
+                        delete b.dataset.originalText;
+                    }
+                });
+            }
+        };
+
+        // Attach listeners if not already attached
+        if (!window._screenshotHandlers) {
+            window._screenshotHandlers = { blurHandler, focusHandler, keydownHandler, visibilityHandler };
+            window.addEventListener('blur', blurHandler);
+            window.addEventListener('focus', focusHandler);
+            document.addEventListener('keydown', keydownHandler);
+            document.addEventListener('visibilitychange', visibilityHandler);
+        }
+
+        // Add small status badge
+        const headerInfo = document.querySelector('.chat-header-info');
+        if (headerInfo && !document.getElementById('ss-protected-badge')) {
+            const badge = document.createElement('span');
+            badge.id = 'ss-protected-badge';
+            badge.className = 'e2e-badge';
+            badge.textContent = '📵 SS Protected';
+            headerInfo.appendChild(badge);
+        }
+    },
+
+    destroyScreenshotProtection: () => {
+        if (window._screenshotHandlers) {
+            window.removeEventListener('blur', window._screenshotHandlers.blurHandler);
+            window.removeEventListener('focus', window._screenshotHandlers.focusHandler);
+            document.removeEventListener('keydown', window._screenshotHandlers.keydownHandler);
+            document.removeEventListener('visibilitychange', window._screenshotHandlers.visibilityHandler);
+            delete window._screenshotHandlers;
+        }
+
+        const overlay = document.getElementById('screenshot-overlay');
+        if (overlay) overlay.remove();
+
+        const badge = document.getElementById('ss-protected-badge');
+        if (badge) badge.remove();
+        
+        const chatContainer = document.querySelector('.chat-layout-split');
+        if (chatContainer) {
+            chatContainer.style.userSelect = '';
+            chatContainer.style.webkitUserSelect = '';
+            chatContainer.style.webkitTouchCallout = '';
+        }
     },
 
     toggleMobileMenu: () => {
@@ -1180,7 +1300,30 @@ const UI = {
         });
     },
 
-    loadProfile: () => {
+    loadProfile: async () => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/user/profile`, {
+                headers: authHeaders()
+            });
+            if (res.ok) {
+                const user = await res.json();
+                localStorage.setItem('ghostnet_user', JSON.stringify(user));
+            } else {
+                const toast = document.createElement('div');
+                toast.textContent = 'Failed to load profile from server';
+                toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+        } catch (e) {
+            console.error("Failed to fetch profile from server", e);
+            const toast = document.createElement('div');
+            toast.textContent = 'Network error: could not sync profile';
+            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
         const stored = localStorage.getItem('ghostnet_user');
         if (stored) {
             try {
@@ -1202,7 +1345,7 @@ const UI = {
                     } else {
                         sidebarAvatar.style.display = 'none';
                     }
-                    sidebarAddress.innerText = user.username || user.address || '';
+                    sidebarAddress.innerText = user.displayName || user.username || user.address || '';
                     sidebarId.innerText = user.id || '';
                 }
 
@@ -1211,7 +1354,7 @@ const UI = {
                 const viewPreview = document.getElementById('profile-preview');
                 const viewId = document.getElementById('profile-id-display');
 
-                if (viewAddress) viewAddress.value = user.username || user.address || '';
+                if (viewAddress) viewAddress.value = user.displayName || user.username || user.address || '';
                 if (viewId) viewId.innerText = 'Current ID: ' + (user.id || '');
                 if (viewPreview && user.avatar) {
                     viewPreview.src = user.avatar;
@@ -1254,7 +1397,7 @@ const UI = {
         }
     },
 
-    saveProfile: () => {
+    saveProfile: async () => {
         const addr = document.getElementById('profile-address').value;
         const viewPreview = document.getElementById('profile-preview');
         let avatarData = viewPreview ? viewPreview.getAttribute('src') : '';
@@ -1262,28 +1405,27 @@ const UI = {
             avatarData = '';
         }
 
-        fetch("https://ghostnet-ji-production.up.railway.app/create-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                username: addr,
-                avatar: avatarData
-            })
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
-                } else {
-                    alert("User created!");
-                    localStorage.setItem("ghostnet_user", JSON.stringify(data.user));
-                    UI.loadProfile();
-                }
-            })
-            .catch(err => {
-                console.error("Save profile error:", err);
-                alert("Failed to connect to the server.");
+        try {
+            const res = await fetch(`${BACKEND_URL}/user/profile`, {
+                method: "PATCH",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    displayName: addr,
+                    avatar: avatarData
+                })
             });
+            const data = await res.json();
+            if (data.error) {
+                alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
+            } else {
+                alert("Profile saved!");
+                localStorage.setItem("ghostnet_user", JSON.stringify(data.user || data));
+                UI.loadProfile();
+            }
+        } catch (err) {
+            console.error("Save profile error:", err);
+            alert("Failed to connect to the server.");
+        }
     },
 
     // ═══════════════════════════════════════════════════
