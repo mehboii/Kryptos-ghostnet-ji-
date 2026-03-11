@@ -2011,15 +2011,12 @@ const UI = {
             document.body.appendChild(modal);
         };
 
-        if (window.QRCode) {
-            drawQRAndBuild();
-        } else {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
-            script.onload = drawQRAndBuild;
-            script.onerror = () => buildCard('fallback');
-            document.head.appendChild(script);
+        if (typeof QRCode === 'undefined' && typeof window.QRCode === 'undefined') {
+            buildCard('fallback');
+            return;
         }
+
+        drawQRAndBuild();
 
         function drawQRAndBuild() {
             try {
@@ -2225,22 +2222,27 @@ const UI = {
             cleanup();
         };
 
-        if (window.jsQR) {
-            initCamera();
-        } else {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js';
-            script.onload = () => initCamera();
-            script.onerror = () => {
-                cleanup();
-                const errToast = document.createElement('div');
-                errToast.textContent = 'Failed to load scanner module (offline). Enter Node ID manually.';
-                errToast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
-                document.body.appendChild(errToast);
-                setTimeout(() => errToast.remove(), 4000);
-            };
-            document.head.appendChild(script);
+        if (typeof jsQR === 'undefined' && typeof window.jsQR === 'undefined') {
+            cleanup();
+            const pkInput = document.getElementById('chat-pubkey');
+            if (pkInput) {
+                pkInput.style.transition = 'box-shadow 0.3s ease-out';
+                pkInput.style.boxShadow = '0 0 12px #00f0ff';
+                pkInput.focus();
+                
+                const hint = document.createElement('div');
+                hint.textContent = 'Paste a Node ID or ask for their Ghost Card';
+                hint.style.cssText = 'color:#00f0ff;font-size:12px;margin-top:4px;';
+                pkInput.parentNode.parentNode.appendChild(hint);
+
+                setTimeout(() => {
+                    if (pkInput) pkInput.style.boxShadow = '';
+                }, 3000);
+            }
+            return;
         }
+
+        initCamera();
     }
 };
 
