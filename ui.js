@@ -168,12 +168,33 @@ const UI = {
 
             const newChatBtn = document.querySelector('.chat-new-btn');
             if (newChatBtn && newChatBtn.parentNode) {
+                // Add Scan button
+                const scanBtn = document.createElement('button');
+                scanBtn.className = 'chat-new-btn';
+                scanBtn.title = 'Scan a Ghost Card';
+                scanBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="9" x2="12" y2="9.01"/><line x1="12" y1="15" x2="12" y2="15.01"/><line x1="9" y1="12" x2="9.01" y2="12"/><line x1="15" y1="12" x2="15.01" y2="12"/></svg>';
+                scanBtn.style.marginRight = '8px';
+                scanBtn.style.flexShrink = '0';
+                scanBtn.style.display = 'flex';
+                scanBtn.style.alignItems = 'center';
+                scanBtn.style.justifyContent = 'center';
+                scanBtn.style.color = '#a855f7'; // Purple-tinted icon
+                scanBtn.style.borderColor = 'rgba(168,85,247,0.3)';
+                scanBtn.style.background = 'rgba(168,85,247,0.1)';
+                scanBtn.onclick = () => { if(UI.startQRScanner) UI.startQRScanner(); };
+                newChatBtn.parentNode.insertBefore(scanBtn, newChatBtn);
+
+                // Existing QR button
                 const qrBtn = document.createElement('button');
                 qrBtn.className = 'chat-new-btn';
                 qrBtn.title = 'Ghost Card';
                 qrBtn.innerHTML = '⊞';
                 qrBtn.style.fontSize = '18px';
                 qrBtn.style.marginRight = '8px';
+                qrBtn.style.flexShrink = '0';
+                qrBtn.style.display = 'flex';
+                qrBtn.style.alignItems = 'center';
+                qrBtn.style.justifyContent = 'center';
                 qrBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
                 newChatBtn.parentNode.insertBefore(qrBtn, newChatBtn);
             }
@@ -1722,6 +1743,35 @@ const UI = {
             return;
         }
 
+        if (!document.getElementById('ghost-card-styles')) {
+            const style = document.createElement('style');
+            style.id = 'ghost-card-styles';
+            style.textContent = `
+@keyframes ghostCardEntrance {
+  0%   { transform: perspective(1000px) rotateX(25deg) rotateY(-15deg) scale(0.6); opacity: 0; }
+  60%  { transform: perspective(1000px) rotateX(-5deg) rotateY(3deg) scale(1.03); opacity: 1; }
+  80%  { transform: perspective(1000px) rotateX(2deg) rotateY(-1deg) scale(0.99); }
+  100% { transform: perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1); }
+}
+@keyframes ghostCardExit {
+  0%   { transform: perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1); opacity: 1; }
+  100% { transform: perspective(1000px) rotateX(15deg) rotateY(10deg) scale(0.5); opacity: 0; }
+}
+@keyframes floatCard {
+  0%, 100% { transform: perspective(1000px) rotateX(2deg) rotateY(2deg) translateY(0px); }
+  50%       { transform: perspective(1000px) rotateX(-2deg) rotateY(-2deg) translateY(-8px); }
+}
+@keyframes fadeSlideUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
+}`;
+            document.head.appendChild(style);
+        }
+
         const nodeId = AppState.identity.nodeId;
         const rawDisplayName = AppState.identity.displayName || 'Ghost User';
         const displayName = String(rawDisplayName).slice(0, 32);
@@ -1729,284 +1779,226 @@ const UI = {
         const buildCard = (qrCanvasOrFallbackStr) => {
             const c = document.createElement('canvas');
             c.width = 400;
-            c.height = 600;
+            c.height = 240;
             const ctx = c.getContext('2d');
+            
             if (!ctx) {
-                const fallbackDiv = document.createElement('div');
-                fallbackDiv.id = 'ghostcard-modal';
-                fallbackDiv.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
-                
-                const card = document.createElement('div');
-                card.style.cssText = 'background:#0a0f1e;border:2px solid #00f0ff;border-radius:20px;padding:30px;text-align:center;max-width:90%;color:#fff;';
-                
-                const nameEl = document.createElement('h2');
-                nameEl.textContent = displayName;
-                card.appendChild(nameEl);
-                
-                const idEl = document.createElement('p');
-                idEl.textContent = nodeId;
-                idEl.style.cssText = 'word-break:break-all;font-family:monospace;color:#00f0ff;margin:20px 0;';
-                card.appendChild(idEl);
-                
-                const copyBtn = document.createElement('button');
-                copyBtn.textContent = 'Copy ID';
-                copyBtn.className = 'btn-primary';
-                copyBtn.onclick = () => {
-                    navigator.clipboard.writeText(nodeId);
-                    alert('Copied to clipboard');
-                };
-                card.appendChild(copyBtn);
-                
-                const closeBtn = document.createElement('button');
-                closeBtn.textContent = 'Close';
-                closeBtn.style.cssText = 'margin-top:20px;padding:10px 20px;background:none;border:1px solid #fff;color:#fff;border-radius:12px;cursor:pointer;';
-                closeBtn.onclick = () => fallbackDiv.remove();
-                card.appendChild(closeBtn);
-                
-                fallbackDiv.appendChild(card);
-                document.body.appendChild(fallbackDiv);
+                // Fallback rendering here if needed
                 return;
             }
 
+            // Fill Background
             ctx.fillStyle = '#0a0f1e';
-            ctx.fillRect(0, 0, 400, 600);
+            ctx.fillRect(0, 0, 400, 240);
             
+            const bgGrd = ctx.createLinearGradient(0,0,400,0);
+            bgGrd.addColorStop(0, '#0d1117');
+            bgGrd.addColorStop(1, '#0a1628');
+            ctx.fillStyle = bgGrd;
+            ctx.fillRect(0, 0, 400, 240);
+
+            // Hex grid
             ctx.strokeStyle = 'rgba(0,240,255,0.06)';
             ctx.lineWidth = 0.5;
             ctx.beginPath();
-            for (let x = 0; x < 400; x += 20) {
-                for (let y = 0; y < 600; y += 34.64) {
-                    ctx.moveTo(x + 10, y);
-                    ctx.lineTo(x + 20, y + 17.32);
-                    ctx.lineTo(x + 10, y + 34.64);
-                    ctx.lineTo(x - 10, y + 34.64);
-                    ctx.lineTo(x - 20, y + 17.32);
-                    ctx.lineTo(x - 10, y);
+            for (let x = 0; x <= 400; x += 20) {
+                for (let y = 0; y <= 240; y += 34.64) {
+                    ctx.moveTo(x + 10, y); ctx.lineTo(x + 20, y + 17.32); ctx.lineTo(x + 10, y + 34.64);
+                    ctx.lineTo(x - 10, y + 34.64); ctx.lineTo(x - 20, y + 17.32); ctx.lineTo(x - 10, y);
                 }
             }
             ctx.stroke();
 
-            const grd = ctx.createRadialGradient(200, 300, 0, 200, 300, 200);
+            // Glow 
+            const grd = ctx.createRadialGradient(200, 120, 0, 200, 120, 150);
             grd.addColorStop(0, 'rgba(0,240,255,0.08)');
             grd.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = grd;
-            ctx.fillRect(0, 0, 400, 600);
+            ctx.fillRect(0, 0, 400, 240);
 
+            // Border
             ctx.strokeStyle = '#00f0ff';
             ctx.lineWidth = 1.5;
             ctx.globalAlpha = 0.6;
             ctx.beginPath();
-            ctx.roundRect(8, 8, 384, 584, 20);
+            ctx.roundRect(8, 8, 384, 224, 16);
             ctx.stroke();
             ctx.globalAlpha = 1.0;
 
-            ctx.fillStyle = '#ffffff';
-            ctx.textAlign = 'center';
-            ctx.font = 'bold 22px Arial';
-            ctx.fillText('GHOSTNET', 200, 50);
-
-            ctx.fillStyle = 'rgba(0,240,255,0.7)';
-            ctx.font = '10px Arial';
-            const subtitle = "BY N11X LABS";
-            let sx = 200 - (subtitle.length * 3.5);
-            for (let i = 0; i < subtitle.length; i++) {
-                ctx.fillText(subtitle[i], sx + i * 7, 72);
-            }
-
-            ctx.strokeStyle = 'rgba(0,240,255,0.2)';
+            // Divider vertical
+            ctx.strokeStyle = 'rgba(0,240,255,0.15)';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(40, 88);
-            ctx.lineTo(360, 88);
+            ctx.moveTo(160, 24);
+            ctx.lineTo(160, 216);
             ctx.stroke();
 
-            ctx.fillStyle = '#ffffff';
+            // Left Side: User Info
+            ctx.fillStyle = '#1e293b';
             ctx.beginPath();
-            ctx.roundRect(102, 102, 196, 196, 12);
+            ctx.arc(80, 74, 26, 0, Math.PI * 2);
             ctx.fill();
-
-            if (typeof qrCanvasOrFallbackStr === 'string') {
-                ctx.fillStyle = '#0a0f1e';
-                ctx.font = '12px monospace';
-                ctx.fillText('Share this ID manually', 200, 190);
-                ctx.font = '10px monospace';
-                ctx.fillText(nodeId.slice(0, 16) + '...', 200, 210);
-            } else {
-                ctx.drawImage(qrCanvasOrFallbackStr, 110, 110, 180, 180);
-            }
-
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 26px Arial';
-            ctx.fillText(displayName, 200, 340);
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
 
             ctx.fillStyle = '#00f0ff';
-            ctx.font = '13px monospace';
-            const formattedNodeId = nodeId.slice(0, 8) + '....' + nodeId.slice(-6);
-            ctx.fillText(formattedNodeId, 200, 372);
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(displayName.charAt(0).toUpperCase(), 80, 74);
 
-            ctx.strokeStyle = '#00f0ff';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(100, 390);
-            ctx.lineTo(300, 390);
-            ctx.stroke();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px Arial';
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(displayName.length > 12 ? displayName.slice(0, 10) + '..' : displayName, 80, 134);
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.font = '11px monospace';
+            const formattedNodeId = nodeId.slice(0, 6) + '..' + nodeId.slice(-4);
+            ctx.fillText(formattedNodeId, 80, 158);
 
             ctx.fillStyle = 'rgba(255,255,255,0.4)';
-            ctx.font = '11px Arial';
-            ctx.fillText('Build. Communicate. Operate. Uncensored.', 200, 420);
+            ctx.font = '10px Arial';
+            ctx.fillText('GhostNet', 80, 190);
 
-            ctx.fillStyle = 'rgba(0,240,255,0.5)';
-            ctx.fillText('ghostnet.io', 200, 560);
-
-            ctx.textAlign = 'right';
-            ctx.fillText('v2.0', 380, 580);
-
-            ctx.globalAlpha = 0.03;
+            // Right Side: QR Code
             ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 40px Arial';
-            ctx.textAlign = 'center';
-            ctx.translate(200, 300);
-            ctx.rotate(45 * Math.PI / 180);
-            for (let i = -3; i <= 3; i++) {
-                for (let j = -3; j <= 3; j++) {
-                    ctx.fillText('GHOSTNET', i * 150, j * 100);
-                }
-            }
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.globalAlpha = 1.0;
+            ctx.beginPath();
+            ctx.roundRect(190, 30, 172, 172, 8);
+            ctx.fill();
 
+            if (typeof qrCanvasOrFallbackStr === 'object') {
+                ctx.drawImage(qrCanvasOrFallbackStr, 196, 36, 160, 160);
+            } else {
+                ctx.fillStyle = '#0a0f1e';
+                ctx.font = '10px monospace';
+                ctx.fillText('QR fail', 276, 116);
+            }
+
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = '10px Arial';
+            ctx.fillText('Scan to connect', 276, 220);
+
+            // Set up Modal with 3D animation
             const modal = document.createElement('div');
             modal.id = 'ghostcard-modal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.95);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
+
+            const cardWrapper = document.createElement('div');
+            cardWrapper.style.cssText = 'position:relative; transform-style:preserve-3d; will-change:transform; animation: ghostCardEntrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;';
             
-            c.style.cssText = 'max-width:90vw;max-height:70vh;border-radius:20px;box-shadow:0 0 40px rgba(0,240,255,0.2);transition:transform 0.1s ease-out;transform-style:preserve-3d;will-change:transform;';
-            
-            // 3D Tilt Effect
-            modal.addEventListener('mousemove', (e) => {
-                const rect = c.getBoundingClientRect();
-                const x = e.clientX - rect.left - (rect.width / 2);
-                const y = e.clientY - rect.top - (rect.height / 2);
-                
-                // Calculate rotation based on cursor position relative to card center
-                const rotateX = -(y / (rect.height / 2)) * 15; // Max 15 degrees tilt
-                const rotateY = (x / (rect.width / 2)) * 15;
-                
-                c.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02, 1.02, 1.02)`;
+            c.style.cssText = 'width:400px;max-width:90vw;height:auto;border-radius:16px;display:block;box-shadow: 0 25px 60px rgba(0,240,255,0.25), 0 0 120px rgba(0,240,255,0.08);';
+
+            const shimmer = document.createElement('div');
+            shimmer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 100%);pointer-events:none;border-radius:16px;opacity:0;overflow:hidden;';
+
+            cardWrapper.appendChild(c);
+            cardWrapper.appendChild(shimmer);
+            modal.appendChild(cardWrapper);
+
+            // Parallax interactions
+            const mouseMoveParallax = (e) => {
+                const rect = cardWrapper.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width/2;
+                const y = e.clientY - rect.top - rect.height/2;
+                const rotateX = -(y / (rect.height/2)) * 12;
+                const rotateY = (x / (rect.width/2)) * 12;
+                cardWrapper.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+            };
+            const deviceParallax = (e) => {
+                if (!e.gamma || !e.beta) return;
+                const gamma = Math.max(-30, Math.min(30, e.gamma)); 
+                const beta = Math.max(-30, Math.min(30, e.beta - 45));
+                cardWrapper.style.transform = `rotateX(${-(beta/30)*12}deg) rotateY(${(gamma/30)*12}deg)`;
+            };
+
+            cardWrapper.addEventListener('animationend', (ev) => {
+                if (ev.animationName === 'ghostCardEntrance') {
+                    cardWrapper.style.animation = 'floatCard 4s ease-in-out infinite';
+                    shimmer.style.animation = 'shimmer 4s ease-in-out infinite';
+                    shimmer.style.opacity = '1';
+                    
+                    if (window.DeviceOrientationEvent && 'ontouchstart' in window) {
+                        window.addEventListener('deviceorientation', deviceParallax);
+                    } else {
+                        cardWrapper.addEventListener('mousemove', mouseMoveParallax);
+                        cardWrapper.addEventListener('mouseleave', () => {
+                            cardWrapper.style.transition = 'transform 0.5s ease-out';
+                            cardWrapper.style.transform = 'rotateX(0deg) rotateY(0deg)';
+                        });
+                        cardWrapper.addEventListener('mouseenter', () => {
+                            cardWrapper.style.transition = 'none';
+                        });
+                    }
+                }
             });
 
-            // Reset smoothly on mouse leave
-            modal.addEventListener('mouseleave', () => {
-                c.style.transition = 'transform 0.5s ease-out';
-                c.style.transform = 'rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)';
-            });
-            
-            // Re-enable snappy transition when entering again
-            modal.addEventListener('mouseenter', () => {
-                c.style.transition = 'transform 0.1s ease-out';
-            });
-
-            // Support device orientation (parallax) for mobile
-            if (window.DeviceOrientationEvent) {
-                window.addEventListener('deviceorientation', (e) => {
-                    if (!e.gamma || !e.beta) return;
-                    // Limit extreme angles
-                    const gamma = Math.max(-30, Math.min(30, e.gamma)); 
-                    const beta = Math.max(-30, Math.min(30, e.beta - 45)); // Offset 45deg typical holding angle
-
-                    const rotateY = (gamma / 30) * 15;
-                    const rotateX = -(beta / 30) * 15;
-
-                    c.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
-                });
-            }
-
-            modal.appendChild(c);
-
+            // Action Buttons
             const btnContainer = document.createElement('div');
-            btnContainer.style.cssText = 'display:flex;gap:15px;margin-top:25px;transform:translateZ(30px);';
+            btnContainer.style.cssText = 'display:flex;gap:12px;margin-top:40px;opacity:0;animation: fadeSlideUp 0.4s 0.3s ease both;';
 
             const saveBtn = document.createElement('button');
-            saveBtn.className = 'btn-primary';
             saveBtn.textContent = 'Save Card';
+            saveBtn.style.cssText = 'background:#00f0ff;color:#0a0f1e;border:none;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
             saveBtn.onclick = () => {
                 c.toBlob(blob => {
                     const objUrl = URL.createObjectURL(blob);
                     const a = document.createElement('a');
                     const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
-                    a.download = `ghostcard-${safeName}-${Date.now()}.png`;
+                    a.download = `ghostcard-${safeName}.png`;
                     a.href = objUrl;
                     a.click();
                     URL.revokeObjectURL(objUrl);
-                    
-                    const toast = document.createElement('div');
-                    toast.textContent = 'Ghost Card saved to your device';
-                    toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
-                    document.body.appendChild(toast);
-                    setTimeout(() => toast.remove(), 3000);
-                }, 'image/png', 1.0);
+                }, 'image/png');
             };
-            btnContainer.appendChild(saveBtn);
 
             const shareBtn = document.createElement('button');
-            shareBtn.className = 'btn-primary';
-            shareBtn.textContent = 'Share Card';
+            shareBtn.textContent = 'Share';
+            shareBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid #00f0ff;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
             shareBtn.onclick = () => {
                 if (navigator.canShare) {
                     c.toBlob(blob => {
                         const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
                         const file = new File([blob], `ghostcard-${safeName}.png`, { type: 'image/png' });
-                        if (navigator.canShare({ files: [file] })) {
-                            navigator.share({
-                                title: 'Ghost Card',
-                                text: 'Add me on GhostNet',
-                                files: [file]
-                            }).catch(console.error);
-                            return;
-                        }
-                        fallbackShare();
-                    }, 'image/png', 1.0);
-                } else {
-                    fallbackShare();
-                }
-
-                function fallbackShare() {
-                    if (navigator.clipboard && navigator.clipboard.writeText) {
-                        navigator.clipboard.writeText(`Add me on GhostNet — Node ID: ${nodeId}`).then(() => {
-                            const toast = document.createElement('div');
-                            toast.textContent = 'Node ID copied — paste it to share';
-                            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
-                            document.body.appendChild(toast);
-                            setTimeout(() => toast.remove(), 3000);
-                        }).catch(() => manualFallback());
-                    } else {
-                        manualFallback();
-                    }
-                }
-
-                function manualFallback() {
-                    const box = document.createElement('textarea');
-                    box.value = nodeId;
-                    box.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100001;padding:20px;width:80%;word-break:break-all;';
-                    document.body.appendChild(box);
-                    box.select();
-                    const btn = document.createElement('button');
-                    btn.textContent = 'Close Box';
-                    btn.style.cssText = 'position:fixed;top:60%;left:50%;transform:translateX(-50%);z-index:100001;';
-                    btn.onclick = () => { box.remove(); btn.remove(); };
-                    document.body.appendChild(btn);
+                        if (navigator.canShare({ files: [file] })) navigator.share({ files: [file] });
+                    });
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(nodeId);
+                    alert("Node ID copied to share.");
                 }
             };
-            btnContainer.appendChild(shareBtn);
 
             const closeBtn = document.createElement('button');
-            closeBtn.textContent = 'Close';
-            closeBtn.style.cssText = 'padding:10px 25px;background:none;border:1px solid #00f0ff;color:#00f0ff;border-radius:12px;cursor:pointer;font-weight:bold;';
-            closeBtn.onclick = () => {
-                ctx.clearRect(0,0,400,600);
-                modal.remove();
-            };
-            btnContainer.appendChild(closeBtn);
+            closeBtn.textContent = '✕ Close';
+            closeBtn.style.cssText = 'background:#1e293b;color:#94a3b8;border:none;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
 
+            const triggerClose = () => {
+                // Remove listeners to avoid leaks
+                cardWrapper.removeEventListener('mousemove', mouseMoveParallax);
+                if (window.DeviceOrientationEvent && 'ontouchstart' in window) {
+                    window.removeEventListener('deviceorientation', deviceParallax);
+                }
+                
+                // Stop floats and start exit
+                cardWrapper.style.animation = 'ghostCardExit 0.3s ease forwards';
+                shimmer.style.animation = 'none';
+                shimmer.style.opacity = '0';
+                btnContainer.style.opacity = '0';
+                
+                setTimeout(() => modal.remove(), 300);
+            };
+
+            closeBtn.onclick = triggerClose;
+            
+            // Close on backdrop click (not inner elements)
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) triggerClose();
+            });
+
+            btnContainer.appendChild(saveBtn);
+            btnContainer.appendChild(shareBtn);
+            btnContainer.appendChild(closeBtn);
             modal.appendChild(btnContainer);
             document.body.appendChild(modal);
         };
