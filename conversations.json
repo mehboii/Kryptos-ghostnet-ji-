@@ -1,18 +1,21 @@
-[
-  {
-    "id": "convo_1771651600801_anddg",
-    "participants": [
-      "user_1771649700367_93",
-      "alice123"
-    ],
-    "contactName": "Alice",
-    "lastMessage": {
-      "body": "This message should persist!",
-      "from": "user_1771649700367_93",
-      "to": "alice123",
-      "ts": 1771651610259,
-      "type": "MSG"
-    },
-    "updated": 1771651610262
-  }
-]
+{
+  "version": 1,
+  "conversations": [
+    {
+      "id": "convo_a3f8c2e1b4d970621c9e0fa7b83d52c0",
+      "participants": [
+        "usr_9b2e4f1a8c3d706254e0b1a9f7c83d51",
+        "usr_1c7d3e9b2f4a806351d0c8e6a5b92f47"
+      ],
+      "contactName": "Alice",
+      "lastMessage": {
+        "preview": "This message should p…",
+        "from": "usr_9b2e4f1a8c3d706254e0b1a9f7c83d51",
+        "ts": "2026-03-07T14:26:50.259Z",
+        "type": "MSG"
+      },
+      "updated": "2026-03-07T14:26:50.262Z",
+      "hmac": "sha256:e3b0c44298fc1c149afb4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}
