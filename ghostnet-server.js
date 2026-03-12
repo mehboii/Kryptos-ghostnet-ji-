@@ -1,11 +1,22 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
+import rateLimit from 'express-rate-limit';
 import authRouter from './auth/auth.routes.js';
+import { requireAuth } from './auth/auth.middleware.js';
+import {
+    findById as findAuthUserById,
+    findByShortCode,
+    isValidShortCode,
+    generateUniqueShortCode,
+    updateUserFields,
+    sanitise as sanitiseAuthUser
+} from './auth/auth.model.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,6 +44,145 @@ app.use((req, res, next) => {
 
 // --- AUTH ROUTES (bcrypt + JWT) ---
 app.use('/auth', authRouter);
+
+// ═══════════════════════════════════════════════════
+// GHOSTCODE SHORT CODE ENDPOINTS (GN-XXXX)
+// ═══════════════════════════════════════════════════
+
+// Rate limiter for /resolve endpoint — max 10 requests per minute per IP
+const resolveLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many lookup attempts. Please wait a moment.' },
+});
+
+/**
+ * GET /user/shortcode — Returns current user's GhostCode (authenticated)
+ * Accepts optional query params: nodeId, displayName to associate with the auth user
+ */
+app.get('/user/shortcode', requireAuth, (req, res) => {
+    try {
+        const user = findAuthUserById(req.userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found.' });
+        }
+
+        // Associate nodeId and displayName if provided
+        const updates = {};
+        if (req.query.nodeId && !user.nodeId) {
+            updates.nodeId = req.query.nodeId;
+        }
+        if (req.query.displayName && !user.displayName) {
+            updates.displayName = req.query.displayName;
+        }
+
+        // If user has no shortCode yet, generate one
+        if (!user.shortCode) {
+            updates.shortCode = generateUniqueShortCode();
+        }
+
+        // Apply any updates
+        if (Object.keys(updates).length > 0) {
+            updateUserFields(req.userId, updates);
+            Object.assign(user, updates);
+        }
+
+        res.json({
+            shortCode: user.shortCode.toUpperCase(),
+            nodeId: user.nodeId || null,
+            displayName: user.displayName || user.email.split('@')[0] || null,
+        });
+    } catch (err) {
+        console.error('GET /user/shortcode error:', err.message);
+        res.status(500).json({ error: 'Internal server error.' });
+    }
+});
+
+/**
+ * GET /resolve/:shortCode — PUBLIC endpoint to resolve a GhostCode
+ * Returns ONLY { displayName, nodeId, shortCode } — never sensitive fields
+ */
+app.get('/resolve/:shortCode', resolveLimiter, (req, res) => {
+    try {
+        const { shortCode } = req.params;
+        const normalized = shortCode.toUpperCase();
+
+        // Strict regex validation — blocks injection/script attempts
+        if (!isValidShortCode(normalized)) {
+            return res.status(400).json({ error: 'Invalid GhostCode format. Expected GN-XXXX.' });
+        }
+
+        const user = findByShortCode(normalized);
+        if (!user) {
+            return res.status(404).json({ error: 'Code not found' });
+        }
+
+        // Return ONLY safe fields — never password, email, JWT, etc.
+        res.json({
+            displayName: user.displayName || user.email.split('@')[0] || 'GhostUser',
+            nodeId: user.nodeId || null,
+            shortCode: user.shortCode.toUpperCase(),
+        });
+    } catch (err) {
+        console.error('GET /resolve error:', err.message);
+        res.status(500).json({ error: 'Internal server error.' });
+    }
+});
+
+/**
+ * PATCH /user/shortcode — Let users customize their GhostCode (authenticated)
+ * Limited to once per 30 days.
+ */
+app.patch('/user/shortcode', requireAuth, (req, res) => {
+    try {
+        const user = findAuthUserById(req.userId);
+        if (!user) {
+            return res.status(404).json({ error: 'User not found.' });
+        }
+
+        const { shortCode } = req.body;
+        if (!shortCode) {
+            return res.status(400).json({ error: 'shortCode is required.' });
+        }
+
+        const normalized = shortCode.toUpperCase();
+
+        // Validate format
+        if (!isValidShortCode(normalized)) {
+            return res.status(400).json({ error: 'Invalid GhostCode format. Must match GN-[A-Z2-9]{4-6}.' });
+        }
+
+        // Check 30-day cooldown
+        if (user.shortCodeChangedAt) {
+            const daysSinceChange = (Date.now() - new Date(user.shortCodeChangedAt).getTime()) / (1000 * 60 * 60 * 24);
+            if (daysSinceChange < 30) {
+                const daysLeft = Math.ceil(30 - daysSinceChange);
+                return res.status(429).json({
+                    error: `You can change your GhostCode again in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`
+                });
+            }
+        }
+
+        // Check uniqueness
+        const existing = findByShortCode(normalized);
+        if (existing && existing.id !== user.id) {
+            return res.status(409).json({ error: 'Code already taken' });
+        }
+
+        // Update
+        updateUserFields(req.userId, {
+            shortCode: normalized,
+            shortCodeChangedAt: new Date().toISOString(),
+        });
+
+        res.json({ shortCode: normalized });
+    } catch (err) {
+        console.error('PATCH /user/shortcode error:', err.message);
+        res.status(500).json({ error: 'Internal server error.' });
+    }
+});
 
 // Initialize messages store
 const DB_FILE = path.join(__dirname, 'messages.json');

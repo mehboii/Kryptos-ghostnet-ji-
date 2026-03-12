@@ -15,6 +15,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +52,59 @@ function generateId() {
 }
 
 // ---------------------------------------------------------------------------
+// GhostCode Short Code Generation (GN-XXXX)
+// ---------------------------------------------------------------------------
+const SHORTCODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 chars, no 0/O/I/1
+const SHORTCODE_REGEX = /^GN-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4,6}$/;
+
+/**
+ * Generate a unique GhostCode short code (GN-XXXX format).
+ * Uses crypto.randomBytes for secure generation.
+ * @param {number} length - Code length (4-6), default 4
+ * @returns {string} e.g. "GN-X7K2"
+ */
+export function generateShortCode(length = 4) {
+    const bytes = crypto.randomBytes(length);
+    let code = 'GN-';
+    for (let i = 0; i < length; i++) {
+        code += SHORTCODE_CHARSET[bytes[i] % SHORTCODE_CHARSET.length];
+    }
+    return code;
+}
+
+/**
+ * Generate a unique short code with collision checking.
+ * Retries up to 10 times if a collision is found.
+ * @returns {string} A unique GhostCode
+ */
+export function generateUniqueShortCode() {
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const code = generateShortCode();
+        if (!findByShortCode(code)) {
+            return code;
+        }
+    }
+    // Fallback to 5-char code if 4-char keeps colliding
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const code = generateShortCode(5);
+        if (!findByShortCode(code)) {
+            return code;
+        }
+    }
+    // Last resort: 6-char code
+    return generateShortCode(6);
+}
+
+/**
+ * Validate a short code format.
+ * @param {string} code
+ * @returns {boolean}
+ */
+export function isValidShortCode(code) {
+    return SHORTCODE_REGEX.test(code);
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
@@ -62,6 +116,16 @@ function generateId() {
 export function findByEmail(email) {
     const normalised = email.trim().toLowerCase();
     return authUsers.find(u => u.email === normalised);
+}
+
+/**
+ * Find a user by their GhostCode short code.
+ * @param {string} shortCode e.g. "GN-X7K2"
+ * @returns {object|undefined}
+ */
+export function findByShortCode(shortCode) {
+    const upper = shortCode.toUpperCase();
+    return authUsers.find(u => u.shortCode === upper);
 }
 
 /**
@@ -82,10 +146,14 @@ export function createUser({ email, password_hash }) {
     // Generate 6-digit verification code
     const verifyCode = String(Math.floor(100000 + Math.random() * 900000));
 
+    // Generate unique GhostCode short code
+    const shortCode = generateUniqueShortCode();
+
     const user = {
         id: generateId(),
         email: email.trim().toLowerCase(),
         password_hash,
+        shortCode,
         verified: false,
         verify_code: verifyCode,
         verify_code_expires: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 min
@@ -109,6 +177,20 @@ export function sanitise(user) {
     if (!user) return null;
     const { password_hash, reset_token, reset_token_expires, verify_code, verify_code_expires, ...safe } = user;
     return safe;
+}
+
+/**
+ * Update arbitrary fields on a user record.
+ * @param {string} userId
+ * @param {object} fields - key/value pairs to update
+ * @returns {object|null} Updated user (sanitised) or null if not found
+ */
+export function updateUserFields(userId, fields) {
+    const user = authUsers.find(u => u.id === userId);
+    if (!user) return null;
+    Object.assign(user, fields);
+    _persist();
+    return sanitise(user);
 }
 
 /**

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -290,8 +290,9 @@
                                 <circle cx="11" cy="11" r="8" />
                                 <line x1="21" y1="21" x2="16.65" y2="16.65" />
                             </svg>
-                            <input type="text" placeholder="Search conversations..." class="chat-search-input">
+                            <input type="text" id="chat-search-input" placeholder="Search conversations or GN-XXXX..." class="chat-search-input">
                         </div>
+                        <div id="ghostcode-search-result" style="display:none;"></div>
                         <div class="chat-user-list" id="chat-user-list">
                             <!-- Populated dynamically via JS -->
                             <div class="chat-user-row active" onclick="UI.selectChat('mock_1')">
@@ -997,6 +998,69 @@
                                     </span>
                                 </div>
 
+                                <!-- GHOSTCODE BADGE SECTION -->
+                                <div id="ghostcode-section" style="margin: 20px 0; text-align: center;">
+                                    <div style="color: var(--text-muted); font-size: 0.72rem; font-weight: 600; letter-spacing: 1px; margin-bottom: 8px;">
+                                        Your GhostCode
+                                    </div>
+                                    <div style="display: flex; align-items: center; justify-content: center; gap: 10px;">
+                                        <div id="ghostcode-badge" style="
+                                            background: #0d1117;
+                                            border: 1.5px solid #00f0ff;
+                                            border-radius: 999px;
+                                            padding: 8px 16px;
+                                            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+                                            font-size: 1.25rem;
+                                            font-weight: 700;
+                                            color: #00f0ff;
+                                            letter-spacing: 2px;
+                                            text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+                                            box-shadow: 0 0 16px rgba(0, 240, 255, 0.15), inset 0 0 12px rgba(0, 240, 255, 0.05);
+                                            user-select: all;
+                                        ">
+                                            Loading...
+                                        </div>
+                                        <button id="ghostcode-copy-btn" onclick="UI.copyGhostCode()" title="Copy GhostCode" style="
+                                            background: rgba(0, 240, 255, 0.1);
+                                            border: 1px solid rgba(0, 240, 255, 0.3);
+                                            border-radius: 8px;
+                                            padding: 6px 8px;
+                                            cursor: pointer;
+                                            color: #00f0ff;
+                                            display: flex;
+                                            align-items: center;
+                                            transition: all 0.2s;
+                                        ">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                            </svg>
+                                        </button>
+                                        <button id="ghostcode-share-btn" onclick="UI.shareGhostCode()" title="Share GhostCode" style="
+                                            background: rgba(0, 240, 255, 0.1);
+                                            border: 1px solid rgba(0, 240, 255, 0.3);
+                                            border-radius: 8px;
+                                            padding: 6px 8px;
+                                            cursor: pointer;
+                                            color: #00f0ff;
+                                            display: flex;
+                                            align-items: center;
+                                            transition: all 0.2s;
+                                        ">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <circle cx="18" cy="5" r="3"></circle>
+                                                <circle cx="6" cy="12" r="3"></circle>
+                                                <circle cx="18" cy="19" r="3"></circle>
+                                                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                                                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <div style="color: var(--text-muted); font-size: 0.68rem; margin-top: 8px;">
+                                        Share this code so others can find you
+                                    </div>
+                                </div>
+
                                 <div class="auth-profile-box">
                                     <h3
                                         style="font-family:var(--font-heading); font-size:1rem; font-weight:800; color:var(--text-primary); margin-bottom:16px; display:flex; align-items:center; gap:8px;">
@@ -1669,6 +1733,16 @@
             <span>Profile</span>
         </button>
     </nav>
+
+    <!-- Toast Notification Container -->
+    <div id="ghostnet-toast" style="
+        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+        background: #0d1117; border: 1px solid #00f0ff; border-radius: 12px;
+        padding: 10px 20px; color: #00f0ff; font-size: 0.85rem; font-weight: 600;
+        box-shadow: 0 4px 20px rgba(0, 240, 255, 0.3); z-index: 10000;
+        opacity: 0; pointer-events: none; transition: opacity 0.3s, transform 0.3s;
+        font-family: 'SF Mono', 'Fira Code', monospace;
+    "></div>
 
     <script src="ui.js"></script>
     <script>lucide.createIcons();</script>

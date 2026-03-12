@@ -10,8 +10,41 @@ window.AppState = {
     peers: [],
     identity: null,
     messages: [],
-    files: []
+    files: [],
+    ghostCode: null
 };
+
+// --- CONSTANTS ---
+const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+
+/**
+ * Get auth headers for authenticated API calls.
+ * Reads the JWT token from localStorage.
+ */
+function authHeaders() {
+    const token = localStorage.getItem('ghostnet_jwt') || localStorage.getItem('ghostnet_token') || '';
+    return {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+    };
+}
+
+/**
+ * Show a toast notification for a given duration.
+ */
+function showToast(message, durationMs = 2000) {
+    const el = document.getElementById('ghostnet-toast');
+    if (!el) return;
+    el.textContent = message;
+    el.style.opacity = '1';
+    el.style.transform = 'translateX(-50%) translateY(0)';
+    el.style.pointerEvents = 'auto';
+    setTimeout(() => {
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(-50%) translateY(20px)';
+        el.style.pointerEvents = 'none';
+    }, durationMs);
+}
 
 // --- MESH VISUALIZATION (CANVAS) ---
 class MeshNetwork {
@@ -150,6 +183,9 @@ const UI = {
 
         // 7. Init Vault
         UI.initVault();
+
+        // 8. Init GhostCode search
+        UI.initChatSearch();
     },
 
     navigate: (target) => {
@@ -372,27 +408,200 @@ const UI = {
     openNewChat: () => {
         const modal = document.createElement('div');
         modal.className = "modal-overlay";
-        modal.innerHTML = `
-            <div class="modal-card">
-                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-                <div class="modal-title">New Encrypted Chat</div>
-                
-                <div class="input-group">
-                    <label class="input-label">CONTACT NAME</label>
-                    <input type="text" id="chat-name" class="modal-input" placeholder="e.g. Alice">
-                </div>
-                
-                <div class="input-group">
-                    <label class="input-label">NODE ID / PUBLIC KEY</label>
-                    <input type="text" id="chat-pubkey" class="modal-input" placeholder="0x...">
-                </div>
 
-                <div id="chat-new-error" style="color:#ef4444; font-size:0.8rem; margin-top:8px; min-height:1.2em;"></div>
+        const card = document.createElement('div');
+        card.className = 'modal-card';
 
-                <button class="btn-primary" id="chat-start-btn" onclick="UI.submitNewChat()">START SESSION</button>
-            </div>
-        `;
+        // Close button
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'modal-close';
+        closeBtn.textContent = '×';
+        closeBtn.addEventListener('click', () => modal.remove());
+        card.appendChild(closeBtn);
+
+        // Title
+        const title = document.createElement('div');
+        title.className = 'modal-title';
+        title.textContent = 'New Encrypted Chat';
+        card.appendChild(title);
+
+        // Contact name group
+        const nameGroup = document.createElement('div');
+        nameGroup.className = 'input-group';
+        const nameLabel = document.createElement('label');
+        nameLabel.className = 'input-label';
+        nameLabel.textContent = 'CONTACT NAME';
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.id = 'chat-name';
+        nameInput.className = 'modal-input';
+        nameInput.placeholder = 'e.g. Alice';
+        nameGroup.appendChild(nameLabel);
+        nameGroup.appendChild(nameInput);
+        card.appendChild(nameGroup);
+
+        // Node ID / GhostCode group
+        const keyGroup = document.createElement('div');
+        keyGroup.className = 'input-group';
+        const keyLabel = document.createElement('label');
+        keyLabel.className = 'input-label';
+        keyLabel.textContent = 'NODE ID / PUBLIC KEY';
+        const keyInputWrap = document.createElement('div');
+        keyInputWrap.style.cssText = 'position:relative;display:flex;align-items:center;';
+        const keyInput = document.createElement('input');
+        keyInput.type = 'text';
+        keyInput.id = 'chat-pubkey';
+        keyInput.className = 'modal-input';
+        keyInput.placeholder = '0x... or GN-XXXX';
+        keyInput.style.paddingRight = '36px';
+        const keySpinner = document.createElement('div');
+        keySpinner.id = 'ghostcode-resolve-spinner';
+        keySpinner.style.cssText = 'display:none;position:absolute;right:10px;width:16px;height:16px;border:2px solid rgba(0,240,255,0.3);border-top-color:#00f0ff;border-radius:50%;animation:spin 0.6s linear infinite;';
+        keyInputWrap.appendChild(keyInput);
+        keyInputWrap.appendChild(keySpinner);
+        keyGroup.appendChild(keyLabel);
+        keyGroup.appendChild(keyInputWrap);
+        card.appendChild(keyGroup);
+
+        // Inline resolve feedback
+        const resolveFeedback = document.createElement('div');
+        resolveFeedback.id = 'ghostcode-resolve-feedback';
+        resolveFeedback.style.cssText = 'font-size:0.8rem;margin-top:6px;min-height:1.2em;';
+        card.appendChild(resolveFeedback);
+
+        // Error area 
+        const errEl = document.createElement('div');
+        errEl.id = 'chat-new-error';
+        errEl.style.cssText = 'color:#ef4444;font-size:0.8rem;margin-top:8px;min-height:1.2em;';
+        card.appendChild(errEl);
+
+        // Start button
+        const startBtn = document.createElement('button');
+        startBtn.className = 'btn-primary';
+        startBtn.id = 'chat-start-btn';
+        startBtn.textContent = 'START SESSION';
+        startBtn.addEventListener('click', () => UI.submitNewChat());
+        card.appendChild(startBtn);
+
+        modal.appendChild(card);
         document.body.appendChild(modal);
+
+        // --- GhostCode auto-resolve ---
+        const GHOSTCODE_PATTERN = /^GN-[A-Z0-9]{4,6}$/i;
+        let resolveTimeout = null;
+
+        keyInput.addEventListener('input', () => {
+            const val = keyInput.value.trim();
+            // Clear previous feedback
+            resolveFeedback.textContent = '';
+            resolveFeedback.style.color = '';
+
+            // If it looks like a GhostCode, set up resolve
+            if (val.match(/^GN-/i)) {
+                clearTimeout(resolveTimeout);
+                resolveTimeout = setTimeout(() => {
+                    if (GHOSTCODE_PATTERN.test(val)) {
+                        UI.resolveGhostCode(val.toUpperCase(), keyInput, nameInput, resolveFeedback, keySpinner);
+                    }
+                }, 600);
+            }
+        });
+
+        keyInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                const val = keyInput.value.trim();
+                if (GHOSTCODE_PATTERN.test(val)) {
+                    e.preventDefault();
+                    clearTimeout(resolveTimeout);
+                    UI.resolveGhostCode(val.toUpperCase(), keyInput, nameInput, resolveFeedback, keySpinner);
+                }
+            }
+        });
+    },
+
+    /**
+     * Resolve a GhostCode via the public /resolve endpoint.
+     */
+    resolveGhostCode: async (code, keyInput, nameInput, feedbackEl, spinnerEl) => {
+        // Show spinner
+        if (spinnerEl) spinnerEl.style.display = 'block';
+        if (feedbackEl) {
+            feedbackEl.textContent = '';
+            feedbackEl.style.color = '';
+        }
+
+        try {
+            const res = await fetch(`${BACKEND_URL}/resolve/${encodeURIComponent(code)}`);
+
+            if (spinnerEl) spinnerEl.style.display = 'none';
+
+            if (res.status === 429) {
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'Too many attempts — wait a moment';
+                    feedbackEl.style.color = '#f59e0b';
+                }
+                return;
+            }
+
+            if (res.status === 404) {
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'GhostCode not found — check and try again';
+                    feedbackEl.style.color = '#ef4444';
+                }
+                return;
+            }
+
+            if (!res.ok) {
+                if (feedbackEl) {
+                    feedbackEl.textContent = 'Lookup failed — try again';
+                    feedbackEl.style.color = '#ef4444';
+                }
+                return;
+            }
+
+            const data = await res.json();
+
+            // Auto-fill nodeId
+            if (data.nodeId) {
+                keyInput.value = data.nodeId;
+                keyInput.readOnly = true;
+                keyInput.style.opacity = '0.8';
+
+                // Add edit/clear button
+                const editBtn = document.createElement('button');
+                editBtn.textContent = '✕';
+                editBtn.title = 'Clear and re-enter manually';
+                editBtn.style.cssText = 'position:absolute;right:10px;background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:4px;';
+                editBtn.addEventListener('click', () => {
+                    keyInput.value = '';
+                    keyInput.readOnly = false;
+                    keyInput.style.opacity = '1';
+                    editBtn.remove();
+                    if (feedbackEl) feedbackEl.textContent = '';
+                });
+                keyInput.parentElement.appendChild(editBtn);
+                // Remove spinner to make room for edit button
+                if (spinnerEl) spinnerEl.style.display = 'none';
+            }
+
+            // Auto-fill name if empty
+            if (data.displayName && !nameInput.value.trim()) {
+                nameInput.value = data.displayName;
+            }
+
+            // Show success feedback
+            if (feedbackEl) {
+                feedbackEl.style.color = '#10b981';
+                feedbackEl.textContent = '✓ Found: ' + (data.displayName || code);
+            }
+
+        } catch (e) {
+            if (spinnerEl) spinnerEl.style.display = 'none';
+            if (feedbackEl) {
+                feedbackEl.textContent = 'Could not reach server — try again';
+                feedbackEl.style.color = '#ef4444';
+            }
+        }
     },
 
     submitNewChat: async () => {
@@ -978,9 +1187,12 @@ const UI = {
                     viewPreview.style.display = 'block';
                 }
 
-                // Load conversations for this user
+        // Load conversations for this user
                 const userId = (AppState && AppState.identity) ? (AppState.identity.nodeId || AppState.identity.id) : user.id;
                 UI.loadConversations(userId);
+
+                // Fetch and display GhostCode
+                UI.fetchGhostCode();
             } catch (e) {
                 console.error("Error parsing user profile", e);
                 if (AppState && AppState.identity) {
@@ -1260,45 +1472,225 @@ const UI = {
             const modal = document.createElement('div');
             modal.className = 'vault-verify-overlay';
             modal.onclick = (e) => { if (e.target === modal) modal.remove(); };
-            modal.innerHTML = `
-                <div class="vault-verify-card">
-                    <h3 style="font-family:var(--font-heading); margin-bottom:16px; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
-                        <i data-lucide="shield-check" style="width:20px; color:var(--accent);"></i>
-                        Integrity Verification
-                    </h3>
-                    <div class="vault-verify-row">
-                        <span class="vault-verify-label">File</span>
-                        <span class="vault-verify-value">${result.fileName}</span>
-                    </div>
-                    <div class="vault-verify-row">
-                        <span class="vault-verify-label">Disk Integrity</span>
-                        <span class="vault-verify-value ${result.diskIntegrity ? 'pass' : 'fail'}">
-                            ${result.diskIntegrity ? ' PASS' : ' TAMPERED'}
-                        </span>
-                    </div>
-                    <div class="vault-verify-row">
-                        <span class="vault-verify-label">Chain Verified</span>
-                        <span class="vault-verify-value ${result.chainVerified ? 'pass' : 'fail'}">
-                            ${result.chainVerified ? ' ON-CHAIN' : ' PENDING'}
-                        </span>
-                    </div>
-                    <div class="vault-verify-row">
-                        <span class="vault-verify-label">SHA-256 Hash</span>
-                        <span class="vault-verify-value" style="font-size:0.65rem;">${result.storedHash ? result.storedHash.substring(0, 16) + '...' : 'N/A'}</span>
-                    </div>
-                    ${result.txHash ? `
-                    <div class="vault-verify-row">
-                        <span class="vault-verify-label">TX Hash</span>
-                        <span class="vault-verify-value" style="font-size:0.65rem;">${result.txHash.substring(0, 16)}...</span>
-                    </div>` : ''}
-                    <button class="btn-primary" onclick="this.closest('.vault-verify-overlay').remove()" style="margin-top:16px;">Close</button>
-                </div>
-            `;
+            const cardEl = document.createElement('div');
+            cardEl.className = 'vault-verify-card';
+
+            const h3 = document.createElement('h3');
+            h3.style.cssText = "font-family:var(--font-heading); margin-bottom:16px; color:var(--text-primary); display:flex; align-items:center; gap:8px;";
+            h3.textContent = 'Integrity Verification';
+            cardEl.appendChild(h3);
+
+            const rows = [
+                { label: 'File', value: result.fileName, cls: '' },
+                { label: 'Disk Integrity', value: result.diskIntegrity ? '✓ PASS' : '✕ TAMPERED', cls: result.diskIntegrity ? 'pass' : 'fail' },
+                { label: 'Chain Verified', value: result.chainVerified ? '✓ ON-CHAIN' : '⏳ PENDING', cls: result.chainVerified ? 'pass' : 'fail' },
+                { label: 'SHA-256 Hash', value: result.storedHash ? result.storedHash.substring(0, 16) + '...' : 'N/A', cls: '', style: 'font-size:0.65rem;' },
+            ];
+            if (result.txHash) {
+                rows.push({ label: 'TX Hash', value: result.txHash.substring(0, 16) + '...', cls: '', style: 'font-size:0.65rem;' });
+            }
+
+            rows.forEach(r => {
+                const row = document.createElement('div');
+                row.className = 'vault-verify-row';
+                const lbl = document.createElement('span');
+                lbl.className = 'vault-verify-label';
+                lbl.textContent = r.label;
+                const val = document.createElement('span');
+                val.className = 'vault-verify-value' + (r.cls ? ' ' + r.cls : '');
+                if (r.style) val.style.cssText = r.style;
+                val.textContent = r.value;
+                row.appendChild(lbl);
+                row.appendChild(val);
+                cardEl.appendChild(row);
+            });
+
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'btn-primary';
+            closeBtn.textContent = 'Close';
+            closeBtn.style.marginTop = '16px';
+            closeBtn.addEventListener('click', () => modal.remove());
+            cardEl.appendChild(closeBtn);
+
+            modal.appendChild(cardEl);
             document.body.appendChild(modal);
             if (typeof lucide !== 'undefined') lucide.createIcons();
         } catch (err) {
             alert('Verification error: ' + err.message);
         }
+    },
+
+    // ═══════════════════════════════════════════════════
+    //  GHOSTCODE UI FUNCTIONS
+    // ═══════════════════════════════════════════════════
+
+    /**
+     * Fetch the current user's GhostCode from the server and display it.
+     */
+    fetchGhostCode: async () => {
+        try {
+            const nodeId = AppState.identity ? (AppState.identity.nodeId || AppState.identity.id) : null;
+            const displayName = AppState.identity ? (AppState.identity.displayName || AppState.identity.username) : null;
+            let url = `${BACKEND_URL}/user/shortcode`;
+            const params = [];
+            if (nodeId) params.push(`nodeId=${encodeURIComponent(nodeId)}`);
+            if (displayName) params.push(`displayName=${encodeURIComponent(displayName)}`);
+            if (params.length > 0) url += '?' + params.join('&');
+
+            const res = await fetch(url, { headers: authHeaders() });
+            if (!res.ok) {
+                console.warn('GhostCode fetch failed:', res.status);
+                return;
+            }
+            const data = await res.json();
+            if (data.shortCode) {
+                AppState.ghostCode = data.shortCode.toUpperCase();
+                UI.updateGhostCodeBadge(AppState.ghostCode);
+            }
+        } catch (e) {
+            console.warn('GhostCode fetch error:', e);
+        }
+    },
+
+    /**
+     * Update the GhostCode badge element in the profile dashboard.
+     */
+    updateGhostCodeBadge: (code) => {
+        const badge = document.getElementById('ghostcode-badge');
+        if (badge) {
+            badge.textContent = code.toUpperCase();
+        }
+    },
+
+    /**
+     * Copy the current user's GhostCode to clipboard.
+     */
+    copyGhostCode: () => {
+        const code = AppState.ghostCode;
+        if (!code) return;
+        try {
+            navigator.clipboard.writeText(code);
+            showToast('GhostCode copied!');
+        } catch (e) {
+            console.error('Copy failed:', e);
+        }
+    },
+
+    /**
+     * Share GhostCode via Web Share API, or fallback to copy.
+     */
+    shareGhostCode: () => {
+        const code = AppState.ghostCode;
+        if (!code) return;
+        if (navigator.share) {
+            navigator.share({
+                text: 'Find me on GhostNet: ' + code,
+                title: 'GhostNet'
+            }).catch(() => {});
+        } else {
+            try {
+                navigator.clipboard.writeText(code);
+                showToast('GhostCode copied — share it anywhere');
+            } catch (e) {
+                console.error('Share fallback failed:', e);
+            }
+        }
+    },
+
+    /**
+     * Initialize GhostCode search in the chat sidebar search bar.
+     */
+    initChatSearch: () => {
+        const searchInput = document.getElementById('chat-search-input');
+        const resultContainer = document.getElementById('ghostcode-search-result');
+        if (!searchInput || !resultContainer) return;
+
+        let searchTimeout = null;
+
+        searchInput.addEventListener('input', () => {
+            const val = searchInput.value.trim();
+            clearTimeout(searchTimeout);
+
+            // If input matches GN- prefix, search for GhostCode
+            if (val.match(/^GN-/i)) {
+                searchTimeout = setTimeout(async () => {
+                    const code = val.toUpperCase();
+                    if (!/^GN-[A-Z0-9]{4,6}$/i.test(code)) {
+                        resultContainer.style.display = 'none';
+                        return;
+                    }
+
+                    try {
+                        const res = await fetch(`${BACKEND_URL}/resolve/${encodeURIComponent(code)}`);
+                        if (res.ok) {
+                            const data = await res.json();
+                            // Build result row using DOM API
+                            resultContainer.textContent = '';
+                            resultContainer.style.display = 'block';
+                            resultContainer.style.cssText = 'display:block;padding:10px 12px;margin:0 8px 8px 8px;background:var(--bg-panel);border-left:3px solid #00f0ff;border-radius:8px;cursor:pointer;';
+                            
+                            const rowWrap = document.createElement('div');
+                            rowWrap.style.cssText = 'display:flex;align-items:center;justify-content:space-between;';
+                            
+                            const textWrap = document.createElement('div');
+                            const nameSpan = document.createElement('span');
+                            nameSpan.style.cssText = 'font-weight:700;color:var(--text-primary);';
+                            nameSpan.textContent = 'Add ' + (data.displayName || 'User');
+                            const codeSpan = document.createElement('span');
+                            codeSpan.style.cssText = 'color:#00f0ff;font-family:monospace;font-size:0.8rem;margin-left:8px;';
+                            codeSpan.textContent = '(' + data.shortCode + ')';
+                            textWrap.appendChild(nameSpan);
+                            textWrap.appendChild(codeSpan);
+                            
+                            const addBtn = document.createElement('button');
+                            addBtn.textContent = '+';
+                            addBtn.style.cssText = 'background:#00f0ff;color:#0d1117;border:none;border-radius:50%;width:28px;height:28px;font-size:1.2rem;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;';
+                            addBtn.addEventListener('click', (e) => {
+                                e.stopPropagation();
+                                // Open new chat pre-filled
+                                UI.openNewChat();
+                                setTimeout(() => {
+                                    const nameEl = document.getElementById('chat-name');
+                                    const keyEl = document.getElementById('chat-pubkey');
+                                    if (nameEl && data.displayName) nameEl.value = data.displayName;
+                                    if (keyEl && data.nodeId) {
+                                        keyEl.value = data.nodeId;
+                                        keyEl.readOnly = true;
+                                        keyEl.style.opacity = '0.8';
+                                    }
+                                    const feedback = document.getElementById('ghostcode-resolve-feedback');
+                                    if (feedback) {
+                                        feedback.style.color = '#10b981';
+                                        feedback.textContent = '✓ Found: ' + (data.displayName || code);
+                                    }
+                                }, 100);
+                                searchInput.value = '';
+                                resultContainer.style.display = 'none';
+                            });
+
+                            rowWrap.appendChild(textWrap);
+                            rowWrap.appendChild(addBtn);
+                            resultContainer.appendChild(rowWrap);
+                        } else if (res.status === 404) {
+                            resultContainer.textContent = '';
+                            resultContainer.style.display = 'block';
+                            resultContainer.style.cssText = 'display:block;padding:10px 12px;margin:0 8px 8px 8px;color:var(--text-muted);font-size:0.8rem;text-align:center;';
+                            resultContainer.textContent = 'No GhostNet user found with that code';
+                        } else {
+                            resultContainer.style.display = 'none';
+                        }
+                    } catch (err) {
+                        resultContainer.textContent = '';
+                        resultContainer.style.display = 'block';
+                        resultContainer.style.cssText = 'display:block;padding:10px 12px;margin:0 8px 8px 8px;color:var(--text-muted);font-size:0.8rem;text-align:center;';
+                        resultContainer.textContent = 'Could not reach server';
+                    }
+                }, 500);
+            } else {
+                resultContainer.style.display = 'none';
+                // TODO: Local conversation search can happen here
+            }
+        });
     }
 };
 

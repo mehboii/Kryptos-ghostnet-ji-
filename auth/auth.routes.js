@@ -27,7 +27,8 @@ import { JWT_SECRET, JWT_EXPIRES_IN, BCRYPT_SALT_ROUNDS } from './auth.config.js
 import {
     findByEmail, findById, createUser, sanitise,
     setResetToken, resetPassword,
-    verifyEmail, resendVerifyCode
+    verifyEmail, resendVerifyCode,
+    generateUniqueShortCode, updateUserFields
 } from './auth.model.js';
 import { requireAuth } from './auth.middleware.js';
 
@@ -350,6 +351,14 @@ router.post('/login', loginLimiter, async (req, res) => {
         const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
+
+        // --- Auto-generate GhostCode for existing users without one ------
+        if (!user.shortCode) {
+            const shortCode = generateUniqueShortCode();
+            updateUserFields(user.id, { shortCode });
+            user.shortCode = shortCode;
+            console.log(`🔖 Generated GhostCode ${shortCode} for existing user ${user.email}`);
+        }
 
         res.json({
             success: true,

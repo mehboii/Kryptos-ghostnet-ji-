@@ -1,238 +1,310 @@
 /**
- * GhostNet Mesh Transport Layer
+ * GhostNet Mesh Transport Layer — HARDENED
  * ghostnet-mesh.js
- * 
- * Hybrid automatic mesh networking:
- * - WebSocket: Auto-connects to all nearby devices on the same network (always-on)
- * - BLE: One-tap scan + auto-reconnect to previously paired devices
- * - Message bridging: All transports relay messages to each other
- * 
- * BROWSER LIMITATION NOTE:
- * Web Bluetooth API REQUIRES a user gesture (click/tap) for initial scan.
- * This cannot be bypassed — it's a browser security requirement.
- * However, once paired, devices can auto-reconnect.
+ *
+ * Fixes applied:
+ *
+ * BREAK FIXES (why the app stopped working)
+ *  [F1] connectWebSocket() never sent a JWT token — hardened server requires ?token=JWT in URL
+ *       → getAuthToken() reads token from sessionStorage/localStorage; appended to WS URL
+ *  [F2] WS URL hardcoded to Railway domain — ignores actual deployment host
+ *       → URL derived from window.location; GHOSTNET_WS_URL override supported via meta tag
+ *
+ * SECURITY
+ *  [S1] broadcast() used Math.random() for message IDs — predictable
+ *       → crypto.getRandomValues() based secureId()
+ *  [S2] sendToPeer() used Date.now() only — not unique under rapid fire
+ *       → secureId() used
+ *  [S3] BLE incoming data had no size cap — large payload DoS'd message handler
+ *       → MAX_BLE_PAYLOAD_BYTES = 4096; oversized chunks dropped
+ *  [S4] localStorage BLE device list read with no schema validation
+ *       → validateBleDeviceEntry() checks shape before use; malformed entries dropped
+ *  [S5] Individual BLE device entries had no field size limits
+ *       → id/name capped at 128/64 chars in validateBleDeviceEntry()
+ *  [S6] maxHops attacker-controlled — msg.maxHops=999 forced amplified broadcast storm
+ *       → MAX_HOPS constant (5) enforced server-side; msg.maxHops ignored
+ *  [S7] handleWSMessage default case forwarded ALL unknown messages to onMessage
+ *       → Unknown types silently dropped
+ *  [S8] CHAT_MESSAGE body passed raw to UI.addMessage — XSS if UI uses innerHTML
+ *       → sanitizeText() strips HTML before passing to UI
+ *  [S9] PEER_JOIN/MESH_PEERS msg.id not validated — prototype pollution via "__proto__"
+ *       → validatePeerId() enforces alphanumeric/hyphen/underscore, max 128 chars
+ *  [S10] heartbeatTimer deleted from peers Map during iteration
+ *       → Collect stale IDs first, delete after iteration completes
+ *  [S11] destroy() cleared heartbeatTimer but NOT reconnectTimer
+ *       → Both timers cleared; _destroyed flag prevents reconnect after destroy()
+ *  [S12] BLE writeValue fire-and-forget with no MTU size check
+ *       → Payload chunked to MAX_BLE_CHUNK_BYTES (512); awaited with try/catch
  */
 
 class GhostMesh {
     constructor(identity) {
         this.identity = identity; // { id, nodeId, pub }
-        this.peers = new Map();  // peerId -> { id, transport, connected, lastSeen, device? }
+        this.peers = new Map();
         this.ws = null;
         this.wsReady = false;
         this.bleAvailable = false;
         this.bleScanning = false;
         this.reconnectTimer = null;
         this.heartbeatTimer = null;
-        this.knownBLEDevices = []; // Stored in localStorage for auto-reconnect
+        this.knownBLEDevices = [];
+        this._destroyed = false; // [S11]
+        this._reconnectDelay = 3000;  // backoff state
 
-        // BLE Constants
+        // BLE constants
         this.SERVICE_UUID = '67686f73-746e-6574-2d6d-657368000000';
         this.CHAR_DATA = '67686f73-746e-6574-2d64-617461000000';
         this.CHAR_PEER_ID = '67686f73-746e-6574-2d69-640000000000';
 
+        // Limits
+        this.MAX_HOPS = 5;    // [S6] hard cap — never from msg
+        this.MAX_BLE_PAYLOAD_BYTES = 4096; // [S3]
+        this.MAX_BLE_CHUNK_BYTES = 512;  // [S12] BLE MTU safe size
+
         // Event handlers (set by app.js)
-        this.onPeerJoin = (peer) => { };
-        this.onPeerLeave = (peer) => { };
-        this.onMessage = (msg, from, transport) => { };
-        this.onMeshUpdate = (peers) => { };
-        this.onStatusChange = (status) => { };
+        this.onPeerJoin = () => { };
+        this.onPeerLeave = () => { };
+        this.onMessage = () => { };
+        this.onMeshUpdate = () => { };
+        this.onStatusChange = () => { };
 
-        // Load known BLE devices from storage
-        try {
-            const stored = localStorage.getItem('ghostnet_ble_devices');
-            if (stored) this.knownBLEDevices = JSON.parse(stored);
-        } catch (e) { }
+        // [S4] Load and validate known BLE devices
+        this._loadKnownBleDevices();
 
-        // Check BLE availability
         this.bleAvailable = typeof navigator !== 'undefined' && !!navigator.bluetooth;
-
         console.log(`🕸️ GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
     }
 
-    // ============================================
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    /** [S1][S2] Cryptographically random message ID */
+    secureId(prefix = 'msg_') {
+        const arr = new Uint8Array(8);
+        crypto.getRandomValues(arr);
+        return prefix + Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    /** [S9] Peer ID validation */
+    validatePeerId(id) {
+        if (typeof id !== 'string') return null;
+        const clean = id.trim();
+        if (!/^[a-zA-Z0-9_\-]{1,128}$/.test(clean)) return null;
+        return clean;
+    }
+
+    /** [S8] Strip HTML tags from any string before passing to UI */
+    sanitizeText(str) {
+        if (typeof str !== 'string') return '';
+        return str
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;');
+    }
+
+    /** [S4][S5] Validate a single BLE device entry from storage */
+    validateBleDeviceEntry(entry) {
+        if (!entry || typeof entry !== 'object') return null;
+        const id = typeof entry.id === 'string' ? entry.id.slice(0, 128) : null;
+        const name = typeof entry.name === 'string' ? entry.name.slice(0, 64) : 'Unknown';
+        const ts = typeof entry.lastConnected === 'number' ? entry.lastConnected : 0;
+        if (!id) return null;
+        return { id, name, lastConnected: ts };
+    }
+
+    /** [S4] Load BLE devices from storage with full validation */
+    _loadKnownBleDevices() {
+        try {
+            const stored = localStorage.getItem('ghostnet_ble_devices');
+            if (!stored) return;
+            const raw = JSON.parse(stored);
+            if (!Array.isArray(raw)) return;
+            this.knownBLEDevices = raw
+                .map(e => this.validateBleDeviceEntry(e))
+                .filter(Boolean)
+                .slice(0, 20); // [S5] cap
+        } catch (_) {
+            this.knownBLEDevices = [];
+        }
+    }
+
+    // ── [F1] Auth token retrieval ─────────────────────────────────────────────
+
+    getAuthToken() {
+        // Try sessionStorage first (set by auth flow), then localStorage fallback
+        return sessionStorage.getItem('ghostnet_jwt') ||
+            localStorage.getItem('ghostnet_jwt') ||
+            null;
+    }
+
+    // ── [F2] WS URL builder ───────────────────────────────────────────────────
+
+    buildWsUrl() {
+        // Allow override via <meta name="ghostnet-ws-url" content="wss://...">
+        const meta = document.querySelector('meta[name="ghostnet-ws-url"]');
+        if (meta && meta.content) return meta.content;
+
+        // Derive from current page origin
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        return `${protocol}//${window.location.host}/ws`;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // PUBLIC API
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /** Start the mesh — connects WebSocket automatically */
     async start() {
+        this._destroyed = false;
         this.onStatusChange({ state: 'connecting', transport: 'ws' });
-
-        // 1. Auto-connect WebSocket (always)
         this.connectWebSocket();
-
-        // 2. Start heartbeat
         this.startHeartbeat();
 
-        // 3. Try auto-reconnect to known BLE devices
         if (this.bleAvailable && this.knownBLEDevices.length > 0) {
-            console.log(`📲 Attempting BLE auto-reconnect to ${this.knownBLEDevices.length} known devices...`);
-            // Note: Auto-reconnect to previously paired devices doesn't require gesture
-            // But watchAdvertisements() has limited support
+            console.log(`📲 BLE auto-reconnect: ${this.knownBLEDevices.length} known device(s)`);
             this.attemptBLEAutoReconnect();
         }
-
         return true;
     }
 
-    /** Scan for new BLE devices (REQUIRES user gesture - call from button click) */
     async scanBLE() {
         if (!this.bleAvailable) {
-            console.warn('BLE not available in this browser');
-            this.onStatusChange({ state: 'error', message: 'Bluetooth not available. Use Chrome on a secure connection (HTTPS or localhost).' });
+            this.onStatusChange({ state: 'error', message: 'Bluetooth not available. Use Chrome on HTTPS or localhost.' });
             return [];
         }
-
-        if (this.bleScanning) {
-            console.log('Already scanning...');
-            return;
-        }
+        if (this.bleScanning) return;
 
         this.bleScanning = true;
         this.onStatusChange({ state: 'scanning', transport: 'ble' });
 
         try {
-            console.log('📲 BLE: Requesting device scan...');
-
-            // Request device with our service UUID, or accept all devices
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: [this.SERVICE_UUID]
             });
-
             if (device) {
-                console.log(`📲 BLE: User selected: ${device.name || device.id}`);
                 await this.connectBLEDevice(device);
-
-                // Remember this device for auto-reconnect
                 this.rememberBLEDevice(device);
             }
         } catch (e) {
             if (e.name === 'NotFoundError') {
                 console.log('BLE: User cancelled scan');
             } else if (e.name === 'SecurityError') {
-                console.error('BLE: Security error — need user gesture (click)');
-                this.onStatusChange({ state: 'error', message: 'Bluetooth requires a button tap to scan. Tap "Scan" to find devices.' });
+                this.onStatusChange({ state: 'error', message: 'Bluetooth requires a button tap to scan.' });
             } else {
-                console.error('BLE Scan Error:', e);
-                this.onStatusChange({ state: 'error', message: `BLE Error: ${e.message}` });
+                // [S8] Don't pass e.message raw to UI
+                this.onStatusChange({ state: 'error', message: 'BLE scan failed.' });
+                console.warn('BLE Scan Error:', e.message);
             }
         } finally {
             this.bleScanning = false;
         }
     }
 
-    /** Send a message to all connected peers via all transports */
     async broadcast(message) {
         const payload = {
             type: 'MESH_MSG',
-            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            id: this.secureId(),        // [S1]
             from: this.identity.id,
             data: message,
             ts: Date.now(),
             hops: 0,
-            maxHops: 5
+            maxHops: this.MAX_HOPS           // [S6] always our constant
         };
 
-        // Send via WebSocket
         if (this.ws && this.wsReady) {
-            try {
-                this.ws.send(JSON.stringify(payload));
-            } catch (e) {
-                console.error('WS send failed:', e);
-            }
+            try { this.ws.send(JSON.stringify(payload)); }
+            catch (e) { console.warn('WS broadcast failed:', e.message); }
         }
 
-        // Send via BLE to all connected peers
-        for (const [peerId, peer] of this.peers) {
+        for (const [, peer] of this.peers) {
             if (peer.transport === 'ble' && peer.connected && peer.writeChar) {
-                try {
-                    const data = new TextEncoder().encode(JSON.stringify(payload));
-                    await peer.writeChar.writeValue(data);
-                } catch (e) {
-                    console.error(`BLE send to ${peerId} failed:`, e);
-                }
+                await this._bleSend(peer, payload); // [S12]
             }
         }
     }
 
-    /** Send a message to a specific peer */
     async sendToPeer(peerId, message) {
-        const peer = this.peers.get(peerId);
+        const validId = this.validatePeerId(peerId); // [S9]
+        if (!validId) { console.warn('sendToPeer: invalid peerId'); return; }
 
+        const peer = this.peers.get(validId);
         const payload = {
             type: 'MESH_DIRECT',
-            id: 'msg_' + Date.now(),
+            id: this.secureId(),           // [S2]
             from: this.identity.id,
-            to: peerId,
+            to: validId,
             data: message,
             ts: Date.now()
         };
 
-        // Try BLE first (direct), then WebSocket relay
-        if (peer && peer.transport === 'ble' && peer.connected && peer.writeChar) {
-            const data = new TextEncoder().encode(JSON.stringify(payload));
-            await peer.writeChar.writeValue(data);
+        if (peer?.transport === 'ble' && peer.connected && peer.writeChar) {
+            await this._bleSend(peer, payload); // [S12]
         } else if (this.ws && this.wsReady) {
             this.ws.send(JSON.stringify(payload));
         }
     }
 
-    /** Get all connected peers */
     getPeers() {
         const result = [];
-        for (const [id, peer] of this.peers) {
+        for (const [, peer] of this.peers) {
             result.push({
                 id: peer.id,
                 transport: peer.transport,
                 connected: peer.connected,
                 lastSeen: peer.lastSeen,
-                name: peer.name || peer.id.substr(-6)
+                name: peer.name || peer.id.slice(-6)
             });
         }
         return result;
     }
 
-    /** Get mesh status */
     getStatus() {
         const blePeers = [...this.peers.values()].filter(p => p.transport === 'ble' && p.connected).length;
         const wsPeers = [...this.peers.values()].filter(p => p.transport === 'ws').length;
-
         return {
             wsConnected: this.wsReady,
             bleAvailable: this.bleAvailable,
             bleScanning: this.bleScanning,
             totalPeers: this.peers.size,
-            blePeers,
-            wsPeers,
+            blePeers, wsPeers,
             knownBLEDevices: this.knownBLEDevices.length
         };
     }
 
-    // ============================================
-    // WEBSOCKET TRANSPORT (Auto-connects)
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
+    // WEBSOCKET TRANSPORT
+    // ─────────────────────────────────────────────────────────────────────────
 
     connectWebSocket() {
+        if (this._destroyed) return; // [S11]
+
+        // [F1] Require a JWT token — abort if missing
+        const token = this.getAuthToken();
+        if (!token) {
+            console.warn('🔌 Mesh: No auth token found. WebSocket connection deferred until login.');
+            this.onStatusChange({ state: 'error', message: 'Not authenticated. Please log in.' });
+            return;
+        }
+
         try {
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
-            console.log(`🔌 Mesh: Connecting WebSocket: ${wsUrl}`);
+            // [F2] Dynamic URL from page origin; [F1] token in query string
+            const base = this.buildWsUrl();
+            const wsUrl = `${base}?token=${encodeURIComponent(token)}`;
+            console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`); // don't log token
 
             this.ws = new WebSocket(wsUrl);
 
             this.ws.onopen = () => {
                 console.log('✅ Mesh: WebSocket connected');
                 this.wsReady = true;
+                this._reconnectDelay = 3000; // reset backoff
 
-                // Register ourselves
                 this.ws.send(JSON.stringify({
                     type: 'register',
                     id: this.identity.id,
                     nodeId: this.identity.nodeId,
-                    capabilities: {
-                        ble: this.bleAvailable,
-                        ws: true
-                    }
+                    capabilities: { ble: this.bleAvailable, ws: true }
                 }));
 
                 this.onStatusChange({ state: 'connected', transport: 'ws' });
@@ -242,8 +314,8 @@ class GhostMesh {
                 try {
                     const msg = JSON.parse(event.data);
                     this.handleWSMessage(msg);
-                } catch (e) {
-                    console.error('WS parse error:', e);
+                } catch (_) {
+                    console.warn('WS: malformed message dropped');
                 }
             };
 
@@ -261,150 +333,177 @@ class GhostMesh {
                 }
                 this.onMeshUpdate(this.getPeers());
 
-                // Auto-reconnect after 3 seconds
+                if (!this._destroyed) { // [S11]
+                    clearTimeout(this.reconnectTimer);
+                    // Exponential backoff capped at 30s
+                    this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, 30_000);
+                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), this._reconnectDelay);
+                }
+            };
+
+            this.ws.onerror = () => {
+                console.warn('[GhostMesh] WebSocket error.'); // [S8] no raw event details
+            };
+
+        } catch (_) {
+            console.warn('WebSocket setup failed');
+            if (!this._destroyed) {
                 clearTimeout(this.reconnectTimer);
-                this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
-            };
-
-            this.ws.onerror = (e) => {
-                console.warn('WebSocket error:', e);
-            };
-
-        } catch (e) {
-            console.error('WebSocket connection failed:', e);
-            // Retry in 5 seconds
-            clearTimeout(this.reconnectTimer);
-            this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 5000);
+                this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 5000);
+            }
         }
     }
 
     handleWSMessage(msg) {
+        if (!msg || typeof msg !== 'object') return;
+
         switch (msg.type) {
             case 'HELLO':
             case 'MESH_HELLO':
-                // Server echo or legacy hello — ignore our own
                 break;
 
-            case 'PEER_JOIN':
-                if (msg.id !== this.identity.id) {
-                    const peer = {
-                        id: msg.id,
-                        transport: 'ws',
-                        connected: true,
-                        lastSeen: Date.now(),
-                        name: msg.name || msg.id.substr(-8)
-                    };
-                    this.peers.set(msg.id, peer);
-                    this.onPeerJoin(peer);
-                    this.onMeshUpdate(this.getPeers());
-                }
+            case 'welcome':
                 break;
 
-            case 'PEER_LEAVE':
-                if (this.peers.has(msg.id)) {
-                    const peer = this.peers.get(msg.id);
-                    this.peers.delete(msg.id);
+            case 'PEER_JOIN': {
+                const peerId = this.validatePeerId(msg.id); // [S9]
+                if (!peerId || peerId === this.identity.id) break;
+                const peer = {
+                    id: peerId,
+                    transport: 'ws',
+                    connected: true,
+                    lastSeen: Date.now(),
+                    name: this.sanitizeText(msg.name || peerId.slice(-8)) // [S8]
+                };
+                this.peers.set(peerId, peer);
+                this.onPeerJoin(peer);
+                this.onMeshUpdate(this.getPeers());
+                break;
+            }
+
+            case 'PEER_LEAVE': {
+                const peerId = this.validatePeerId(msg.id); // [S9]
+                if (peerId && this.peers.has(peerId)) {
+                    const peer = this.peers.get(peerId);
+                    this.peers.delete(peerId);
                     this.onPeerLeave(peer);
                     this.onMeshUpdate(this.getPeers());
                 }
                 break;
+            }
 
             case 'message':
             case 'MESH_MSG':
-            case 'MSG':
-                if (msg.from !== this.identity.id) {
-                    // Update peer lastSeen
-                    if (this.peers.has(msg.from)) {
-                        this.peers.get(msg.from).lastSeen = Date.now();
-                    }
-                    this.onMessage(msg.data || msg.content || msg, msg.from, 'ws');
+            case 'MSG': {
+                const fromId = this.validatePeerId(msg.from); // [S9]
+                if (!fromId || fromId === this.identity.id) break;
+                if (this.peers.has(fromId)) this.peers.get(fromId).lastSeen = Date.now();
+                this.onMessage(msg.data || msg.content || msg, fromId, 'ws');
 
-                    // Bridge to BLE peers (mesh relay)
-                    if (msg.hops !== undefined && msg.hops < (msg.maxHops || 5)) {
-                        this.relayToBLE({ ...msg, hops: (msg.hops || 0) + 1 });
-                    }
+                // [S6] Relay only if hops < our MAX_HOPS constant — never msg.maxHops
+                const hops = typeof msg.hops === 'number' ? msg.hops : 0;
+                if (hops < this.MAX_HOPS) {
+                    this.relayToBLE({ ...msg, hops: hops + 1, maxHops: this.MAX_HOPS });
                 }
                 break;
+            }
 
-            case 'CHAT_MESSAGE':
-                // Targeted message from the server (HTTP-persisted, delivered via WS)
-                if (msg.senderId !== this.identity.id) {
-                    console.log(`📩 Chat message from ${msg.senderId?.substring(0, 12)}...`);
-                    // Extract message body
-                    let body = msg.content;
-                    if (typeof body === 'object' && body.body) body = body.body;
-                    if (typeof body === 'string' && body.includes('body":"')) {
-                        try { body = JSON.parse(body).body; } catch (e) { }
-                    }
-                    // Display in chat UI
-                    if (window.UI) {
-                        window.UI.addMessage(body || msg.content, 'them');
-                    }
-                    // Refresh conversation list (auto-creates contact on recipient side)
-                    if (window.UI && window.AppState && window.AppState.identity) {
-                        window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
-                    }
+            case 'CHAT_MESSAGE': {
+                const fromId = this.validatePeerId(msg.senderId); // [S9]
+                if (!fromId || fromId === this.identity.id) break;
+
+                // [S8] Sanitize all server-provided strings before touching UI
+                let body = msg.content;
+                if (typeof body === 'object' && body?.body) body = body.body;
+                if (typeof body === 'string' && body.includes('body":"')) {
+                    try { body = JSON.parse(body).body; } catch (_) { }
+                }
+
+                const safeBody = this.sanitizeText(String(body || ''));
+
+                if (window.UI) window.UI.addMessage(safeBody, 'them');
+                if (window.UI && window.AppState?.identity) {
+                    window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
                 }
                 break;
+            }
 
             case 'NEW_CONVERSATION':
-                // Server notifies us about a new/updated conversation
-                console.log('📋 New conversation notification received');
-                if (window.UI && window.AppState && window.AppState.identity) {
+                if (window.UI && window.AppState?.identity) {
                     window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
                 }
                 break;
 
             case 'MESH_PEERS':
-                // Server sent us the full peer list
-                if (msg.peers) {
+                if (Array.isArray(msg.peers)) {
                     msg.peers.forEach(p => {
-                        if (p.id !== this.identity.id && !this.peers.has(p.id)) {
-                            const peer = {
-                                id: p.id,
-                                transport: 'ws',
-                                connected: true,
-                                lastSeen: p.lastSeen || Date.now(),
-                                name: p.name || p.id.substr(-8)
-                            };
-                            this.peers.set(p.id, peer);
-                            this.onPeerJoin(peer);
-                        }
+                        const peerId = this.validatePeerId(p.id); // [S9]
+                        if (!peerId || peerId === this.identity.id || this.peers.has(peerId)) return;
+                        const peer = {
+                            id: peerId,
+                            transport: 'ws',
+                            connected: true,
+                            lastSeen: typeof p.lastSeen === 'number' ? p.lastSeen : Date.now(),
+                            name: this.sanitizeText(p.name || peerId.slice(-8)) // [S8]
+                        };
+                        this.peers.set(peerId, peer);
+                        this.onPeerJoin(peer);
                     });
                     this.onMeshUpdate(this.getPeers());
                 }
                 break;
 
             case 'HEARTBEAT':
-                // Respond to keep connection alive
                 if (this.ws && this.wsReady) {
                     this.ws.send(JSON.stringify({ type: 'HEARTBEAT_ACK', id: this.identity.id }));
                 }
                 break;
 
             case 'error':
-                console.warn("WebSocket Server Error:", msg.message);
-                if (window.UI) {
-                    window.UI.addMessage(`⚠️ System: ${msg.message}`, 'them');
-                }
+                // [S8] Never render raw server error messages in UI
+                console.warn('Server error message received');
+                break;
+
+            case 'ERROR':
+                console.warn('Server error:', this.sanitizeText(msg.error || ''));
                 break;
 
             default:
-                // Forward unknown messages to app handler
-                this.onMessage(msg, msg.from || 'server', 'ws');
+                // [S7] Drop unknown message types — do NOT forward to onMessage
                 break;
         }
     }
 
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
     // BLE TRANSPORT
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /** [S12] Safe BLE send — chunks payload to MAX_BLE_CHUNK_BYTES */
+    async _bleSend(peer, payload) {
+        if (!peer?.writeChar) return;
+        try {
+            const json = JSON.stringify(payload);
+            const encoded = new TextEncoder().encode(json);
+
+            // [S12] Check size before sending
+            if (encoded.length > this.MAX_BLE_PAYLOAD_BYTES) {
+                console.warn(`BLE: payload too large (${encoded.length} bytes), dropping`);
+                return;
+            }
+
+            // Send in MTU-safe chunks
+            for (let i = 0; i < encoded.length; i += this.MAX_BLE_CHUNK_BYTES) {
+                const chunk = encoded.slice(i, i + this.MAX_BLE_CHUNK_BYTES);
+                await peer.writeChar.writeValue(chunk); // awaited [S12]
+            }
+        } catch (e) {
+            console.warn(`BLE send failed to ${peer.id?.slice(0, 12)}:`, e.message);
+        }
+    }
 
     async connectBLEDevice(device) {
         try {
-            // Listen for disconnection
             device.addEventListener('gattserverdisconnected', () => {
-                console.log(`📲 BLE: ${device.name || device.id} disconnected`);
                 const peerId = device.id;
                 if (this.peers.has(peerId)) {
                     const peer = this.peers.get(peerId);
@@ -412,246 +511,209 @@ class GhostMesh {
                     this.onPeerLeave(peer);
                     this.onMeshUpdate(this.getPeers());
                 }
-
-                // Auto-reconnect attempt after 2 seconds
                 setTimeout(() => this.tryReconnectBLEDevice(device), 2000);
             });
 
-            console.log(`📲 BLE: Connecting GATT to ${device.name || device.id}...`);
             const server = await device.gatt.connect();
-
-            // Try to get our custom service
             let service, charData, charId;
+
             try {
                 service = await server.getPrimaryService(this.SERVICE_UUID);
                 charData = await service.getCharacteristic(this.CHAR_DATA);
                 charId = await service.getCharacteristic(this.CHAR_PEER_ID);
-            } catch (e) {
-                console.warn(`📲 BLE: GhostNet service not found on ${device.name || device.id}. Adding as generic BLE peer.`);
-                // Still add as a peer even without our service (device is reachable)
+            } catch (_) {
+                console.warn(`BLE: GhostNet service not found on ${device.name || device.id}. Adding as generic peer.`);
                 const peer = {
-                    id: device.id,
-                    transport: 'ble',
-                    connected: true,
-                    lastSeen: Date.now(),
-                    name: device.name || 'BLE-' + device.id.substr(-4),
-                    device: device,
-                    server: server,
-                    writeChar: null
+                    id: device.id, transport: 'ble', connected: true,
+                    lastSeen: Date.now(), name: device.name || 'BLE-' + device.id.slice(-4),
+                    device, server, writeChar: null
                 };
                 this.peers.set(device.id, peer);
                 this.onPeerJoin(peer);
                 this.onMeshUpdate(this.getPeers());
-                this.onStatusChange({ state: 'connected', transport: 'ble', peerId: device.id });
                 return;
             }
 
-            // Read peer ID
             let peerId = device.id;
             try {
                 const idVal = await charId.readValue();
-                peerId = new TextDecoder().decode(idVal);
-            } catch (e) {
-                console.warn('Could not read peer ID, using device ID');
-            }
+                const rawId = new TextDecoder().decode(idVal);
+                peerId = this.validatePeerId(rawId) || device.id; // [S9]
+            } catch (_) { }
 
-            // Setup notifications for incoming data
             try {
                 await charData.startNotifications();
                 charData.addEventListener('characteristicvaluechanged', (event) => {
+                    // [S3] Size cap on incoming BLE data
+                    if (event.target.value.byteLength > this.MAX_BLE_PAYLOAD_BYTES) {
+                        console.warn('BLE: oversized payload dropped');
+                        return;
+                    }
                     const val = new TextDecoder().decode(event.target.value);
                     try {
                         const msg = JSON.parse(val);
-                        if (msg.from !== this.identity.id) {
-                            this.onMessage(msg.data || msg, msg.from || peerId, 'ble');
+                        const fromId = this.validatePeerId(msg.from); // [S9]
+                        if (!fromId || fromId === this.identity.id) return;
+                        this.onMessage(msg.data || msg, fromId, 'ble');
 
-                            // Bridge to WebSocket (mesh relay)
-                            if (msg.hops !== undefined && msg.hops < (msg.maxHops || 5)) {
-                                this.relayToWS({ ...msg, hops: (msg.hops || 0) + 1 });
-                            }
+                        // [S6] Hard hop cap — ignore msg.maxHops
+                        const hops = typeof msg.hops === 'number' ? msg.hops : 0;
+                        if (hops < this.MAX_HOPS) {
+                            this.relayToWS({ ...msg, hops: hops + 1, maxHops: this.MAX_HOPS });
                         }
-                    } catch (e) {
-                        // Non-JSON data, pass as string
-                        this.onMessage(val, peerId, 'ble');
+                    } catch (_) {
+                        // Non-JSON — pass sanitized string [S8]
+                        this.onMessage(this.sanitizeText(val), peerId, 'ble');
                     }
                 });
-            } catch (e) {
-                console.warn('BLE notifications not supported:', e);
+            } catch (_) {
+                console.warn('BLE notifications not supported on this device');
             }
 
-            // Create peer entry
             const peer = {
-                id: peerId,
-                transport: 'ble',
-                connected: true,
-                lastSeen: Date.now(),
-                name: device.name || 'BLE-' + peerId.substr(-4),
-                device: device,
-                server: server,
-                writeChar: charData
+                id: peerId, transport: 'ble', connected: true,
+                lastSeen: Date.now(), name: device.name || 'BLE-' + peerId.slice(-4),
+                device, server, writeChar: charData
             };
-
             this.peers.set(peerId, peer);
             this.onPeerJoin(peer);
             this.onMeshUpdate(this.getPeers());
             this.onStatusChange({ state: 'connected', transport: 'ble', peerId });
-
-            console.log(`✅ BLE: Connected to ${peer.name} (${peerId})`);
+            console.log(`✅ BLE: Connected to ${peer.name}`);
 
         } catch (e) {
-            console.error('BLE connection failed:', e);
-            this.onStatusChange({ state: 'error', message: `BLE connection failed: ${e.message}` });
+            console.warn('BLE connection failed:', e.message);
+            this.onStatusChange({ state: 'error', message: 'BLE connection failed.' }); // [S8]
         }
     }
 
     async tryReconnectBLEDevice(device) {
-        if (!device || !device.gatt) return;
-
-        try {
-            console.log(`📲 BLE: Attempting reconnect to ${device.name || device.id}...`);
-            await this.connectBLEDevice(device);
-        } catch (e) {
-            console.warn(`BLE reconnect failed for ${device.name || device.id}:`, e);
-        }
+        if (!device?.gatt) return;
+        try { await this.connectBLEDevice(device); }
+        catch (_) { }
     }
 
     async attemptBLEAutoReconnect() {
-        // Web Bluetooth remembers paired devices, but we need the device object
-        // We can try getDevices() (Chrome 85+) to get previously paired devices
-        if (navigator.bluetooth && navigator.bluetooth.getDevices) {
-            try {
-                const devices = await navigator.bluetooth.getDevices();
-                console.log(`📲 BLE: Found ${devices.length} previously paired devices`);
-
-                for (const device of devices) {
-                    // Check if this device is in our known list
-                    const known = this.knownBLEDevices.find(d => d.id === device.id);
-                    if (known) {
-                        try {
-                            // watchAdvertisements() lets us detect when the device comes in range
-                            if (device.watchAdvertisements) {
-                                await device.watchAdvertisements();
-                                device.addEventListener('advertisementreceived', async (event) => {
-                                    console.log(`📲 BLE: ${device.name || device.id} detected nearby!`);
-                                    if (!this.peers.has(device.id) || !this.peers.get(device.id).connected) {
-                                        await this.connectBLEDevice(device);
-                                    }
-                                });
-                                console.log(`📲 BLE: Watching for ${device.name || device.id}...`);
-                            } else {
-                                // Fallback: try direct connect (device must be in range)
+        if (!navigator.bluetooth?.getDevices) return;
+        try {
+            const devices = await navigator.bluetooth.getDevices();
+            for (const device of devices) {
+                const known = this.knownBLEDevices.find(d => d.id === device.id);
+                if (!known) continue;
+                try {
+                    if (device.watchAdvertisements) {
+                        await device.watchAdvertisements();
+                        device.addEventListener('advertisementreceived', async () => {
+                            if (!this.peers.has(device.id) || !this.peers.get(device.id).connected) {
                                 await this.connectBLEDevice(device);
                             }
-                        } catch (e) {
-                            console.warn(`BLE auto-reconnect to ${device.name || device.id} failed:`, e);
-                        }
+                        });
+                    } else {
+                        await this.connectBLEDevice(device);
                     }
-                }
-            } catch (e) {
-                console.warn('BLE getDevices() not supported or failed:', e);
+                } catch (_) { }
             }
-        }
+        } catch (_) { }
     }
 
     rememberBLEDevice(device) {
-        const entry = {
+        const entry = this.validateBleDeviceEntry({ // [S4][S5]
             id: device.id,
             name: device.name || 'Unknown',
             lastConnected: Date.now()
-        };
+        });
+        if (!entry) return;
 
-        // De-duplicate
-        this.knownBLEDevices = this.knownBLEDevices.filter(d => d.id !== device.id);
+        this.knownBLEDevices = this.knownBLEDevices.filter(d => d.id !== entry.id);
         this.knownBLEDevices.push(entry);
-
-        // Keep only last 20 devices
-        if (this.knownBLEDevices.length > 20) {
-            this.knownBLEDevices = this.knownBLEDevices.slice(-20);
-        }
+        if (this.knownBLEDevices.length > 20) this.knownBLEDevices = this.knownBLEDevices.slice(-20);
 
         try {
             localStorage.setItem('ghostnet_ble_devices', JSON.stringify(this.knownBLEDevices));
-        } catch (e) { }
+        } catch (_) { }
     }
 
-    // ============================================
-    // MESH RELAY (Bridge between transports)
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
+    // MESH RELAY
+    // ─────────────────────────────────────────────────────────────────────────
 
     relayToBLE(msg) {
-        for (const [peerId, peer] of this.peers) {
+        for (const [, peer] of this.peers) {
             if (peer.transport === 'ble' && peer.connected && peer.writeChar) {
-                try {
-                    const data = new TextEncoder().encode(JSON.stringify(msg));
-                    peer.writeChar.writeValue(data);
-                } catch (e) { }
+                this._bleSend(peer, msg); // [S12] size-checked
             }
         }
     }
 
     relayToWS(msg) {
         if (this.ws && this.wsReady) {
-            try {
-                this.ws.send(JSON.stringify(msg));
-            } catch (e) { }
+            try { this.ws.send(JSON.stringify(msg)); }
+            catch (_) { }
         }
     }
 
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
     // HEARTBEAT & MAINTENANCE
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
 
     startHeartbeat() {
         clearInterval(this.heartbeatTimer);
         this.heartbeatTimer = setInterval(() => {
-            // Clean stale peers (no activity for 60s)
             const now = Date.now();
-            for (const [id, peer] of this.peers) {
-                if (peer.transport === 'ws' && now - peer.lastSeen > 60000) {
-                    this.peers.delete(id);
-                    this.onPeerLeave(peer);
-                }
-            }
 
-            // Send heartbeat via WS
+            // [S10] Collect stale IDs first — never delete during iteration
+            const stale = [];
+            for (const [id, peer] of this.peers) {
+                if (peer.transport === 'ws' && now - peer.lastSeen > 60_000) stale.push(id);
+            }
+            stale.forEach(id => {
+                const peer = this.peers.get(id);
+                this.peers.delete(id);
+                this.onPeerLeave(peer);
+            });
+
             if (this.ws && this.wsReady) {
-                this.ws.send(JSON.stringify({
-                    type: 'HEARTBEAT',
-                    id: this.identity.id,
-                    ts: now,
-                    peers: this.peers.size
-                }));
+                try {
+                    this.ws.send(JSON.stringify({
+                        type: 'HEARTBEAT',
+                        id: this.identity.id,
+                        ts: now,
+                        peers: this.peers.size
+                    }));
+                } catch (_) { }
             }
 
             this.onMeshUpdate(this.getPeers());
-        }, 15000); // Every 15 seconds
+        }, 15_000);
     }
 
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
     // CLEANUP
-    // ============================================
+    // ─────────────────────────────────────────────────────────────────────────
 
     destroy() {
+        this._destroyed = true; // [S11] prevent reconnect after destroy
+
         clearInterval(this.heartbeatTimer);
-        clearTimeout(this.reconnectTimer);
+        clearTimeout(this.reconnectTimer);  // [S11] was missing
+        this.heartbeatTimer = null;
+        this.reconnectTimer = null;
 
         if (this.ws) {
+            this.ws.onclose = null; // prevent reconnect handler firing
             this.ws.close();
             this.ws = null;
         }
 
-        // Disconnect BLE devices
-        for (const [id, peer] of this.peers) {
-            if (peer.transport === 'ble' && peer.device && peer.device.gatt.connected) {
-                try { peer.device.gatt.disconnect(); } catch (e) { }
+        for (const [, peer] of this.peers) {
+            if (peer.transport === 'ble' && peer.device?.gatt?.connected) {
+                try { peer.device.gatt.disconnect(); } catch (_) { }
             }
         }
-
         this.peers.clear();
+        this.wsReady = false;
     }
 }
 
 // Expose globally
-if (typeof window !== 'undefined') {
-    window.GhostMesh = GhostMesh;
-}
+if (typeof window !== 'undefined') window.GhostMesh = GhostMesh;

@@ -3381,3 +3381,9 @@ canvas#mesh {
         transform: rotate(360deg);
     }
 }
+
+/* GhostCode Resolve Spinner */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
