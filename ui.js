@@ -2181,7 +2181,30 @@ const UI = {
             const ctx = c.getContext('2d');
             
             if (!ctx) {
-                // Fallback rendering here if needed
+                const fallbackDiv = document.createElement('div');
+                fallbackDiv.id = 'ghostcard-modal';
+                fallbackDiv.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.9);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+                const card = document.createElement('div');
+                card.style.cssText = 'background:#0a0f1e;border:2px solid #00f0ff;border-radius:20px;padding:30px;text-align:center;max-width:90%;color:#fff;';
+                const nameEl = document.createElement('h2');
+                nameEl.textContent = displayName;
+                card.appendChild(nameEl);
+                const idEl = document.createElement('p');
+                idEl.textContent = nodeId;
+                idEl.style.cssText = 'word-break:break-all;font-family:monospace;color:#00f0ff;margin:20px 0;';
+                card.appendChild(idEl);
+                const copyBtn = document.createElement('button');
+                copyBtn.textContent = 'Copy ID';
+                copyBtn.className = 'btn-primary';
+                copyBtn.onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(nodeId); };
+                card.appendChild(copyBtn);
+                const closeBtn = document.createElement('button');
+                closeBtn.textContent = 'Close';
+                closeBtn.style.cssText = 'margin-top:20px;padding:10px 20px;background:none;border:1px solid #fff;color:#fff;border-radius:12px;cursor:pointer;';
+                closeBtn.onclick = () => fallbackDiv.remove();
+                card.appendChild(closeBtn);
+                fallbackDiv.appendChild(card);
+                document.body.appendChild(fallbackDiv);
                 return;
             }
 
@@ -2284,7 +2307,7 @@ const UI = {
             modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
 
             const cardWrapper = document.createElement('div');
-            cardWrapper.style.cssText = 'position:relative; transform-style:preserve-3d; will-change:transform; animation: ghostCardEntrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;';
+            cardWrapper.style.cssText = 'position:relative; transform-style:preserve-3d; will-change:transform; animation: ghostCardEntrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; overflow:hidden; border-radius:16px;';
             
             c.style.cssText = 'width:400px;max-width:90vw;height:auto;border-radius:16px;display:block;box-shadow: 0 25px 60px rgba(0,240,255,0.25), 0 0 120px rgba(0,240,255,0.08);';
 
@@ -2596,20 +2619,33 @@ const UI = {
                 toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
                 document.body.appendChild(toast);
                 setTimeout(() => toast.remove(), 4000);
-            } else {
-                const toast = document.createElement('div');
-                toast.textContent = '✓ Ghost Card scanned — tap Add to connect';
-                toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
-                document.body.appendChild(toast);
-                setTimeout(() => toast.remove(), 3000);
+                cleanup();
+                return;
             }
-            
-            const pkInput = document.getElementById('chat-pubkey');
-            const nameInput = document.getElementById('chat-name');
-            if (pkInput) pkInput.value = data.nodeId;
-            if (nameInput && data.name) nameInput.value = data.name;
-            
+
+            const toast = document.createElement('div');
+            toast.textContent = '✓ Ghost Card scanned — tap Add to connect';
+            toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+
             cleanup();
+
+            const pkInput = document.getElementById('chat-pubkey');
+            if (pkInput) {
+                pkInput.value = data.nodeId;
+                const nameInput = document.getElementById('chat-name');
+                if (nameInput && data.name) nameInput.value = data.name;
+            } else {
+                // New chat modal not open — open it first then fill scanned data
+                UI.openNewChat();
+                setTimeout(() => {
+                    const pk = document.getElementById('chat-pubkey');
+                    const nm = document.getElementById('chat-name');
+                    if (pk) pk.value = data.nodeId;
+                    if (nm && data.name) nm.value = data.name;
+                }, 100);
+            }
         };
 
         if (typeof jsQR === 'undefined' && typeof window.jsQR === 'undefined') {
