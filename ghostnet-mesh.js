@@ -88,8 +88,8 @@ class GhostMesh {
     validatePeerId(id) {
         if (typeof id !== 'string') return null;
         const clean = id.trim();
-        if (!/^[a-zA-Z0-9_\-]{1,128}$/.test(clean)) return null;
-        return clean;
+        if (!/^[a-zA-Z0-9_\-]{1,512}$/.test(clean)) return null;
+        return clean.toLowerCase();
     }
 
     /** [S8] Strip HTML tags from any string before passing to UI */
@@ -135,6 +135,8 @@ class GhostMesh {
         // Try sessionStorage first (set by auth flow), then localStorage fallback
         return sessionStorage.getItem('ghostnet_jwt') ||
             localStorage.getItem('ghostnet_jwt') ||
+            sessionStorage.getItem('ghostnet_token') ||
+            localStorage.getItem('ghostnet_token') ||
             null;
     }
 
@@ -145,9 +147,8 @@ class GhostMesh {
         const meta = document.querySelector('meta[name="ghostnet-ws-url"]');
         if (meta && meta.content) return meta.content;
 
-        // Derive from current page origin
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${protocol}//${window.location.host}/ws`;
+        // Vercel doesn't support WebSockets — always use the Railway backend.
+        return 'wss://ghostnet-ji-production.up.railway.app/ws';
     }
 
     // ─────────────────────────────────────────────────────────────────────────

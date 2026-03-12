@@ -150,6 +150,12 @@ class MeshNetwork {
 
 // --- APP LOGIC ---
 
+const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+const authHeaders = () => ({
+    'Content-Type': 'application/json',
+    'X-Auth-Token': typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('ghostnet_token') || '')
+});
+
 const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
@@ -168,14 +174,73 @@ const UI = {
         // 3. Setup Chat
         UI.setupChat();
 
-        // 4. Mock Initial Data (for visual validation)
+        // 4. Hook Logout (if exists)
+        document.querySelectorAll('.auth-logout-btn, #logout-btn, [data-action="logout"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (UI.destroyScreenshotProtection) {
+                    UI.destroyScreenshotProtection();
+                }
+            });
+        });
+
+        // 5. Add Ghost Card buttons dynamically
+        setTimeout(() => {
+            const viewProfile = document.getElementById('view-profile');
+            if (viewProfile) {
+                const pContainer = viewProfile.querySelector('.profile-container') || viewProfile;
+                const gcBtn = document.createElement('button');
+                gcBtn.className = 'btn-primary';
+                gcBtn.style.marginTop = '20px';
+                gcBtn.style.width = '100%';
+                gcBtn.style.background = '#00f0ff';
+                gcBtn.style.color = '#0a0f1e';
+                gcBtn.innerText = 'My Ghost Card';
+                gcBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                pContainer.appendChild(gcBtn);
+            }
+
+            const newChatBtn = document.querySelector('.chat-new-btn');
+            if (newChatBtn && newChatBtn.parentNode) {
+                // Add Scan button
+                const scanBtn = document.createElement('button');
+                scanBtn.className = 'chat-new-btn';
+                scanBtn.title = 'Scan a Ghost Card';
+                scanBtn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="9" x2="12" y2="9.01"/><line x1="12" y1="15" x2="12" y2="15.01"/><line x1="9" y1="12" x2="9.01" y2="12"/><line x1="15" y1="12" x2="15.01" y2="12"/></svg>';
+                scanBtn.style.marginRight = '8px';
+                scanBtn.style.flexShrink = '0';
+                scanBtn.style.display = 'flex';
+                scanBtn.style.alignItems = 'center';
+                scanBtn.style.justifyContent = 'center';
+                scanBtn.style.color = '#a855f7'; // Purple-tinted icon
+                scanBtn.style.borderColor = 'rgba(168,85,247,0.3)';
+                scanBtn.style.background = 'rgba(168,85,247,0.1)';
+                scanBtn.onclick = () => { if(UI.startQRScanner) UI.startQRScanner(); };
+                newChatBtn.parentNode.insertBefore(scanBtn, newChatBtn);
+
+                // Existing QR button
+                const qrBtn = document.createElement('button');
+                qrBtn.className = 'chat-new-btn';
+                qrBtn.title = 'Ghost Card';
+                qrBtn.innerHTML = '⊞';
+                qrBtn.style.fontSize = '18px';
+                qrBtn.style.marginRight = '8px';
+                qrBtn.style.flexShrink = '0';
+                qrBtn.style.display = 'flex';
+                qrBtn.style.alignItems = 'center';
+                qrBtn.style.justifyContent = 'center';
+                qrBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                newChatBtn.parentNode.insertBefore(qrBtn, newChatBtn);
+            }
+        }, 1500);
+
+        // 6. Mock Initial Data (for visual validation)
         setTimeout(() => {
             UI.mockData();
             // Emit Initial State
             window.dispatchEvent(new Event("app:state"));
         }, 800);
 
-        // 5. State Listener
+        // 7. State Listener
         window.addEventListener("app:state", UI.render);
 
         // 6. Load Profile
@@ -186,6 +251,16 @@ const UI = {
 
         // 8. Init GhostCode search
         UI.initChatSearch();
+
+        // 9. Anti-screenshot and privacy measures
+        document.addEventListener('contextmenu', e => {
+            if (e.target.tagName === 'IMG' || e.target.closest('#chat-feed')) {
+                e.preventDefault();
+            }
+        });
+        document.addEventListener('dragstart', e => {
+            if (e.target.tagName === 'IMG') e.preventDefault();
+        });
     },
 
     navigate: (target) => {
@@ -217,6 +292,129 @@ const UI = {
         // Reset chat mobile state (show list by default when entering chat)
         const chatSplit = document.querySelector('.chat-layout-split');
         if (chatSplit) chatSplit.classList.remove('chat-active');
+
+        // Screenshot protection init/destroy
+        if (target === 'chat' && AppState.identity) {
+            UI.initScreenshotProtection();
+        } else {
+            if (UI.destroyScreenshotProtection) {
+                UI.destroyScreenshotProtection();
+            }
+        }
+    },
+
+    initScreenshotProtection: () => {
+        // CSS layer
+        const chatContainer = document.querySelector('.chat-layout-split');
+        if (chatContainer) {
+            chatContainer.style.userSelect = 'none';
+            chatContainer.style.webkitUserSelect = 'none';
+            chatContainer.style.webkitTouchCallout = 'none';
+        }
+
+        // Blur/focus layer
+        const blurHandler = () => {
+            if (document.getElementById('screenshot-overlay')) return;
+            const overlay = document.createElement('div');
+            overlay.id = 'screenshot-overlay';
+            overlay.style.position = 'fixed';
+            overlay.style.top = '0';
+            overlay.style.left = '0';
+            overlay.style.width = '100vw';
+            overlay.style.height = '100vh';
+            overlay.style.zIndex = '99999';
+            overlay.style.background = '#000';
+            overlay.style.opacity = '1';
+            document.body.appendChild(overlay);
+        };
+
+        const focusHandler = () => {
+            const overlay = document.getElementById('screenshot-overlay');
+            if (overlay) overlay.remove();
+        };
+
+        // Keyboard layer
+        const keydownHandler = (e) => {
+            if (e.key === 'PrintScreen' || e.keyCode === 44) {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText('');
+                }
+                // Custom toast warning
+                const toast = document.createElement('div');
+                toast.textContent = 'Screenshots are protected in GhostNet';
+                toast.style.position = 'fixed';
+                toast.style.bottom = '20px';
+                toast.style.left = '50%';
+                toast.style.transform = 'translateX(-50%)';
+                toast.style.background = '#ef4444';
+                toast.style.color = '#fff';
+                toast.style.padding = '10px 20px';
+                toast.style.borderRadius = '8px';
+                toast.style.zIndex = '100000';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+        };
+
+        // Visibility layer
+        const visibilityHandler = () => {
+            const bubbles = document.querySelectorAll('.message');
+            if (document.hidden) {
+                bubbles.forEach(b => {
+                    b.dataset.originalText = b.innerText;
+                    b.innerText = '🔒 Protected';
+                });
+            } else {
+                bubbles.forEach(b => {
+                    if (b.dataset.originalText !== undefined) {
+                        b.innerText = b.dataset.originalText;
+                        delete b.dataset.originalText;
+                    }
+                });
+            }
+        };
+
+        // Attach listeners if not already attached
+        if (!window._screenshotHandlers) {
+            window._screenshotHandlers = { blurHandler, focusHandler, keydownHandler, visibilityHandler };
+            window.addEventListener('blur', blurHandler);
+            window.addEventListener('focus', focusHandler);
+            document.addEventListener('keydown', keydownHandler);
+            document.addEventListener('visibilitychange', visibilityHandler);
+        }
+
+        // Add small status badge
+        const headerInfo = document.querySelector('.chat-header-info');
+        if (headerInfo && !document.getElementById('ss-protected-badge')) {
+            const badge = document.createElement('span');
+            badge.id = 'ss-protected-badge';
+            badge.className = 'e2e-badge';
+            badge.textContent = '📵 SS Protected';
+            headerInfo.appendChild(badge);
+        }
+    },
+
+    destroyScreenshotProtection: () => {
+        if (window._screenshotHandlers) {
+            window.removeEventListener('blur', window._screenshotHandlers.blurHandler);
+            window.removeEventListener('focus', window._screenshotHandlers.focusHandler);
+            document.removeEventListener('keydown', window._screenshotHandlers.keydownHandler);
+            document.removeEventListener('visibilitychange', window._screenshotHandlers.visibilityHandler);
+            delete window._screenshotHandlers;
+        }
+
+        const overlay = document.getElementById('screenshot-overlay');
+        if (overlay) overlay.remove();
+
+        const badge = document.getElementById('ss-protected-badge');
+        if (badge) badge.remove();
+        
+        const chatContainer = document.querySelector('.chat-layout-split');
+        if (chatContainer) {
+            chatContainer.style.userSelect = '';
+            chatContainer.style.webkitUserSelect = '';
+            chatContainer.style.webkitTouchCallout = '';
+        }
     },
 
     toggleMobileMenu: () => {
@@ -298,7 +496,9 @@ const UI = {
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
-            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet');
+            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet', {
+                headers: { 'X-Auth-Token': getAuthToken() }
+            });
 
             if (!res.ok) throw new Error("Bridge Error");
 
@@ -447,18 +647,26 @@ const UI = {
         keyLabel.className = 'input-label';
         keyLabel.textContent = 'NODE ID / PUBLIC KEY';
         const keyInputWrap = document.createElement('div');
-        keyInputWrap.style.cssText = 'position:relative;display:flex;align-items:center;';
+        keyInputWrap.style.cssText = 'position:relative;display:flex;align-items:center;gap:8px;';
         const keyInput = document.createElement('input');
         keyInput.type = 'text';
         keyInput.id = 'chat-pubkey';
         keyInput.className = 'modal-input';
         keyInput.placeholder = '0x... or GN-XXXX';
-        keyInput.style.paddingRight = '36px';
+        keyInput.style.cssText = 'flex:1;padding-right:36px;';
         const keySpinner = document.createElement('div');
         keySpinner.id = 'ghostcode-resolve-spinner';
         keySpinner.style.cssText = 'display:none;position:absolute;right:10px;width:16px;height:16px;border:2px solid rgba(0,240,255,0.3);border-top-color:#00f0ff;border-radius:50%;animation:spin 0.6s linear infinite;';
+        // QR scanner button
+        const qrBtn = document.createElement('button');
+        qrBtn.className = 'btn-primary';
+        qrBtn.style.cssText = 'padding:0 12px;width:auto;border-radius:12px;font-size:16px;';
+        qrBtn.title = 'Scan QR';
+        qrBtn.textContent = '⊞';
+        qrBtn.addEventListener('click', () => { if (UI.startQRScanner) UI.startQRScanner(); });
         keyInputWrap.appendChild(keyInput);
         keyInputWrap.appendChild(keySpinner);
+        keyInputWrap.appendChild(qrBtn);
         keyGroup.appendChild(keyLabel);
         keyGroup.appendChild(keyInputWrap);
         card.appendChild(keyGroup);
@@ -627,7 +835,9 @@ const UI = {
         try {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
-            const res = await fetch(validateUrl);
+            const res = await fetch(validateUrl, {
+                headers: { 'X-Auth-Token': getAuthToken() }
+            });
 
             if (!res.ok) {
                 console.error('Validation HTTP error:', res.status, res.statusText);
@@ -689,7 +899,9 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`);
+            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`, {
+                headers: { 'X-Auth-Token': getAuthToken() }
+            });
             if (res.ok) {
                 const convos = await res.json();
                 UI.renderConversations(convos);
@@ -703,19 +915,21 @@ const UI = {
         const list = document.getElementById('chat-user-list');
         if (!list) return;
 
-        list.innerHTML = '';
+        list.replaceChildren();
 
         if (convos.length === 0) {
-            list.innerHTML = `<div style="padding:20px; text-align:center; color:#64748b; font-size:0.8rem;">No conversations yet.</div>`;
+            const emptyState = document.createElement('div');
+            emptyState.style.padding = '20px';
+            emptyState.style.textAlign = 'center';
+            emptyState.style.color = '#64748b';
+            emptyState.style.fontSize = '0.8rem';
+            emptyState.textContent = 'No conversations yet.';
+            list.appendChild(emptyState);
             return;
         }
 
-        let html = '';
         convos.forEach(c => {
             const timeStr = new Date(c.updated).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            const avatar = c.otherUser && c.otherUser.avatar
-                ? `<img src="${c.otherUser.avatar}" class="chat-avatar" style="object-fit:cover;">`
-                : `<div class="chat-avatar" style="background: #3f3f46;"></div>`;
 
             const username = c.otherUser ? (c.otherUser.username || c.otherUser.address || c.otherUser.id) : 'Unknown';
             let preview = c.lastMessage || 'Message...';
@@ -724,26 +938,49 @@ const UI = {
                 try { preview = JSON.parse(preview).body; } catch (e) { }
             }
 
-            const activeClass = (AppState.activeConvoId === c.id) ? 'active' : '';
+            const row = document.createElement('div');
+            row.className = `chat-user-row ${(AppState.activeConvoId === c.id) ? 'active' : ''}`;
+            row.dataset.convo = c.id;
+            row.onclick = () => UI.selectChat(c.id, username, c.otherUser ? c.otherUser.id : '');
 
-            html += `
-                <div class="chat-user-row ${activeClass}" onclick="UI.selectChat('${c.id}', '${username}', '${c.otherUser ? c.otherUser.id : ''}')" data-convo="${c.id}">
-                    <div class="chat-avatar-wrap">
-                        ${avatar}
-                    </div>
-                    <div class="chat-user-info">
-                        <div class="chat-user-top">
-                            <span class="chat-username">${username}</span>
-                            <span class="chat-time">${timeStr}</span>
-                        </div>
-                        <div class="chat-user-bottom">
-                            <span class="chat-preview">${preview}</span>
-                        </div>
-                    </div>
-                </div>
-            `;
+            const avatarWrap = document.createElement('div');
+            avatarWrap.className = 'chat-avatar-wrap';
+            avatarWrap.appendChild(UI.renderAvatar(c.otherUser, 40));
+
+            const userInfo = document.createElement('div');
+            userInfo.className = 'chat-user-info';
+
+            const userTop = document.createElement('div');
+            userTop.className = 'chat-user-top';
+
+            const usernameSpan = document.createElement('span');
+            usernameSpan.className = 'chat-username';
+            usernameSpan.textContent = username;
+
+            const timeSpan = document.createElement('span');
+            timeSpan.className = 'chat-time';
+            timeSpan.textContent = timeStr;
+
+            userTop.appendChild(usernameSpan);
+            userTop.appendChild(timeSpan);
+
+            const userBottom = document.createElement('div');
+            userBottom.className = 'chat-user-bottom';
+
+            const previewSpan = document.createElement('span');
+            previewSpan.className = 'chat-preview';
+            previewSpan.textContent = preview;
+
+            userBottom.appendChild(previewSpan);
+
+            userInfo.appendChild(userTop);
+            userInfo.appendChild(userBottom);
+
+            row.appendChild(avatarWrap);
+            row.appendChild(userInfo);
+
+            list.appendChild(row);
         });
-        list.innerHTML = html;
     },
 
     selectChat: async (convoId, nameStr = null, targetUserId = null) => {
@@ -776,13 +1013,37 @@ const UI = {
             if (row.dataset.convo === convoId) row.classList.add('active');
         });
 
+        // Setup Header Avatar
+        const activeRow = document.querySelector(`.chat-user-row[data-convo="${convoId}"]`);
+        const headerAvatar = document.getElementById('active-chat-avatar');
+        if (headerAvatar) {
+            let avatarData = null;
+            if (activeRow) {
+                const img = activeRow.querySelector('img');
+                if (img) avatarData = img.src;
+            }
+            const activeUser = {
+                displayName: nameStr || targetUserId,
+                username: nameStr || targetUserId,
+                avatar: avatarData
+            };
+
+            headerAvatar.style.background = 'transparent';
+            headerAvatar.style.width = 'auto';
+            headerAvatar.style.height = 'auto';
+            headerAvatar.style.border = 'none';
+            headerAvatar.replaceChildren(UI.renderAvatar(activeUser, 44));
+        }
+
         const feed = document.getElementById('chat-feed');
         if (feed) feed.innerHTML = ''; // clear current feed
 
         // Load History
         if (convoId && convoId !== 'new') {
             try {
-                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`);
+                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`, {
+                    headers: { 'X-Auth-Token': getAuthToken() }
+                });
                 if (res.ok) {
                     const msgs = await res.json();
                     msgs.forEach(m => {
@@ -1101,13 +1362,120 @@ const UI = {
     },
 
     // Start UI Logic
+
+    stringToColor: (str) => {
+        if (!str) return 'hsl(220, 55%, 40%)';
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const hue = Math.abs(hash % 360);
+        return `hsl(${hue}, 55%, 40%)`;
+    },
+
+    _renderAvatarText: (container, user) => {
+        const nameStr = (user && (user.displayName || user.username)) ? (user.displayName || user.username) : '?';
+        const initial = nameStr.charAt(0).toUpperCase();
+
+        container.style.background = UI.stringToColor(nameStr);
+        container.style.color = '#ffffff';
+        container.style.fontSize = `${parseInt(container.style.width) * 0.45}px`;
+        container.style.fontWeight = 'bold';
+        container.style.userSelect = 'none';
+
+        const txt = document.createElement('span');
+        txt.textContent = initial;
+        container.appendChild(txt);
+    },
+
+    renderAvatar: (user, size = 40) => {
+        const container = document.createElement('div');
+        container.className = 'chat-avatar-rendered';
+        container.style.width = `${size}px`;
+        container.style.height = `${size}px`;
+        container.style.borderRadius = '50%';
+        container.style.overflow = 'hidden';
+        container.style.background = '#2a2f45';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.justifyContent = 'center';
+        container.style.flexShrink = '0';
+
+        if (user && user.avatar && /^data:image\/(png|jpeg|webp|gif);base64,/.test(user.avatar)) {
+            const img = document.createElement('img');
+            img.src = user.avatar;
+            img.style.width = '100%';
+            img.style.height = '100%';
+            img.style.objectFit = 'cover';
+            img.style.cursor = 'pointer';
+
+            img.onclick = (e) => {
+                e.stopPropagation();
+                if (window.UI) UI.viewLargeAvatar(img.src);
+            };
+
+            img.onerror = () => {
+                img.remove();
+                UI._renderAvatarText(container, user);
+            };
+
+            container.appendChild(img);
+        } else {
+            UI._renderAvatarText(container, user);
+        }
+
+        return container;
+    },
+
+    viewLargeAvatar: (src) => {
+        const modal = document.createElement('div');
+        modal.className = "modal-overlay";
+        modal.style.zIndex = "99999";
+        modal.innerHTML = `
+            <div class="modal-card" style="padding:10px; background: transparent; border: none; text-align:center; max-width:95vw; max-height:95vh;">
+                <button class="modal-close" style="position:absolute; right:15px; top:15px; z-index:100; background:rgba(0,0,0,0.6); padding:5px 12px; border-radius:50%; font-size:1.5rem; border:1px solid #444;" onclick="this.closest('.modal-overlay').remove()">×</button>
+                <img src="${src}" style="max-width:100%; max-height:85vh; border-radius:12px; object-fit:contain; box-shadow: 0 10px 40px rgba(0,0,0,0.8); pointer-events:none;">
+            </div>
+        `;
+        document.body.appendChild(modal);
+    },
+
     addMessage: (text, type) => {
         const feed = document.getElementById('chat-feed');
         if (!feed) return;
 
         const msg = document.createElement('div');
         msg.className = `message ${type}`;
-        msg.innerText = text;
+
+        let fileId, mimeType, encKeyStr, fileName;
+        if (typeof text === 'string' && text.startsWith('[FILE:') && text.endsWith(']')) {
+            const parts = text.slice(6, -1).split(':');
+            if (parts.length >= 4) {
+                fileId = parts[0];
+                mimeType = parts[1];
+                encKeyStr = parts[2] || '';
+                fileName = parts.slice(3).join(':');
+            } else if (parts.length === 3) {
+                fileId = parts[0];
+                mimeType = parts[1];
+                encKeyStr = '';
+                fileName = parts[2];
+            }
+        }
+
+        if (fileId) {
+            msg.innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
+                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${fileName.replace(/</g, '&lt;')}</div>
+                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.innerHTML='Decrypting...'; window.GhostVault.downloadFile('${fileId}', '${encKeyStr}').then(() => this.innerHTML='Decrypted & Downloaded!').catch(e => { alert(e.message); this.innerHTML='Download Failed'; })">
+                        Secure Download
+                    </button>
+                </div>
+            `;
+        } else {
+            msg.innerText = text;
+        }
+
         feed.appendChild(msg);
         feed.scrollTop = feed.scrollHeight;
     },
@@ -1149,7 +1517,71 @@ const UI = {
         document.querySelector('.modal-overlay').remove();
     },
 
-    loadProfile: () => {
+    promptVaultKeyRecovery: async (serverKeyData) => {
+        return new Promise((resolve) => {
+            const modal = document.createElement('div');
+            modal.className = "modal-overlay";
+            const action = serverKeyData ? 'Recover Vault Key' : 'Create Vault Key';
+            const subtitle = serverKeyData
+                ? 'Your file vault key was found on the network. Enter your PIN to decrypt and restore it.'
+                : 'Your file vault key is missing. Enter your PIN to generate a new one. <br><span style="color:#ef4444;font-size:0.8rem;">Warning: Previous files will not be decryptable.</span>';
+            modal.innerHTML = `
+                <div class="modal-card">
+                    <div class="modal-title">${action}</div>
+                    <div style="font-size:0.9rem; color:var(--text-muted); margin-bottom:15px;">${subtitle}</div>
+                    <input type="password" id="vault-pin-input" class="wlt-input" placeholder="Enter 6-digit PIN" maxlength="6" style="text-align:center; letter-spacing:4px; font-size:1.2rem;">
+                    <div id="vault-pin-error" style="color:#ef4444; font-size:0.8rem; height:20px; text-align:center; margin-top:10px;"></div>
+                    <div style="display:flex; gap:10px; margin-top:15px;">
+                        <button class="btn-primary" style="background:var(--border);" onclick="this.closest('.modal-overlay').remove(); window._vaultKeyResolver(null)">Cancel</button>
+                        <button class="btn-primary" id="vault-pin-submit">Confirm</button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modal);
+
+            window._vaultKeyResolver = resolve;
+
+            document.getElementById('vault-pin-submit').onclick = async () => {
+                const pin = document.getElementById('vault-pin-input').value;
+                if (pin.length < 6) {
+                    document.getElementById('vault-pin-error').textContent = 'Enter full 6-digit PIN';
+                    return;
+                }
+                document.getElementById('vault-pin-error').textContent = 'Processing...';
+                document.getElementById('vault-pin-submit').disabled = true;
+
+                try {
+                    let finalKey = null;
+                    if (serverKeyData) {
+                        finalKey = await window.GhostVault._recoverVaultKey(pin, serverKeyData);
+                    } else {
+                        finalKey = await window.GhostVault._generateVaultKey(pin);
+                    }
+                    modal.remove();
+                    resolve(finalKey);
+                } catch (e) {
+                    document.getElementById('vault-pin-error').textContent = e.message || 'Incorrect PIN';
+                    document.getElementById('vault-pin-submit').disabled = false;
+                }
+            };
+        });
+    },
+
+    loadProfile: async () => {
+        try {
+            const res = await fetch(`${BACKEND_URL}/user/profile`, {
+                headers: authHeaders()
+            });
+            if (res.ok) {
+                const user = await res.json();
+                localStorage.setItem('ghostnet_user', JSON.stringify(user));
+            } else {
+                console.warn("Server returned non-200. Falling back to local profile cache.");
+            }
+        } catch (e) {
+            console.warn("Network error: could not sync profile. Falling back to local cache.", e);
+        }
+
         const stored = localStorage.getItem('ghostnet_user');
         if (stored) {
             try {
@@ -1171,7 +1603,7 @@ const UI = {
                     } else {
                         sidebarAvatar.style.display = 'none';
                     }
-                    sidebarAddress.innerText = user.username || user.address || '';
+                    sidebarAddress.innerText = user.displayName || user.username || user.address || '';
                     sidebarId.innerText = user.id || '';
                 }
 
@@ -1180,7 +1612,7 @@ const UI = {
                 const viewPreview = document.getElementById('profile-preview');
                 const viewId = document.getElementById('profile-id-display');
 
-                if (viewAddress) viewAddress.value = user.username || user.address || '';
+                if (viewAddress) viewAddress.value = user.displayName || user.username || user.address || '';
                 if (viewId) viewId.innerText = 'Current ID: ' + (user.id || '');
                 if (viewPreview && user.avatar) {
                     viewPreview.src = user.avatar;
@@ -1226,7 +1658,7 @@ const UI = {
         }
     },
 
-    saveProfile: () => {
+    saveProfile: async () => {
         const addr = document.getElementById('profile-address').value;
         const viewPreview = document.getElementById('profile-preview');
         let avatarData = viewPreview ? viewPreview.getAttribute('src') : '';
@@ -1234,28 +1666,27 @@ const UI = {
             avatarData = '';
         }
 
-        fetch("https://ghostnet-ji-production.up.railway.app/create-user", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                username: addr,
-                avatar: avatarData
-            })
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
-                } else {
-                    alert("User created!");
-                    localStorage.setItem("ghostnet_user", JSON.stringify(data.user));
-                    UI.loadProfile();
-                }
-            })
-            .catch(err => {
-                console.error("Save profile error:", err);
-                alert("Failed to connect to the server.");
+        try {
+            const res = await fetch(`${BACKEND_URL}/user/profile`, {
+                method: "PATCH",
+                headers: authHeaders(),
+                body: JSON.stringify({
+                    displayName: addr,
+                    avatar: avatarData
+                })
             });
+            const data = await res.json();
+            if (data.error) {
+                alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
+            } else {
+                alert("Profile saved!");
+                localStorage.setItem("ghostnet_user", JSON.stringify(data.user || data));
+                UI.loadProfile();
+            }
+        } catch (err) {
+            console.error("Save profile error:", err);
+            alert("Failed to connect to the server.");
+        }
     },
 
     // ═══════════════════════════════════════════════════
@@ -1520,6 +1951,7 @@ const UI = {
         }
     },
 
+
     // ═══════════════════════════════════════════════════
     //  GHOSTCODE UI FUNCTIONS
     // ═══════════════════════════════════════════════════
@@ -1691,6 +2123,516 @@ const UI = {
                 // TODO: Local conversation search can happen here
             }
         });
+    },
+
+    // GHOST CARDS - Generate Ghost Card
+    generateGhostCard: async () => {
+        if (!AppState || !AppState.identity || !AppState.identity.nodeId) {
+            const toast = document.createElement('div');
+            toast.textContent = 'Connect to GhostNet first to generate your card';
+            toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+            return;
+        }
+
+        if (document.getElementById('ghostcard-modal')) {
+            document.getElementById('ghostcard-modal').focus();
+            return;
+        }
+
+        if (!document.getElementById('ghost-card-styles')) {
+            const style = document.createElement('style');
+            style.id = 'ghost-card-styles';
+            style.textContent = `
+@keyframes ghostCardEntrance {
+  0%   { transform: perspective(1000px) rotateX(25deg) rotateY(-15deg) scale(0.6); opacity: 0; }
+  60%  { transform: perspective(1000px) rotateX(-5deg) rotateY(3deg) scale(1.03); opacity: 1; }
+  80%  { transform: perspective(1000px) rotateX(2deg) rotateY(-1deg) scale(0.99); }
+  100% { transform: perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1); }
+}
+@keyframes ghostCardExit {
+  0%   { transform: perspective(1000px) rotateX(0deg) rotateY(0deg) scale(1); opacity: 1; }
+  100% { transform: perspective(1000px) rotateX(15deg) rotateY(10deg) scale(0.5); opacity: 0; }
+}
+@keyframes floatCard {
+  0%, 100% { transform: perspective(1000px) rotateX(2deg) rotateY(2deg) translateY(0px); }
+  50%       { transform: perspective(1000px) rotateX(-2deg) rotateY(-2deg) translateY(-8px); }
+}
+@keyframes fadeSlideUp {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { transform: translateX(-100%) skewX(-15deg); }
+  100% { transform: translateX(200%) skewX(-15deg); }
+}`;
+            document.head.appendChild(style);
+        }
+
+        const nodeId = AppState.identity.nodeId;
+        const rawDisplayName = AppState.identity.displayName || 'Ghost User';
+        const displayName = String(rawDisplayName).slice(0, 32);
+
+        const buildCard = (qrCanvasOrFallbackStr) => {
+            const c = document.createElement('canvas');
+            c.width = 400;
+            c.height = 240;
+            const ctx = c.getContext('2d');
+            
+            if (!ctx) {
+                // Fallback rendering here if needed
+                return;
+            }
+
+            // Fill Background
+            ctx.fillStyle = '#0a0f1e';
+            ctx.fillRect(0, 0, 400, 240);
+            
+            const bgGrd = ctx.createLinearGradient(0,0,400,0);
+            bgGrd.addColorStop(0, '#0d1117');
+            bgGrd.addColorStop(1, '#0a1628');
+            ctx.fillStyle = bgGrd;
+            ctx.fillRect(0, 0, 400, 240);
+
+            // Hex grid
+            ctx.strokeStyle = 'rgba(0,240,255,0.06)';
+            ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            for (let x = 0; x <= 400; x += 20) {
+                for (let y = 0; y <= 240; y += 34.64) {
+                    ctx.moveTo(x + 10, y); ctx.lineTo(x + 20, y + 17.32); ctx.lineTo(x + 10, y + 34.64);
+                    ctx.lineTo(x - 10, y + 34.64); ctx.lineTo(x - 20, y + 17.32); ctx.lineTo(x - 10, y);
+                }
+            }
+            ctx.stroke();
+
+            // Glow 
+            const grd = ctx.createRadialGradient(200, 120, 0, 200, 120, 150);
+            grd.addColorStop(0, 'rgba(0,240,255,0.08)');
+            grd.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grd;
+            ctx.fillRect(0, 0, 400, 240);
+
+            // Border
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.6;
+            ctx.beginPath();
+            ctx.roundRect(8, 8, 384, 224, 16);
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+
+            // Divider vertical
+            ctx.strokeStyle = 'rgba(0,240,255,0.15)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(160, 24);
+            ctx.lineTo(160, 216);
+            ctx.stroke();
+
+            // Left Side: User Info
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.arc(80, 74, 26, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(displayName.charAt(0).toUpperCase(), 80, 74);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px Arial';
+            ctx.textBaseline = 'alphabetic';
+            ctx.fillText(displayName.length > 12 ? displayName.slice(0, 10) + '..' : displayName, 80, 134);
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.font = '11px monospace';
+            const formattedNodeId = nodeId.slice(0, 6) + '..' + nodeId.slice(-4);
+            ctx.fillText(formattedNodeId, 80, 158);
+
+            ctx.fillStyle = 'rgba(255,255,255,0.4)';
+            ctx.font = '10px Arial';
+            ctx.fillText('GhostNet', 80, 190);
+
+            // Right Side: QR Code
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.roundRect(190, 30, 172, 172, 8);
+            ctx.fill();
+
+            if (typeof qrCanvasOrFallbackStr === 'object') {
+                ctx.drawImage(qrCanvasOrFallbackStr, 196, 36, 160, 160);
+            } else {
+                ctx.fillStyle = '#0a0f1e';
+                ctx.font = '10px monospace';
+                ctx.fillText('QR fail', 276, 116);
+            }
+
+            ctx.fillStyle = 'rgba(255,255,255,0.6)';
+            ctx.font = '10px Arial';
+            ctx.fillText('Scan to connect', 276, 220);
+
+            // Set up Modal with 3D animation
+            const modal = document.createElement('div');
+            modal.id = 'ghostcard-modal';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
+
+            const cardWrapper = document.createElement('div');
+            cardWrapper.style.cssText = 'position:relative; transform-style:preserve-3d; will-change:transform; animation: ghostCardEntrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;';
+            
+            c.style.cssText = 'width:400px;max-width:90vw;height:auto;border-radius:16px;display:block;box-shadow: 0 25px 60px rgba(0,240,255,0.25), 0 0 120px rgba(0,240,255,0.08);';
+
+            const shimmer = document.createElement('div');
+            shimmer.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;background:linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0) 100%);pointer-events:none;border-radius:16px;opacity:0;overflow:hidden;';
+
+            cardWrapper.appendChild(c);
+            cardWrapper.appendChild(shimmer);
+            modal.appendChild(cardWrapper);
+
+            // Parallax interactions
+            const mouseMoveParallax = (e) => {
+                const rect = cardWrapper.getBoundingClientRect();
+                const x = e.clientX - rect.left - rect.width/2;
+                const y = e.clientY - rect.top - rect.height/2;
+                const rotateX = -(y / (rect.height/2)) * 12;
+                const rotateY = (x / (rect.width/2)) * 12;
+                cardWrapper.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+            };
+            const deviceParallax = (e) => {
+                if (!e.gamma || !e.beta) return;
+                const gamma = Math.max(-30, Math.min(30, e.gamma)); 
+                const beta = Math.max(-30, Math.min(30, e.beta - 45));
+                cardWrapper.style.transform = `rotateX(${-(beta/30)*12}deg) rotateY(${(gamma/30)*12}deg)`;
+            };
+
+            cardWrapper.addEventListener('animationend', (ev) => {
+                if (ev.animationName === 'ghostCardEntrance') {
+                    cardWrapper.style.animation = 'floatCard 4s ease-in-out infinite';
+                    shimmer.style.animation = 'shimmer 4s ease-in-out infinite';
+                    shimmer.style.opacity = '1';
+                    
+                    if (window.DeviceOrientationEvent && 'ontouchstart' in window) {
+                        window.addEventListener('deviceorientation', deviceParallax);
+                    } else {
+                        cardWrapper.addEventListener('mousemove', mouseMoveParallax);
+                        cardWrapper.addEventListener('mouseleave', () => {
+                            cardWrapper.style.transition = 'transform 0.5s ease-out';
+                            cardWrapper.style.transform = 'rotateX(0deg) rotateY(0deg)';
+                        });
+                        cardWrapper.addEventListener('mouseenter', () => {
+                            cardWrapper.style.transition = 'none';
+                        });
+                    }
+                }
+            });
+
+            // Action Buttons
+            const btnContainer = document.createElement('div');
+            btnContainer.style.cssText = 'display:flex;gap:12px;margin-top:40px;opacity:0;animation: fadeSlideUp 0.4s 0.3s ease both;';
+
+            const saveBtn = document.createElement('button');
+            saveBtn.textContent = 'Save Card';
+            saveBtn.style.cssText = 'background:#00f0ff;color:#0a0f1e;border:none;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
+            saveBtn.onclick = () => {
+                c.toBlob(blob => {
+                    const objUrl = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
+                    a.download = `ghostcard-${safeName}.png`;
+                    a.href = objUrl;
+                    a.click();
+                    URL.revokeObjectURL(objUrl);
+                }, 'image/png');
+            };
+
+            const shareBtn = document.createElement('button');
+            shareBtn.textContent = 'Share';
+            shareBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid #00f0ff;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
+            shareBtn.onclick = () => {
+                if (navigator.canShare) {
+                    c.toBlob(blob => {
+                        const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
+                        const file = new File([blob], `ghostcard-${safeName}.png`, { type: 'image/png' });
+                        if (navigator.canShare({ files: [file] })) navigator.share({ files: [file] });
+                    });
+                } else if (navigator.clipboard) {
+                    navigator.clipboard.writeText(nodeId);
+                    alert("Node ID copied to share.");
+                }
+            };
+
+            const closeBtn = document.createElement('button');
+            closeBtn.textContent = '✕ Close';
+            closeBtn.style.cssText = 'background:#1e293b;color:#94a3b8;border:none;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
+
+            const triggerClose = () => {
+                // Remove listeners to avoid leaks
+                cardWrapper.removeEventListener('mousemove', mouseMoveParallax);
+                if (window.DeviceOrientationEvent && 'ontouchstart' in window) {
+                    window.removeEventListener('deviceorientation', deviceParallax);
+                }
+                
+                // Stop floats and start exit
+                cardWrapper.style.animation = 'ghostCardExit 0.3s ease forwards';
+                shimmer.style.animation = 'none';
+                shimmer.style.opacity = '0';
+                btnContainer.style.opacity = '0';
+                
+                setTimeout(() => modal.remove(), 300);
+            };
+
+            closeBtn.onclick = triggerClose;
+            
+            // Close on backdrop click (not inner elements)
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) triggerClose();
+            });
+
+            btnContainer.appendChild(saveBtn);
+            btnContainer.appendChild(shareBtn);
+            btnContainer.appendChild(closeBtn);
+            modal.appendChild(btnContainer);
+            document.body.appendChild(modal);
+        };
+
+        if (typeof QRCode === 'undefined' && typeof window.QRCode === 'undefined') {
+            buildCard('fallback');
+            return;
+        }
+
+        drawQRAndBuild();
+
+        function drawQRAndBuild() {
+            try {
+                const tempDiv = document.createElement('div');
+                const expTS = Date.now() + (7 * 24 * 60 * 60 * 1000);
+                const qrData = JSON.stringify({"v":1,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS});
+                new QRCode(tempDiv, {
+                    text: qrData,
+                    width: 180,
+                    height: 180,
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+                
+                setTimeout(() => {
+                    const tempCanvas = tempDiv.querySelector('canvas');
+                    if (tempCanvas) {
+                        buildCard(tempCanvas);
+                    } else {
+                        const tempImg = tempDiv.querySelector('img');
+                        if (tempImg && tempImg.src) {
+                            const dynImg = new Image();
+                            dynImg.src = tempImg.src;
+                            dynImg.onload = () => buildCard(dynImg);
+                        } else {
+                            buildCard('fallback');
+                        }
+                    }
+                }, 50);
+            } catch (e) {
+                console.error('QR code generation failed', e);
+                buildCard('fallback');
+            }
+        }
+    },
+
+    // GHOST CARDS - QR Scanner
+    startQRScanner: () => {
+        const modal = document.createElement('div');
+        modal.id = 'qr-scanner-modal';
+        modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:#000;z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;';
+        
+        const video = document.createElement('video');
+        video.muted = true;
+        video.playsInline = true;
+        video.autoplay = true;
+        video.style.cssText = 'position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;';
+        
+        const canvas = document.createElement('canvas');
+        canvas.style.cssText = 'position:absolute;top:0;left:0;width:100vw;height:100vh;pointer-events:none;';
+        
+        const infoDiv = document.createElement('div');
+        infoDiv.textContent = 'Point at a Ghost Card QR code';
+        infoDiv.style.cssText = 'position:absolute;bottom:100px;color:#fff;font-family:Arial;font-size:16px;text-align:center;width:100%;z-index:100000;text-shadow:0 2px 4px rgba(0,0,0,0.8);';
+
+        const errorDiv = document.createElement('div');
+        errorDiv.style.cssText = 'position:absolute;bottom:130px;color:#ef4444;font-family:Arial;font-size:14px;text-align:center;width:100%;z-index:100000;';
+
+        const closeBtn = document.createElement('button');
+        closeBtn.textContent = 'Cancel';
+        closeBtn.style.cssText = 'position:absolute;bottom:40px;padding:12px 24px;border-radius:12px;background:rgba(255,255,255,0.1);color:#fff;border:1px solid rgba(255,255,255,0.2);cursor:pointer;z-index:100000;';
+
+        modal.appendChild(video);
+        modal.appendChild(canvas);
+        modal.appendChild(infoDiv);
+        modal.appendChild(errorDiv);
+        modal.appendChild(closeBtn);
+        document.body.appendChild(modal);
+
+        let stream;
+        let rafId;
+
+        const cleanup = () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            if (stream) stream.getTracks().forEach(t => t.stop());
+            video.srcObject = null;
+            modal.remove();
+            window.removeEventListener('resize', resizeCanvas);
+        };
+
+        closeBtn.onclick = cleanup;
+
+        const ctx = canvas.getContext('2d');
+        let offscreenCanvas = document.createElement('canvas');
+        let offscreenCtx = offscreenCanvas.getContext('2d', { willReadFrequently: true });
+
+        const resizeCanvas = () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            offscreenCanvas.width = video.videoWidth;
+            offscreenCanvas.height = video.videoHeight;
+        };
+        window.addEventListener('resize', resizeCanvas);
+
+        const initCamera = async (facingMode = 'environment') => {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    resizeCanvas();
+                    requestAnimationFrame(scanFrame);
+                };
+            } catch (err) {
+                if (facingMode === 'environment') {
+                    initCamera('user');
+                } else {
+                    cleanup();
+                    const errToast = document.createElement('div');
+                    if (err.name === 'NotAllowedError') {
+                        errToast.textContent = 'Camera permission denied — you can still enter a Node ID manually';
+                    } else {
+                        errToast.textContent = 'Camera not available — enter Node ID manually';
+                    }
+                    errToast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                    document.body.appendChild(errToast);
+                    setTimeout(() => errToast.remove(), 4000);
+                }
+            }
+        };
+
+        let bracketOffset = 0;
+        let bracketDir = 1;
+
+        const scanFrame = () => {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                bracketOffset += bracketDir * 0.5;
+                if (bracketOffset > 10 || bracketOffset < 0) bracketDir *= -1;
+
+                ctx.clearRect(0,0, canvas.width, canvas.height);
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0,0, canvas.width, canvas.height);
+
+                const size = 250;
+                const cx = canvas.width/2;
+                const cy = canvas.height/2;
+
+                ctx.globalCompositeOperation = 'destination-out';
+                ctx.fillRect(cx - size/2, cy - size/2, size, size);
+                ctx.globalCompositeOperation = 'source-over';
+
+                ctx.strokeStyle = '#00f0ff';
+                ctx.lineWidth = 4;
+                const bs = size/2 + bracketOffset;
+                const bl = 20;
+                
+                ctx.beginPath();
+                ctx.moveTo(cx - bs + bl, cy - bs); ctx.lineTo(cx - bs, cy - bs); ctx.lineTo(cx - bs, cy - bs + bl);
+                ctx.moveTo(cx + bs - bl, cy - bs); ctx.lineTo(cx + bs, cy - bs); ctx.lineTo(cx + bs, cy - bs + bl);
+                ctx.moveTo(cx - bs + bl, cy + bs); ctx.lineTo(cx - bs, cy + bs); ctx.lineTo(cx - bs, cy + bs - bl);
+                ctx.moveTo(cx + bs - bl, cy + bs); ctx.lineTo(cx + bs, cy + bs); ctx.lineTo(cx + bs, cy + bs - bl);
+                ctx.stroke();
+
+                if (window.jsQR) {
+                    offscreenCtx.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                    const imageData = offscreenCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+
+                    if (code) {
+                        try {
+                            const data = JSON.parse(code.data);
+                            if (data.v && data.app === 'ghostnet' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
+                                handleSuccess(data);
+                                return;
+                            } else {
+                                throw new Error('Invalid JSON format');
+                            }
+                        } catch (e) {
+                            if (/^0x[a-fA-F0-9]{8,64}$/.test(code.data)) {
+                                handleSuccess({ nodeId: code.data });
+                                return;
+                            } else {
+                                errorDiv.textContent = 'Invalid QR — this doesn\'t look like a Ghost Card';
+                            }
+                        }
+                    } else {
+                        errorDiv.textContent = '';
+                    }
+                }
+            }
+            rafId = requestAnimationFrame(scanFrame);
+        };
+
+        const handleSuccess = (data) => {
+            if (data.exp && Date.now() > data.exp) {
+                const toast = document.createElement('div');
+                toast.textContent = 'This Ghost Card has expired — ask them to generate a new one';
+                toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#f59e0b;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 4000);
+            } else {
+                const toast = document.createElement('div');
+                toast.textContent = '✓ Ghost Card scanned — tap Add to connect';
+                toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 3000);
+            }
+            
+            const pkInput = document.getElementById('chat-pubkey');
+            const nameInput = document.getElementById('chat-name');
+            if (pkInput) pkInput.value = data.nodeId;
+            if (nameInput && data.name) nameInput.value = data.name;
+            
+            cleanup();
+        };
+
+        if (typeof jsQR === 'undefined' && typeof window.jsQR === 'undefined') {
+            cleanup();
+            const pkInput = document.getElementById('chat-pubkey');
+            if (pkInput) {
+                pkInput.style.transition = 'box-shadow 0.3s ease-out';
+                pkInput.style.boxShadow = '0 0 12px #00f0ff';
+                pkInput.focus();
+                
+                const hint = document.createElement('div');
+                hint.textContent = 'Paste a Node ID or ask for their Ghost Card';
+                hint.style.cssText = 'color:#00f0ff;font-size:12px;margin-top:4px;';
+                pkInput.parentNode.parentNode.appendChild(hint);
+
+                setTimeout(() => {
+                    if (pkInput) pkInput.style.boxShadow = '';
+                }, 3000);
+            }
+            return;
+        }
+
+        initCamera();
     }
 };
 
