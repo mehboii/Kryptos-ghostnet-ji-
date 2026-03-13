@@ -27,6 +27,7 @@
     "@abandonware/noble": "^1.9.2-26",
     "acorn": "^8.16.0",
     "bcrypt": "^6.0.0",
+    "cacache": "^20.0.3",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
     "ethers": "^5.8.0",
@@ -39,7 +40,7 @@
     "nodemailer": "^8.0.1",
     "qrcodejs": "^1.0.0",
     "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7",
+    "sqlite3": "^6.0.1",
     "ws": "^8.19.0"
   },
   "engines": {
