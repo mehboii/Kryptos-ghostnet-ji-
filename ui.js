@@ -1969,6 +1969,10 @@ const UI = {
             const res = await fetch(url, { headers: authHeaders() });
             if (!res.ok) {
                 console.warn('GhostCode fetch failed:', res.status);
+                const badge = document.getElementById('ghostcode-badge');
+                if (badge) {
+                    badge.textContent = res.status === 401 ? 'SIGN IN' : 'ERROR';
+                }
                 return;
             }
             const data = await res.json();
@@ -1978,6 +1982,8 @@ const UI = {
             }
         } catch (e) {
             console.warn('GhostCode fetch error:', e);
+            const badge = document.getElementById('ghostcode-badge');
+            if (badge) badge.textContent = 'OFFLINE';
         }
     },
 
