@@ -731,19 +731,12 @@ app.post('/create-user', requireAuth, (req, res) => { // [01]
     res.json({ success: true, user: { id: newUser.id, username: newUser.username } });
 });
 
-app.get('/user/:id', requireAuth, (req, res) => { // [24]
-    const user = users.find(u => u.id === req.params.id);
-    if (!user) return res.status(404).json({ error: 'User not found' });
-
-    // [24] Return minimal public fields only; never expose internal fields
-    res.json({ id: user.id, username: user.username });
-});
-
 app.get('/users', requireAuth, (req, res) => { // [03]
     // Only return minimal public fields
     res.json(users.map(u => ({ id: u.id, username: u.username })));
 });
 
+// Must be before /user/:id or Express matches 'profile' as :id and returns 404
 app.get('/user/profile', requireAuth, (req, res) => {
     // Node-auth sessions (POST /auth/node) carry { id: nodeId, isNode: true }.
     // In that mode there is no row in users.json, so serve a profile from the node registry.
@@ -783,6 +776,14 @@ app.get('/user/profile', requireAuth, (req, res) => {
         avatar: user.avatar || null,
         nodeId: nodeIdKey || user.id
     });
+});
+
+app.get('/user/:id', requireAuth, (req, res) => { // [24] — after /user/profile so 'profile' isn't matched as :id
+    const user = users.find(u => u.id === req.params.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // [24] Return minimal public fields only; never expose internal fields
+    res.json({ id: user.id, username: user.username });
 });
 
 app.patch('/user/profile', requireAuth, express.json({ limit: '600kb' }), (req, res) => {
