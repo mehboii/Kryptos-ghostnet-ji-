@@ -13,6 +13,58 @@
  * However, once paired, devices can auto-reconnect.
  */
 
+// GHOSTNET SECURITY — WS message sanitizer (mesh layer)
+const _ALLOWED_MESH_TYPES = new Set([
+    'chat', 'mesh', 'ping', 'pong', 'signal',
+    'node-announce', 'node-discover', 'route',
+    'ack', 'relay', 'onion', 'cover',
+    // server/control types used by demo mesh
+    'HELLO', 'MESH_HELLO', 'welcome',
+    'PEER_JOIN', 'PEER_LEAVE', 'MESH_MSG',
+    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK'
+]);
+
+function _sanitizeMeshMessage(raw) {
+    let msg;
+    try {
+        if (typeof raw !== 'string') return null;
+        if (raw.length > 65536) return null; // 64KB hard cap before parsing
+        msg = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return null;
+    if (!_ALLOWED_MESH_TYPES.has(msg.type)) return null;
+
+    if (msg.body !== undefined) {
+        if (typeof msg.body !== 'string') return null;
+        if (msg.body.length > 4096) return null;
+    }
+
+    if (msg.senderId !== undefined && msg.senderId !== null) {
+        if (typeof msg.senderId !== 'string') return null;
+        if (!/^0x[a-fA-F0-9]{8,64}$/.test(msg.senderId)) return null;
+    }
+
+    const now = Date.now();
+    if (msg.timestamp !== undefined) {
+        if (typeof msg.timestamp !== 'number') return null;
+        if (msg.timestamp < now - 300000) return null; // older than 5 minutes
+        if (msg.timestamp > now + 30000) return null;  // more than 30s in future
+    }
+
+    return {
+        type: String(msg.type),
+        body: msg.body ? String(msg.body).slice(0, 4096) : undefined,
+        senderId: msg.senderId || null,
+        timestamp: msg.timestamp || now,
+        hopCount: typeof msg.hopCount === 'number'
+            ? Math.min(Math.max(0, msg.hopCount), 10)
+            : 0
+    };
+}
+
 class GhostMesh {
     constructor(identity) {
         this.identity = identity; // { id, nodeId, pub }
@@ -125,7 +177,7 @@ class GhostMesh {
     async broadcast(message) {
         const payload = {
             type: 'MESH_MSG',
-            id: 'msg_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+            id: crypto.randomUUID(),
             from: this.identity.id,
             data: message,
             ts: Date.now(),
@@ -161,7 +213,7 @@ class GhostMesh {
 
         const payload = {
             type: 'MESH_DIRECT',
-            id: 'msg_' + Date.now(),
+            id: crypto.randomUUID(),
             from: this.identity.id,
             to: peerId,
             data: message,
@@ -214,9 +266,15 @@ class GhostMesh {
 
     connectWebSocket() {
         try {
+            const token = sessionStorage.getItem('ghostnet_jwt');
+            if (!token) {
+                console.warn('[Mesh] No auth token — cannot connect');
+                return;
+            }
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
-            console.log(`🔌 Mesh: Connecting WebSocket: ${wsUrl}`);
+            const baseUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
+            const wsUrl = `${baseUrl}?token=${encodeURIComponent(token)}`;
+            console.log(`🔌 Mesh: Connecting WebSocket: ${baseUrl}`);
 
             this.ws = new WebSocket(wsUrl);
 
@@ -239,12 +297,9 @@ class GhostMesh {
             };
 
             this.ws.onmessage = (event) => {
-                try {
-                    const msg = JSON.parse(event.data);
-                    this.handleWSMessage(msg);
-                } catch (e) {
-                    console.error('WS parse error:', e);
-                }
+                const msg = _sanitizeMeshMessage(event.data);
+                if (!msg) return;
+                this.handleWSMessage(msg);
             };
 
             this.ws.onclose = () => {

@@ -315,20 +315,6 @@
         async getOrGenerateKey() {
             if (this.key) return this.key;
 
-            const localJwk = localStorage.getItem('ghostnet_vault_master_key');
-            if (localJwk) {
-                try {
-                    this.key = await crypto.subtle.importKey(
-                        'jwk', JSON.parse(localJwk),
-                        { name: 'AES-GCM', length: 256 },
-                        true, ['encrypt', 'decrypt']
-                    );
-                    return this.key;
-                } catch (e) {
-                    console.warn('Local vault key invalid, checking server...', e);
-                }
-            }
-
             let serverKeyData = null;
             try {
                 const res = await fetch(`${VAULT_API.replace('/vault', '')}/vault/key`, { headers: _secureHeaders() });
@@ -344,6 +330,9 @@
                 this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
                 if (this.key) {
                     markVaultUnlocked();
+                    try {
+                        window.__vaultKey = this.key;
+                    } catch { }
                     return this.key;
                 }
             }
@@ -379,8 +368,10 @@
                 true, ['encrypt', 'decrypt']
             );
 
-            localStorage.setItem('ghostnet_vault_master_key', jwkStr);
             this.key = key;
+            try {
+                window.__vaultKey = key;
+            } catch { }
             return key;
         },
 
@@ -414,9 +405,10 @@
                 headers: { ..._secureHeaders(), 'Content-Type': 'application/json' },
                 body: JSON.stringify({ keyData: serverKeyData })
             });
-
-            localStorage.setItem('ghostnet_vault_master_key', jwkStr);
             this.key = newKey;
+            try {
+                window.__vaultKey = newKey;
+            } catch { }
             return newKey;
         }
     };

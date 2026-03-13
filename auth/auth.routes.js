@@ -391,7 +391,9 @@ router.post('/forgot-password', resetLimiter, (req, res) => {
             });
         }
 
-        console.log(`🔑 Password reset code for ${email}: ${result.code}`);
+        if (process.env.NODE_ENV !== 'production') {
+            console.debug('[DEV] Password reset initiated for user');
+        }
         res.json({
             success: true,
             message: 'Reset code generated.',
