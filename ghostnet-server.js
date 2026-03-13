@@ -327,7 +327,42 @@ app.use((req, res, next) => {
 });
 
 // [21] Serve only public/ subdirectory, not the whole CWD
-app.use(express.static(path.join(__dirname, 'public')));
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+// Serve a minimal, explicit asset allowlist (keeps [21] protections without requiring
+// a public/ folder to exist in every deployment environment).
+const ALLOWED_STATIC_FILES = new Set([
+    'index.html',
+    'ui.js',
+    'ui.css',
+    'style.css',
+    'app.js',
+    'ghostnet-file-vault.js',
+    'ghostnet-chat.js',
+    'ghostnet-mesh.js',
+    'ghostnet-identity.js',
+    'crypto-identity.js',
+    'jsQR.js',
+    'qrcode.min.js',
+]);
+
+app.get('/:asset', (req, res, next) => {
+    const asset = req.params.asset;
+    if (!ALLOWED_STATIC_FILES.has(asset)) return next();
+
+    // Prefer public/ if present, otherwise fall back to repo root.
+    const fromPublic = path.join(PUBLIC_DIR, asset);
+    const fromRoot = path.join(__dirname, asset);
+    const filePath = fs.existsSync(fromPublic) ? fromPublic : fromRoot;
+    res.sendFile(filePath, err => {
+        if (err) next();
+    });
+});
+
+// If a public/ directory exists, serve it (still safe-sandboxed).
+if (fs.existsSync(PUBLIC_DIR)) {
+    app.use(express.static(PUBLIC_DIR));
+}
 
 // Auth routes (have their own stricter rate limit inside authRouter)
 app.use('/auth', authRouter);
@@ -1127,7 +1162,9 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]
 
 // Explicit root
 app.get('/', (_req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    const fromPublic = path.join(PUBLIC_DIR, 'index.html');
+    const filePath = fs.existsSync(fromPublic) ? fromPublic : path.join(__dirname, 'index.html');
+    res.sendFile(filePath);
 });
 
 // ─── HTTP server ─────────────────────────────────────────────────────────────
