@@ -1619,21 +1619,19 @@ const UI = {
     },
 
     loadProfile: async () => {
+        // Silent fallback: cache profile if available, otherwise use last cached copy.
+        // No user-facing warning/toast for a 404 here.
         try {
-            const res = await fetch(`${BACKEND_URL}/user/profile`, {
-                headers: authHeaders()
-            });
+            const res = await fetch(`${BACKEND_URL}/user/profile`, { headers: authHeaders() });
             if (res.ok) {
                 const user = await res.json();
+                localStorage.setItem('ghostnet_profile_cache', JSON.stringify(user));
+                // Back-compat with older key
                 localStorage.setItem('ghostnet_user', JSON.stringify(user));
-            } else {
-                console.warn("Server returned non-200. Falling back to local profile cache.");
             }
-        } catch (e) {
-            console.warn("Network error: could not sync profile. Falling back to local cache.", e);
-        }
+        } catch { }
 
-        const stored = localStorage.getItem('ghostnet_user');
+        const stored = localStorage.getItem('ghostnet_profile_cache') || localStorage.getItem('ghostnet_user');
         if (stored) {
             try {
                 const user = JSON.parse(stored);
