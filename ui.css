@@ -1680,6 +1680,20 @@ canvas#mesh {
     gap: 8px;
 }
 
+/* Profile: "My Ghost Card" button should be compact */
+.ghostcard-btn {
+    width: fit-content;
+    min-width: 180px;
+    max-width: 260px;
+    margin-left: auto;
+    margin-right: auto;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: var(--accent-gradient);
+    color: #ffffff;
+    box-shadow: 0 3px 12px var(--accent-dim);
+}
+
 .btn-tiny {
     background: transparent;
     border: 1px solid var(--border);
