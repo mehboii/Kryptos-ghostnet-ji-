@@ -462,6 +462,14 @@
                             </svg>
                             AES-256-GCM
                         </span>
+                        <button class="btn-tiny" id="vault-lock-btn" title="Lock Vault">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
+                                <rect x="5" y="11" width="14" height="10" rx="2" ry="2"></rect>
+                                <path d="M7 11V8a5 5 0 0 1 10 0v3"></path>
+                            </svg>
+                            Lock
+                        </button>
                     </div>
                 </div>
                 <div class="section-container">
@@ -1686,6 +1694,9 @@
 
                     function signOut() {
                         GhostIdentity.clearSession();
+                        if (window.GhostVault && typeof window.GhostVault.lockVault === 'function') {
+                            window.GhostVault.lockVault();
+                        }
                         _pendingIdentity = null;
                         const sidebarProfile = document.getElementById('sidebar-profile');
                         if (sidebarProfile) sidebarProfile.style.display = 'none';

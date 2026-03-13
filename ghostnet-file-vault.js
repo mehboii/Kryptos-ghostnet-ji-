@@ -128,6 +128,54 @@
     const DB_VERSION = 1;
     const MAX_FILE_BYTES = 3 * 1024 * 1024 * 1024;   // 3 GB max ceiling
 
+    // ─── Session unlock flag (PIN remembered per-tab) ─────────────────────────
+    const VAULT_SESSION_KEY = 'ghostnet_vault_unlocked';
+
+    function isVaultUnlocked() {
+        try { return sessionStorage.getItem(VAULT_SESSION_KEY) === 'true'; }
+        catch { return false; }
+    }
+
+    function markVaultUnlocked() {
+        try { sessionStorage.setItem(VAULT_SESSION_KEY, 'true'); } catch { }
+    }
+
+    function lockVault() {
+        try {
+            sessionStorage.removeItem(VAULT_SESSION_KEY);
+            sessionStorage.removeItem('ghostnet_vault_key');
+        } catch { }
+    }
+
+    // ─── Local metadata index (no ciphertext) ─────────────────────────────────
+
+    function loadVaultIndex() {
+        try {
+            const raw = localStorage.getItem('ghostnet_vault_index');
+            return raw ? JSON.parse(raw) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function saveVaultIndex(index) {
+        try {
+            const slim = index.map(f => ({
+                fileId: f.fileId,
+                fileName: f.fileName,
+                fileSize: f.fileSize,
+                originalSize: f.originalSize,
+                fileHash: f.fileHash || null,
+                uploadedAt: f.uploadedAt || Date.now(),
+                chainAnchored: !!f.chainAnchored,
+                txHash: f.txHash || null,
+            }));
+            localStorage.setItem('ghostnet_vault_index', JSON.stringify(slim));
+        } catch { }
+    }
+
+    let vaultIndex = loadVaultIndex();
+
     // ─── Validation helpers ───────────────────────────────────────────────────
 
     // [FIX C] Strict allowlist for fileId — alphanumeric, hyphens, underscores only.
@@ -292,9 +340,12 @@
                 console.warn('Could not fetch vault key from server', e);
             }
 
-            if (window.UI && window.UI.promptVaultKeyRecovery) {
+            if (window.UI && window.UI.promptVaultKeyRecovery && !isVaultUnlocked()) {
                 this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
-                if (this.key) return this.key;
+                if (this.key) {
+                    markVaultUnlocked();
+                    return this.key;
+                }
             }
 
             throw new Error('Vault Key unavailable. Cannot encrypt or decrypt files.');
@@ -530,16 +581,32 @@
         // [FIX C] Validate fileId from server response before storing.
         const fileId = _validateFileId(result?.file?.fileId);
 
+        const normalizedMeta = {
+            fileId,
+            fileName: _sanitizeFileName(file.name),
+            fileSize: result.file?.fileSize || file.size,
+            originalSize: encrypted.originalSize,
+            fileHash: result.file?.fileHash || null,
+            uploadedAt: result.file?.uploadedAt || Date.now(),
+            chainAnchored: !!result.file?.chainAnchored,
+            txHash: result.file?.txHash || null,
+        };
+
         // [FIX A] Store key in IndexedDB — never in localStorage.
         await saveKey(fileId, {
             keyHex: encrypted.keyHex,
             ivHex: encrypted.ivHex,
-            fileName: _sanitizeFileName(file.name),  // [FIX H]
+            fileName: normalizedMeta.fileName,  // [FIX H]
             originalSize: encrypted.originalSize,
         });
 
+        // Update local metadata index so files survive server /files gaps.
+        vaultIndex = vaultIndex.filter(f => f.fileId !== fileId);
+        vaultIndex.push(normalizedMeta);
+        saveVaultIndex(vaultIndex);
+
         if (onProgress) onProgress({ stage: 'complete', percent: 100 });
-        return { ...result.file, encKeyStr };
+        return { ...normalizedMeta, encKeyStr };
     }
 
     // ─── Download & Decrypt ───────────────────────────────────────────────────
@@ -681,7 +748,7 @@
 
     async function listFiles() {
         const owner = getOwner();
-        if (!owner) return [];
+        if (!owner) return vaultIndex.slice();
 
         let response;
         try {
@@ -690,13 +757,34 @@
                 headers: _secureHeaders(),
             });
         } catch {
-            return [];
+            // Network failure — fall back entirely to local index.
+            return vaultIndex.slice();
         }
 
-        if (!response.ok) return [];
+        if (!response.ok) {
+            // Server returned error — keep using cached index.
+            return vaultIndex.slice();
+        }
 
         const data = await response.json().catch(() => ({}));
-        return Array.isArray(data.files) ? data.files : [];
+        if (Array.isArray(data.files) && data.files.length) {
+            // Refresh local index with authoritative server list.
+            vaultIndex = data.files.map(f => ({
+                fileId: f.fileId,
+                fileName: f.fileName,
+                fileSize: f.fileSize,
+                originalSize: f.originalSize,
+                fileHash: f.fileHash || null,
+                uploadedAt: f.uploadedAt || Date.now(),
+                chainAnchored: !!f.chainAnchored,
+                txHash: f.txHash || null,
+            }));
+            saveVaultIndex(vaultIndex);
+            return vaultIndex.slice();
+        }
+
+        // Empty server list — retain local view so uploads don't vanish.
+        return vaultIndex.slice();
     }
 
     // ─── Delete File ──────────────────────────────────────────────────────────
@@ -728,6 +816,10 @@
         }
 
         await removeKey(fileId);
+
+        // Update local metadata index.
+        vaultIndex = vaultIndex.filter(f => f.fileId !== fileId);
+        saveVaultIndex(vaultIndex);
         return true;
     }
 
@@ -798,6 +890,7 @@
         hasKey,
         formatBytes,
         getOwner,
+        lockVault,
     };
 
     // [FIX M] Immutable global — cannot be overwritten by later scripts.

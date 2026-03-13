@@ -1787,6 +1787,11 @@ const UI = {
                 browseBtn.style.opacity = opacity;
                 browseBtn.style.pointerEvents = enabled ? 'auto' : 'none';
             }
+            const lockBtn = document.getElementById('vault-lock-btn');
+            if (lockBtn) {
+                lockBtn.disabled = !enabled;
+                lockBtn.style.opacity = enabled ? '1' : opacity;
+            }
         };
 
         const webCryptoOk = !!(window.crypto && window.crypto.subtle);
@@ -1803,6 +1808,18 @@ const UI = {
             return;
         }
         setVaultEnabled(true);
+
+        // Wire "Lock Vault" button to clear session state.
+        const lockBtn = document.getElementById('vault-lock-btn');
+        if (lockBtn && !lockBtn._wired) {
+            lockBtn._wired = true;
+            lockBtn.addEventListener('click', () => {
+                if (window.GhostVault && typeof window.GhostVault.lockVault === 'function') {
+                    window.GhostVault.lockVault();
+                    showToast('Vault locked for this session');
+                }
+            });
+        }
 
         // Browse button
         browseBtn?.addEventListener('click', (e) => {
