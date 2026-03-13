@@ -1953,11 +1953,18 @@ const UI = {
         const sizeEl = document.getElementById('vault-stat-size');
         const anchoredEl = document.getElementById('vault-stat-anchored');
         const totalSize = files.reduce((s, f) => s + (f.originalSize || f.fileSize || 0), 0);
-        const anchored = files.filter(f => f.chainAnchored).length;
 
-        if (countEl) countEl.textContent = files.length;
+        // "On-chain" is not fully implemented yet; show actually stored files instead.
+        // Treat any successfully listed file as stored, and treat chainAnchored as "confirmed".
+        const storedCount = files.length;
+        const confirmedCount = files.filter(f => f.chainAnchored).length;
+
+        if (countEl) countEl.textContent = String(files.length);
         if (sizeEl) sizeEl.textContent = GhostVault.formatBytes(totalSize);
-        if (anchoredEl) anchoredEl.textContent = anchored;
+        if (anchoredEl) {
+            const label = confirmedCount > 0 ? `${confirmedCount} confirmed` : `${storedCount} stored`;
+            anchoredEl.textContent = label;
+        }
 
         // Render file cards (DOM API only; no innerHTML)
         clearEl(listEl);
@@ -2001,16 +2008,34 @@ const UI = {
             card.appendChild(header);
 
             const badge = document.createElement('div');
-            badge.className = `vault-chain-badge ${f.chainAnchored ? 'anchored' : 'pending'}`;
+            // Status mapping:
+            // - If chainAnchored is true → Confirmed
+            // - Otherwise → Stored (upload succeeded but not anchored on-chain)
+            let status = 'Stored';
+            let statusClass = 'stored';
+            if (f.chainAnchored) {
+                status = 'Confirmed';
+                statusClass = 'confirmed';
+            }
+            badge.className = `vault-chain-badge ${statusClass}`;
             const badgeIcon = document.createElement('i');
-            badgeIcon.setAttribute('data-lucide', f.chainAnchored ? 'link' : 'clock');
+            if (status === 'Pending') {
+                badgeIcon.setAttribute('data-lucide', 'clock');
+            } else if (status === 'Failed') {
+                badgeIcon.setAttribute('data-lucide', 'x-circle');
+            } else if (status === 'Confirmed') {
+                badgeIcon.setAttribute('data-lucide', 'link');
+            } else {
+                // Stored
+                badgeIcon.setAttribute('data-lucide', 'shield-check');
+            }
             badgeIcon.style.width = '10px';
             badgeIcon.style.height = '10px';
             badge.appendChild(badgeIcon);
 
             const badgeText = document.createElement('span');
             const txShort = f.txHash ? ` • ${String(f.txHash).substring(0, 10)}...` : '';
-            badgeText.textContent = `${f.chainAnchored ? 'On-Chain' : 'Pending'}${txShort}`;
+            badgeText.textContent = `${status}${txShort}`;
             badge.appendChild(badgeText);
             card.appendChild(badge);
 
