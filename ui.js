@@ -22,10 +22,16 @@ const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
  * Reads the JWT token from localStorage.
  */
 function authHeaders() {
-    const token = localStorage.getItem('ghostnet_jwt') || localStorage.getItem('ghostnet_token') || '';
+    const token =
+        sessionStorage.getItem('ghostnet_token') ||
+        localStorage.getItem('ghostnet_jwt') ||
+        localStorage.getItem('ghostnet_token') ||
+        '';
     return {
         'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
+        // Server accepts both Bearer and X-Auth-Token
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-Auth-Token': token || ''
     };
 }
 
@@ -183,11 +189,8 @@ const UI = {
             if (viewProfile) {
                 const pContainer = viewProfile.querySelector('.profile-container') || viewProfile;
                 const gcBtn = document.createElement('button');
-                gcBtn.className = 'btn-primary';
-                gcBtn.style.marginTop = '20px';
-                gcBtn.style.width = '100%';
-                gcBtn.style.background = '#00f0ff';
-                gcBtn.style.color = '#0a0f1e';
+                gcBtn.className = 'btn-primary ghostcard-btn';
+                gcBtn.style.marginTop = '12px';
                 gcBtn.innerText = 'My Ghost Card';
                 gcBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
                 pContainer.appendChild(gcBtn);
