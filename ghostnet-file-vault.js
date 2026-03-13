@@ -761,6 +761,31 @@
         }
     }
 
+    // ─── Module init ──────────────────────────────────────────────────────────
+    // The UI expects `GhostVault.init()` to exist. Older versions referenced `_init`
+    // but it was never defined. Keep init lightweight: validate secure context and
+    // ensure the owner nodeId is available for authenticated vault calls.
+    async function _init() {
+        // Web Crypto only works in a secure context (HTTPS or localhost).
+        if (!(window.crypto && window.crypto.subtle)) {
+            return false;
+        }
+
+        // Ensure owner identity is available for vault requests.
+        // Prefer sessionStorage (tab scoped), otherwise mirror from in-memory identity.
+        try {
+            const existing = sessionStorage.getItem('ghostnet_node_id');
+            if (!existing) {
+                const nodeId = window.app?.identity?.nodeId || window.app?.identity?.id || null;
+                if (nodeId) sessionStorage.setItem('ghostnet_node_id', nodeId);
+            }
+        } catch {
+            // Ignore storage errors; getOwner() will fall back to in-memory identity.
+        }
+
+        return true;
+    }
+
     const GhostVault = {
         init: _init,
         uploadFile,

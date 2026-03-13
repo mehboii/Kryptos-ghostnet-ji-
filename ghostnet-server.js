@@ -745,6 +745,30 @@ app.get('/users', requireAuth, (req, res) => { // [03]
 });
 
 app.get('/user/profile', requireAuth, (req, res) => {
+    // Node-auth sessions (POST /auth/node) carry { id: nodeId, isNode: true }.
+    // In that mode there is no row in users.json, so serve a profile from the node registry.
+    if (req.user?.isNode) {
+        let nodeId;
+        try { nodeId = validateNodeId(req.user.id); } catch { return res.status(400).json({ error: 'Invalid nodeId' }); }
+        if (!registeredNodes[nodeId]) {
+            registeredNodes[nodeId] = {
+                nodeId,
+                displayName: nodeId.slice(0, 10),
+                ownerId: nodeId,
+                registeredAt: Date.now(),
+                lastSeen: Date.now(),
+            };
+            saveNodeRegistry();
+        }
+        const n = registeredNodes[nodeId];
+        return res.json({
+            id: nodeId,
+            displayName: n.displayName || nodeId.slice(0, 10),
+            avatar: n.avatar || null,
+            nodeId,
+        });
+    }
+
     const user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
     if (!user) {
         return res.status(404).json({ error: 'User not found' });
@@ -783,10 +807,27 @@ app.patch('/user/profile', requireAuth, express.json({ limit: '600kb' }), (req, 
         }
     }
 
-    let user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
-    if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+    // Node-auth sessions update the node registry profile directly.
+    if (req.user?.isNode) {
+        let nodeId;
+        try { nodeId = validateNodeId(req.user.id); } catch { return res.status(400).json({ error: 'Invalid nodeId' }); }
+        if (!registeredNodes[nodeId]) {
+            registeredNodes[nodeId] = {
+                nodeId,
+                displayName: nodeId.slice(0, 10),
+                ownerId: nodeId,
+                registeredAt: Date.now(),
+                lastSeen: Date.now(),
+            };
+        }
+        if (displayName !== undefined) registeredNodes[nodeId].displayName = displayName;
+        if (avatar !== undefined) registeredNodes[nodeId].avatar = avatar;
+        saveNodeRegistry();
+        return res.json({ success: true, displayName: registeredNodes[nodeId].displayName, avatar: registeredNodes[nodeId].avatar || null, nodeId });
     }
+
+    let user = users.find(u => u.ownerId === req.user.id || u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
 
     if (displayName !== undefined) user.displayName = displayName;
     if (avatar !== undefined) user.avatar = avatar;
@@ -803,7 +844,7 @@ app.patch('/user/profile', requireAuth, express.json({ limit: '600kb' }), (req, 
     }
     if (updatedNode) saveNodeRegistry();
 
-    res.json({ success: true, displayName: user.displayName, avatar: user.avatar });
+    res.json({ success: true, displayName: user.displayName, avatar: user.avatar || null, nodeId: user.id });
 });
 
 // ─── MESSAGING ───────────────────────────────────────────────────────────────
