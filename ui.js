@@ -1518,7 +1518,7 @@ const UI = {
             msg.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
                     <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${fileName.replace(/</g, '&lt;')}</div>
-                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.innerHTML='Decrypting...'; window.GhostVault.downloadFile('${fileId}', '${encKeyStr}').then(() => this.innerHTML='Decrypted & Downloaded!').catch(e => { alert(e.message); this.innerHTML='Download Failed'; })">
+                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${fileId}', '${encKeyStr}').then(() => this.textContent='Decrypted & Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
                         Secure Download
                     </button>
                 </div>
@@ -1751,6 +1751,61 @@ const UI = {
 
         if (!dropZone || !fileInput) return;
 
+        // Vault depends on Web Crypto (secure context) and the GhostVault module script.
+        // Never use native alert(); show an inline warning + disable interactions.
+        const ensureVaultBanner = (message) => {
+            const host = document.getElementById('view-vault') || dropZone.closest('.view-section') || dropZone.parentElement;
+            if (!host) return null;
+            let banner = document.getElementById('vault-crypto-banner');
+            if (banner) {
+                banner.textContent = message;
+                return banner;
+            }
+            banner = document.createElement('div');
+            banner.id = 'vault-crypto-banner';
+            banner.textContent = message;
+            banner.style.cssText = [
+                'margin:0 0 12px 0',
+                'padding:10px 12px',
+                'border-radius:12px',
+                'border:1px solid rgba(245,158,11,0.35)',
+                'background:rgba(245,158,11,0.10)',
+                'color:var(--text-primary)',
+                'font-size:0.82rem',
+                'line-height:1.4',
+            ].join(';');
+            const dzParent = dropZone.parentElement;
+            if (dzParent) dzParent.insertBefore(banner, dropZone);
+            else host.prepend(banner);
+            return banner;
+        };
+
+        const setVaultEnabled = (enabled) => {
+            const opacity = enabled ? '1' : '0.55';
+            dropZone.style.opacity = opacity;
+            dropZone.style.pointerEvents = enabled ? 'auto' : 'none';
+            if (browseBtn) {
+                browseBtn.disabled = !enabled;
+                browseBtn.style.opacity = opacity;
+                browseBtn.style.pointerEvents = enabled ? 'auto' : 'none';
+            }
+        };
+
+        const webCryptoOk = !!(window.crypto && window.crypto.subtle);
+        if (!webCryptoOk) {
+            ensureVaultBanner(`🔒 Vault requires a secure context (HTTPS or localhost). Current: ${location.protocol}`);
+            showToast('Vault encryption unavailable — HTTPS required');
+            setVaultEnabled(false);
+            return;
+        }
+        if (!window.GhostVault) {
+            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
+            showToast('Vault encryption unavailable — module not loaded');
+            setVaultEnabled(false);
+            return;
+        }
+        setVaultEnabled(true);
+
         // Browse button
         browseBtn?.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -1790,7 +1845,7 @@ const UI = {
 
     vaultUploadFiles: async (files) => {
         if (!window.GhostVault) {
-            alert('Vault encryption module not loaded.');
+            showToast('Vault encryption module not loaded');
             return;
         }
 
@@ -1818,7 +1873,12 @@ const UI = {
                     if (barEl) barEl.style.width = stage.percent + '%';
                     if (detailEl) detailEl.textContent = stage.detail;
                     if (iconEl) {
-                        iconEl.innerHTML = `<i data-lucide="${stage.icon}" style="width:32px; height:32px;"></i>`;
+                        iconEl.textContent = '';
+                        const icon = document.createElement('i');
+                        icon.setAttribute('data-lucide', stage.icon);
+                        icon.style.width = '32px';
+                        icon.style.height = '32px';
+                        iconEl.appendChild(icon);
                         if (typeof lucide !== 'undefined') lucide.createIcons();
                     }
                 });
@@ -1859,8 +1919,12 @@ const UI = {
 
         if (!listEl) return;
 
+        const clearEl = (el) => {
+            while (el.firstChild) el.removeChild(el.firstChild);
+        };
+
         if (!files || files.length === 0) {
-            listEl.innerHTML = '';
+            clearEl(listEl);
             if (emptyEl) emptyEl.style.display = 'block';
             if (statsEl) statsEl.style.display = 'none';
             return;
@@ -1880,44 +1944,107 @@ const UI = {
         if (sizeEl) sizeEl.textContent = GhostVault.formatBytes(totalSize);
         if (anchoredEl) anchoredEl.textContent = anchored;
 
-        // Render file cards
-        listEl.innerHTML = files.map(f => {
-            const hasKey = GhostVault.hasKey(f.fileId);
-            const shortHash = f.fileHash ? `SHA-256: ${f.fileHash.substring(0, 8)}...${f.fileHash.substring(f.fileHash.length - 8)}` : '';
-            const timeStr = f.uploadedAt ? new Date(f.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-            const sizeStr = GhostVault.formatBytes(f.originalSize || f.fileSize || 0);
+        // Render file cards (DOM API only; no innerHTML)
+        clearEl(listEl);
+        for (const f of files) {
+            const card = document.createElement('div');
+            card.className = 'vault-file-card';
+            card.dataset.fileId = f.fileId;
 
-            return `
-                <div class="vault-file-card" data-file-id="${f.fileId}">
-                    <div class="vault-file-header">
-                        <div class="vault-file-icon">
-                            <i data-lucide="file-lock" style="width:20px; height:20px;"></i>
-                        </div>
-                        <div class="vault-file-info">
-                            <div class="vault-file-name" title="${f.fileName}">${f.fileName}</div>
-                            <div class="vault-file-size">${sizeStr} • ${timeStr}</div>
-                        </div>
-                    </div>
-                    <div class="vault-chain-badge ${f.chainAnchored ? 'anchored' : 'pending'}">
-                        <i data-lucide="${f.chainAnchored ? 'link' : 'clock'}" style="width:10px; height:10px;"></i>
-                        ${f.chainAnchored ? 'On-Chain' : 'Pending'}
-                        ${f.txHash ? ` • ${f.txHash.substring(0, 10)}...` : ''}
-                    </div>
-                    <div class="vault-file-hash">${shortHash}</div>
-                    <div class="vault-file-actions">
-                        <button class="vault-action-btn" onclick="UI.vaultDownload('${f.fileId}')" ${!hasKey ? 'disabled title="Key not found on this device"' : ''}>
-                            <i data-lucide="download" style="width:14px;"></i> ${hasKey ? 'Download' : 'No Key'}
-                        </button>
-                        <button class="vault-action-btn verify" onclick="UI.vaultVerify('${f.fileId}')">
-                            <i data-lucide="shield-check" style="width:14px;"></i> Verify
-                        </button>
-                        <button class="vault-action-btn danger" onclick="UI.vaultDelete('${f.fileId}', '${f.fileName.replace(/'/g, "\\'")}')">
-                            <i data-lucide="trash-2" style="width:14px;"></i>
-                        </button>
-                    </div>
-                </div>
-            `;
-        }).join('');
+            const header = document.createElement('div');
+            header.className = 'vault-file-header';
+
+            const iconWrap = document.createElement('div');
+            iconWrap.className = 'vault-file-icon';
+            const icon = document.createElement('i');
+            icon.setAttribute('data-lucide', 'file-lock');
+            icon.style.width = '20px';
+            icon.style.height = '20px';
+            iconWrap.appendChild(icon);
+
+            const info = document.createElement('div');
+            info.className = 'vault-file-info';
+
+            const name = document.createElement('div');
+            name.className = 'vault-file-name';
+            name.title = f.fileName || '';
+            name.textContent = f.fileName || 'encrypted_file';
+
+            const timeStr = f.uploadedAt
+                ? new Date(f.uploadedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+                : '';
+            const sizeStr = GhostVault.formatBytes(f.originalSize || f.fileSize || 0);
+            const meta = document.createElement('div');
+            meta.className = 'vault-file-size';
+            meta.textContent = timeStr ? `${sizeStr} • ${timeStr}` : sizeStr;
+
+            info.appendChild(name);
+            info.appendChild(meta);
+
+            header.appendChild(iconWrap);
+            header.appendChild(info);
+            card.appendChild(header);
+
+            const badge = document.createElement('div');
+            badge.className = `vault-chain-badge ${f.chainAnchored ? 'anchored' : 'pending'}`;
+            const badgeIcon = document.createElement('i');
+            badgeIcon.setAttribute('data-lucide', f.chainAnchored ? 'link' : 'clock');
+            badgeIcon.style.width = '10px';
+            badgeIcon.style.height = '10px';
+            badge.appendChild(badgeIcon);
+
+            const badgeText = document.createElement('span');
+            const txShort = f.txHash ? ` • ${String(f.txHash).substring(0, 10)}...` : '';
+            badgeText.textContent = `${f.chainAnchored ? 'On-Chain' : 'Pending'}${txShort}`;
+            badge.appendChild(badgeText);
+            card.appendChild(badge);
+
+            const hash = document.createElement('div');
+            hash.className = 'vault-file-hash';
+            hash.textContent = f.fileHash
+                ? `SHA-256: ${String(f.fileHash).substring(0, 8)}...${String(f.fileHash).substring(String(f.fileHash).length - 8)}`
+                : '';
+            card.appendChild(hash);
+
+            const actions = document.createElement('div');
+            actions.className = 'vault-file-actions';
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'vault-action-btn';
+            const downloadIcon = document.createElement('i');
+            downloadIcon.setAttribute('data-lucide', 'download');
+            downloadIcon.style.width = '14px';
+            downloadBtn.appendChild(downloadIcon);
+            const hasKey = GhostVault.hasKey(f.fileId);
+            downloadBtn.appendChild(document.createTextNode(' ' + (hasKey ? 'Download' : 'No Key')));
+            downloadBtn.disabled = !hasKey;
+            if (!hasKey) downloadBtn.title = 'Key not found on this device';
+            downloadBtn.addEventListener('click', () => UI.vaultDownload(f.fileId));
+
+            const verifyBtn = document.createElement('button');
+            verifyBtn.className = 'vault-action-btn verify';
+            const verifyIcon = document.createElement('i');
+            verifyIcon.setAttribute('data-lucide', 'shield-check');
+            verifyIcon.style.width = '14px';
+            verifyBtn.appendChild(verifyIcon);
+            verifyBtn.appendChild(document.createTextNode(' Verify'));
+            verifyBtn.addEventListener('click', () => UI.vaultVerify(f.fileId));
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'vault-action-btn danger';
+            const delIcon = document.createElement('i');
+            delIcon.setAttribute('data-lucide', 'trash-2');
+            delIcon.style.width = '14px';
+            delBtn.appendChild(delIcon);
+            delBtn.addEventListener('click', () => UI.vaultDelete(f.fileId, f.fileName || 'file'));
+
+            actions.appendChild(downloadBtn);
+            actions.appendChild(verifyBtn);
+            actions.appendChild(delBtn);
+            card.appendChild(actions);
+
+            listEl.appendChild(card);
+        }
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
     },
@@ -1926,7 +2053,7 @@ const UI = {
         try {
             await GhostVault.downloadFile(fileId);
         } catch (err) {
-            alert('Download failed: ' + err.message);
+            showToast('Download failed');
         }
     },
 
@@ -1938,7 +2065,7 @@ const UI = {
             console.log(' File deleted:', fileId);
             UI.vaultLoadFiles();
         } catch (err) {
-            alert('Delete failed: ' + err.message);
+            showToast('Delete failed');
         }
     },
 
@@ -1946,7 +2073,7 @@ const UI = {
         try {
             const result = await GhostVault.verifyFile(fileId);
             if (!result) {
-                alert('Verification failed — file not found.');
+                showToast('Verification failed');
                 return;
             }
 
@@ -1998,7 +2125,7 @@ const UI = {
             document.body.appendChild(modal);
             if (typeof lucide !== 'undefined') lucide.createIcons();
         } catch (err) {
-            alert('Verification error: ' + err.message);
+            showToast('Verification error');
         }
     },
 
