@@ -3,6 +3,17 @@
  * Single-file logic for Visualization, State, and Interaction.
  */
 
+/**
+ * GhostCode diagnostic (why it can stick on "Loading..."):
+ * - `index.html` renders the badge with literal "Loading..." (`#ghostcode-badge`).
+ * - The app stores a node JWT in `sessionStorage.ghostnet_token` via `POST /auth/node`.
+ * - The UI calls `GET /user/shortcode` expecting a GhostCode back.
+ * - Node JWTs originally did not map to an email-auth user, so the server could return 404.
+ * - Identity/token availability can lag initial render (race), so one fetch attempt is not enough.
+ *
+ * Fix: a bounded watcher that retries while auth settles, then shows "Not connected" + Retry.
+ */
+
 // --- GLOBAL STATE ---
 window.AppState = {
     meshReady: false,
@@ -50,6 +61,41 @@ function showToast(message, durationMs = 2000) {
         el.style.transform = 'translateX(-50%) translateY(20px)';
         el.style.pointerEvents = 'none';
     }, durationMs);
+}
+
+// ─── GhostCode Display (robust loading state) ────────────────────────────────
+const GHOSTCODE_BADGE_ID = 'ghostcode-badge';
+const GHOSTCODE_MAX_WAIT_MS = 8000;
+
+function _getGhostcodeBadgeEl() {
+    return document.getElementById(GHOSTCODE_BADGE_ID);
+}
+
+function _setGhostCodeBadgeText(text) {
+    const el = _getGhostcodeBadgeEl();
+    if (!el) return;
+    el.textContent = text;
+}
+
+function _ensureGhostCodeRetryButton() {
+    const section = document.getElementById('ghostcode-section');
+    if (!section) return null;
+    let btn = document.getElementById('ghostcode-retry-btn');
+    if (btn) return btn;
+
+    btn = document.createElement('button');
+    btn.id = 'ghostcode-retry-btn';
+    btn.type = 'button';
+    btn.textContent = 'Retry';
+    btn.style.cssText = 'margin-top:10px;background:rgba(0,240,255,0.08);border:1px solid rgba(0,240,255,0.25);color:#00f0ff;border-radius:10px;padding:6px 10px;cursor:pointer;font-weight:700;font-size:0.75rem;display:none;';
+    btn.addEventListener('click', () => {
+        btn.style.display = 'none';
+        if (window.UI && typeof window.UI.startGhostCodeWatcher === 'function') {
+            window.UI.startGhostCodeWatcher(true);
+        }
+    });
+    section.appendChild(btn);
+    return btn;
 }
 
 // --- MESH VISUALIZATION (CANVAS) ---
@@ -248,6 +294,14 @@ const UI = {
 
         // 8. Init GhostCode search
         UI.initChatSearch();
+
+        // 9. GhostCode watcher (covers slow auth/identity + avoids infinite Loading)
+        UI.startGhostCodeWatcher(false);
+
+        // Re-run after identity updates (unlock/login flow)
+        window.addEventListener('identity:updated', () => {
+            UI.startGhostCodeWatcher(true);
+        });
 
         // 9. Anti-screenshot and privacy measures
         document.addEventListener('contextmenu', e => {
@@ -1969,10 +2023,7 @@ const UI = {
             const res = await fetch(url, { headers: authHeaders() });
             if (!res.ok) {
                 console.warn('GhostCode fetch failed:', res.status);
-                const badge = document.getElementById('ghostcode-badge');
-                if (badge) {
-                    badge.textContent = res.status === 401 ? 'SIGN IN' : 'ERROR';
-                }
+                _setGhostCodeBadgeText(res.status === 401 ? 'SIGN IN' : 'ERROR');
                 return;
             }
             const data = await res.json();
@@ -1982,27 +2033,84 @@ const UI = {
             }
         } catch (e) {
             console.warn('GhostCode fetch error:', e);
-            const badge = document.getElementById('ghostcode-badge');
-            if (badge) badge.textContent = 'OFFLINE';
+            _setGhostCodeBadgeText('OFFLINE');
         }
+    },
+
+    /**
+     * Watcher to ensure the GhostCode badge resolves.
+     * - Retries while auth token / identity may still be settling.
+     * - After 8s with no code, shows "Not connected" + a Retry button.
+     */
+    startGhostCodeWatcher: (force = false) => {
+        const badge = _getGhostcodeBadgeEl();
+        if (!badge) return;
+
+        const existing = (AppState && AppState.ghostCode) ? String(AppState.ghostCode) : '';
+        if (!force && existing && /^GN-/.test(existing)) {
+            _setGhostCodeBadgeText(existing);
+            return;
+        }
+
+        const start = Date.now();
+        _setGhostCodeBadgeText('Loading...');
+
+        const tick = async () => {
+            const current = (AppState && AppState.ghostCode) ? String(AppState.ghostCode) : '';
+            if (current && /^GN-/.test(current)) {
+                _setGhostCodeBadgeText(current);
+                const retryBtn = document.getElementById('ghostcode-retry-btn');
+                if (retryBtn) retryBtn.style.display = 'none';
+                return;
+            }
+
+            const liveToken =
+                sessionStorage.getItem('ghostnet_token') ||
+                localStorage.getItem('ghostnet_jwt') ||
+                localStorage.getItem('ghostnet_token') ||
+                '';
+
+            if (liveToken) {
+                await UI.fetchGhostCode();
+            }
+
+            const after = (AppState && AppState.ghostCode) ? String(AppState.ghostCode) : '';
+            if (after && /^GN-/.test(after)) {
+                _setGhostCodeBadgeText(after);
+                const retryBtn = document.getElementById('ghostcode-retry-btn');
+                if (retryBtn) retryBtn.style.display = 'none';
+                return;
+            }
+
+            if (Date.now() - start >= GHOSTCODE_MAX_WAIT_MS) {
+                _setGhostCodeBadgeText('Not connected');
+                const btn = _ensureGhostCodeRetryButton();
+                if (btn) btn.style.display = 'inline-flex';
+                return;
+            }
+
+            setTimeout(tick, 1000);
+        };
+
+        setTimeout(tick, 150);
     },
 
     /**
      * Update the GhostCode badge element in the profile dashboard.
      */
     updateGhostCodeBadge: (code) => {
-        const badge = document.getElementById('ghostcode-badge');
-        if (badge) {
-            badge.textContent = code.toUpperCase();
-        }
+        _setGhostCodeBadgeText(String(code).toUpperCase());
     },
 
     /**
      * Copy the current user's GhostCode to clipboard.
      */
     copyGhostCode: () => {
-        const code = AppState.ghostCode;
-        if (!code) return;
+        const code = AppState.ghostCode ? String(AppState.ghostCode) : '';
+        if (!code || code === 'Loading...' || code === 'Not connected') {
+            showToast('GhostCode not ready yet');
+            return;
+        }
         try {
             navigator.clipboard.writeText(code);
             showToast('GhostCode copied!');
@@ -2015,8 +2123,11 @@ const UI = {
      * Share GhostCode via Web Share API, or fallback to copy.
      */
     shareGhostCode: () => {
-        const code = AppState.ghostCode;
-        if (!code) return;
+        const code = AppState.ghostCode ? String(AppState.ghostCode) : '';
+        if (!code || code === 'Loading...' || code === 'Not connected') {
+            showToast('GhostCode not ready yet');
+            return;
+        }
         if (navigator.share) {
             navigator.share({
                 text: 'Find me on GhostNet: ' + code,
