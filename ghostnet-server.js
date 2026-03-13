@@ -98,6 +98,7 @@ import {
     findById as findAuthUserById,
     findByShortCode,
     isValidShortCode,
+    generateShortCode,
     generateUniqueShortCode,
     updateUserFields,
     sanitise as sanitiseAuthUser
@@ -335,6 +336,41 @@ app.use('/auth', authRouter);
 // GHOSTCODE SHORT CODE ENDPOINTS (GN-XXXX)
 // ═══════════════════════════════════════════════════
 
+/**
+ * GhostCode diagnostic (why the UI can get stuck on "Loading..."):
+ * - `index.html` renders the badge with literal text "Loading..." (`#ghostcode-badge`).
+ * - The UI requests `GET /user/shortcode` using a JWT stored as `sessionStorage.ghostnet_token`.
+ * - Node auth (`POST /auth/node`) issues a JWT shaped like `{ id: <nodeId>, isNode: true }`.
+ * - The original GhostCode system was built for email-auth users (`auth-users.json`).
+ *   A node JWT does not correspond to an auth user record, so `/user/shortcode` can return 404.
+ * - Result: no code arrives, and the badge can remain "Loading..." indefinitely.
+ *
+ * Fix: support node-scoped GhostCodes stored on `registeredNodes` (persisted in `nodes.json`)
+ * and allow `/resolve/:shortCode` to resolve either an auth user OR a registered node.
+ */
+
+function _nodeHasShortCode(sc) {
+    if (!sc) return false;
+    const upper = String(sc).toUpperCase();
+    for (const nodeId of Object.keys(registeredNodes)) {
+        const n = registeredNodes[nodeId];
+        if (n?.shortCode && String(n.shortCode).toUpperCase() === upper) return true;
+    }
+    return false;
+}
+
+function generateUniqueNodeShortCode() {
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const code = generateShortCode(4).toUpperCase();
+        if (!findByShortCode(code) && !_nodeHasShortCode(code)) return code;
+    }
+    for (let attempt = 0; attempt < 10; attempt++) {
+        const code = generateShortCode(5).toUpperCase();
+        if (!findByShortCode(code) && !_nodeHasShortCode(code)) return code;
+    }
+    return generateShortCode(6).toUpperCase();
+}
+
 // Rate limiter for /resolve endpoint — max 10 requests per minute per IP
 const resolveLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -350,11 +386,35 @@ const resolveLimiter = rateLimit({
  */
 app.get('/user/shortcode', requireAuth, (req, res) => {
     try {
-        const authedUserId = req.user?.id;
-        const user = authedUserId ? findAuthUserById(authedUserId) : null;
-        if (!user) {
-            return res.status(404).json({ error: 'User not found.' });
+        const authedId = req.user?.id;
+        if (!authedId) return res.status(401).json({ error: 'Authentication required' });
+
+        // Node JWTs are issued by POST /auth/node as { id: nodeId, isNode: true }.
+        // For those, issue/return a node-scoped GhostCode persisted in nodes.json.
+        if (req.user?.isNode) {
+            const nodeId = validateNodeId(authedId);
+            if (!registeredNodes[nodeId]) {
+                registeredNodes[nodeId] = {
+                    nodeId,
+                    displayName: nodeId.slice(0, 10),
+                    ownerId: nodeId,
+                    registeredAt: Date.now(),
+                    lastSeen: Date.now(),
+                };
+            }
+            if (!registeredNodes[nodeId].shortCode) {
+                registeredNodes[nodeId].shortCode = generateUniqueNodeShortCode();
+                saveNodeRegistry();
+            }
+            return res.json({
+                shortCode: String(registeredNodes[nodeId].shortCode).toUpperCase(),
+                nodeId,
+                displayName: registeredNodes[nodeId].displayName || nodeId.slice(0, 10),
+            });
         }
+
+        const user = findAuthUserById(authedId);
+        if (!user) return res.status(404).json({ error: 'User not found.' });
 
         // Associate nodeId and displayName if provided
         const updates = {};
@@ -372,7 +432,7 @@ app.get('/user/shortcode', requireAuth, (req, res) => {
 
         // Apply any updates
         if (Object.keys(updates).length > 0) {
-            updateUserFields(authedUserId, updates);
+            updateUserFields(authedId, updates);
             Object.assign(user, updates);
         }
 
@@ -402,16 +462,28 @@ app.get('/resolve/:shortCode', resolveLimiter, (req, res) => {
         }
 
         const user = findByShortCode(normalized);
-        if (!user) {
-            return res.status(404).json({ error: 'Code not found' });
+        if (user) {
+            // Return ONLY safe fields — never password, email, JWT, etc.
+            return res.json({
+                displayName: user.displayName || user.email.split('@')[0] || 'GhostUser',
+                nodeId: user.nodeId || null,
+                shortCode: user.shortCode.toUpperCase(),
+            });
         }
 
-        // Return ONLY safe fields — never password, email, JWT, etc.
-        res.json({
-            displayName: user.displayName || user.email.split('@')[0] || 'GhostUser',
-            nodeId: user.nodeId || null,
-            shortCode: user.shortCode.toUpperCase(),
-        });
+        // Fallback: resolve against registered nodes (node-scoped GhostCodes)
+        for (const nodeId of Object.keys(registeredNodes)) {
+            const n = registeredNodes[nodeId];
+            if (n?.shortCode && String(n.shortCode).toUpperCase() === normalized) {
+                return res.json({
+                    displayName: n.displayName || nodeId.slice(0, 10),
+                    nodeId,
+                    shortCode: normalized,
+                });
+            }
+        }
+
+        return res.status(404).json({ error: 'Code not found' });
     } catch (err) {
         console.error('GET /resolve error:', err.message);
         res.status(500).json({ error: 'Internal server error.' });
