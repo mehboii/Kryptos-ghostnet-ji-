@@ -4,6 +4,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self';
+                   script-src 'self' https://cdnjs.cloudflare.com;
+                   connect-src 'self' wss: https:;
+                   style-src 'self' 'unsafe-inline';
+                   img-src 'self' data: blob:;
+                   worker-src blob:;
+                   object-src 'none';
+                   base-uri 'self';">
     <title>GhostNet | Decentralized Mesh</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,8 +22,15 @@
     <link rel="stylesheet" href="ui.css">
 
     <!-- Core Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Highest-risk wallet library: ethers.js with pinned version and SRI -->
+    <script 
+        src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"
+        integrity="sha384-LCPyFKPZM3SFSbMFpNDmWEIsoBqrNlnDKFYKHoWLCmtknIh8Mmy87UGEcclKmJq"
+        crossorigin="anonymous"></script>
+    <!-- TODO: Add exact SRI hash for lucide once version is pinned -->
+    <script
+        src="https://unpkg.com/lucide@latest"
+        crossorigin="anonymous"></script>
 
     <!-- Logic Scripts -->
     <script src="ghostnet-identity.js"></script>

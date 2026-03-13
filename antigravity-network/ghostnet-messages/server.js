@@ -2,6 +2,7 @@ import express from 'express';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
+import { requireAuth } from '../../auth/auth.middleware.js';
 
 const app = express();
 const PORT = 8090;
@@ -41,12 +42,16 @@ initDB().catch(console.error);
 
 // --- ENDPOINTS ---
 
-// 1. Save Message
-app.post('/message', async (req, res) => {
-    const { userId, content } = req.body;
+// 1. Save Message (authenticated, userId from token)
+app.post('/message', requireAuth, async (req, res) => {
+    const { content } = req.body;
+    const userId = req.userId;
 
-    if (!userId || !content) {
-        return res.status(400).json({ error: "Missing userId or content" });
+    if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+    }
+    if (!content || typeof content !== 'string' || content.length > 4096) {
+        return res.status(400).json({ error: "Invalid content" });
     }
 
     try {
@@ -71,29 +76,17 @@ app.post('/message', async (req, res) => {
     }
 });
 
-// 2. Get History
-app.get('/history', async (req, res) => {
-    const { userId } = req.query;
-
+// 2. Get History (authenticated, scoped to caller)
+app.get('/history', requireAuth, async (req, res) => {
+    const userId = req.userId;
+    if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+    }
     try {
-        let rows;
-        if (userId) {
-            // Return messages sent BY user OR broadcast messages (assuming general chat context)
-            // Or strictly messages for that user.
-            // Request says: "GET /history?userId="
-            // I'll return messages sent BY user and maybe ALL messages for context?
-            // "client sends userId -> server returns message history for that user"
-            // Usually implies chat history visible TO that user.
-            // For a mesh/LAN chat, usually PUBLIC + DM.
-            // I'll return ALL messages for now, as that's safer for a group chat demo.
-            // But if user wants strict filtering:
-            // rows = await db.all('SELECT * FROM messages WHERE user_id = ? ORDER BY timestamp ASC', userId);
-
-            // Let's return ALL messages properly parsed
-            rows = await db.all('SELECT * FROM messages ORDER BY timestamp ASC');
-        } else {
-            rows = await db.all('SELECT * FROM messages ORDER BY timestamp ASC');
-        }
+        const rows = await db.all(
+            'SELECT * FROM messages WHERE user_id = ? ORDER BY timestamp ASC',
+            userId
+        );
 
         // Parse content JSON
         const history = rows.map(r => ({
@@ -108,11 +101,11 @@ app.get('/history', async (req, res) => {
     }
 });
 
-// 3. Get Users
-app.get('/users', async (req, res) => {
+// 3. Get Users (authenticated, minimal fields only)
+app.get('/users', requireAuth, async (req, res) => {
     try {
-        const users = await db.all('SELECT * FROM users');
-        res.json(users);
+        const users = await db.all('SELECT id FROM users');
+        res.json(users.map(u => ({ id: u.id, displayName: u.id })));
     } catch (e) {
         res.status(500).json({ error: "DB Error" });
     }
@@ -133,6 +126,10 @@ app.delete('/cleanup', async (req, res) => {
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🗄️ Message Service running on port ${PORT}`);
+const BIND_HOST = process.env.NODE_ENV === 'production'
+    ? '0.0.0.0'
+    : '127.0.0.1';
+
+app.listen(PORT, BIND_HOST, () => {
+    console.log(`🗄️ Message Service running on ${BIND_HOST}:${PORT}`);
 });

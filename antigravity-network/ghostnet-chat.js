@@ -16,34 +16,16 @@
             this.myIdentity = myIdentity; // { pub: "...", priv: "..." }
             this.sendToNetwork = transportSender; // Function: (payload) => void
             this.sessions = new Map(); // PeerPubKey -> SharedSecret
-            this.messages = new Map(); // MsgID -> MessageObject
+            this.messages = new Map(); // MsgID -> MessageObject (memory-only)
             this.onMessage = (msg) => { }; // Callback
-
-            // Load Persisted Messages on Start
-            this._loadPersistedMessages();
         }
 
         _loadPersistedMessages() {
-            try {
-                const stored = localStorage.getItem("ghost_chat_history");
-                if (stored) {
-                    const parsed = JSON.parse(stored);
-                    parsed.forEach(msg => {
-                        this.messages.set(msg.id, msg);
-                        // We might want to notify UI to render these on load
-                        // But onMessage is usually set AFTER constructor.
-                        // So we'll rely on script.js to ask for them or trigger a reload event.
-                    });
-                }
-            } catch (e) {
-                console.error("Failed to load chat history", e);
-            }
+            // History is kept in memory only for this session; nothing to load.
         }
 
         _persist() {
-            // Save only PERSIST mode messages
-            const toSave = Array.from(this.messages.values()).filter(m => m.mode === 'PERSIST' || m.mode === 'DELETE');
-            localStorage.setItem("ghost_chat_history", JSON.stringify(toSave));
+            // Intentionally no-op: do not write chat history to storage.
         }
 
         // --- Session Management ---

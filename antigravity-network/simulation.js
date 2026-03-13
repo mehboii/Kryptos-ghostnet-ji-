@@ -23,13 +23,23 @@ const GhostSecurity = {
 // --- 1. MANAGERS & LOGIC ---
 
 // Wallet Logic
+// Memory-only mnemonic — never persisted to storage.
+let _sessionMnemonic = null;
+function setSessionMnemonic(mnemonic) {
+    _sessionMnemonic = mnemonic;
+}
+function getSessionMnemonic() {
+    return _sessionMnemonic;
+}
+window.addEventListener('beforeunload', () => { _sessionMnemonic = null; });
+
 async function initWallet() {
-    let mnemonic = localStorage.getItem("ahost_mnemonic");
+    let mnemonic = getSessionMnemonic();
     if (!mnemonic) {
         if (typeof ethers === 'undefined') return "0x0000...";
         const randomWallet = ethers.Wallet.createRandom();
         mnemonic = randomWallet.mnemonic.phrase;
-        localStorage.setItem("ahost_mnemonic", mnemonic);
+        setSessionMnemonic(mnemonic);
     }
     const wallet = ethers.Wallet.fromMnemonic(mnemonic);
     localStorage.setItem("ahost_address", wallet.address);

@@ -37,6 +37,58 @@
  *       → Payload chunked to MAX_BLE_CHUNK_BYTES (512); awaited with try/catch
  */
 
+// GHOSTNET SECURITY — WS message sanitizer (mesh layer)
+const _ALLOWED_MESH_TYPES = new Set([
+    'chat', 'mesh', 'ping', 'pong', 'signal',
+    'node-announce', 'node-discover', 'route',
+    'ack', 'relay', 'onion', 'cover',
+    // server/control types already used by GhostMesh
+    'HELLO', 'MESH_HELLO', 'welcome',
+    'PEER_JOIN', 'PEER_LEAVE', 'MESH_MSG',
+    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK'
+]);
+
+function _sanitizeMeshMessage(raw) {
+    let msg;
+    try {
+        if (typeof raw !== 'string') return null;
+        if (raw.length > 65536) return null; // 64KB hard cap before parsing
+        msg = JSON.parse(raw);
+    } catch {
+        return null;
+    }
+
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return null;
+    if (!_ALLOWED_MESH_TYPES.has(msg.type)) return null;
+
+    if (msg.body !== undefined) {
+        if (typeof msg.body !== 'string') return null;
+        if (msg.body.length > 4096) return null;
+    }
+
+    if (msg.senderId !== undefined && msg.senderId !== null) {
+        if (typeof msg.senderId !== 'string') return null;
+        if (!/^0x[a-fA-F0-9]{8,64}$/.test(msg.senderId)) return null;
+    }
+
+    const now = Date.now();
+    if (msg.timestamp !== undefined) {
+        if (typeof msg.timestamp !== 'number') return null;
+        if (msg.timestamp < now - 300000) return null; // older than 5 minutes
+        if (msg.timestamp > now + 30000) return null;  // more than 30s in future
+    }
+
+    return {
+        type: String(msg.type),
+        body: msg.body ? String(msg.body).slice(0, 4096) : undefined,
+        senderId: msg.senderId || null,
+        timestamp: msg.timestamp || now,
+        hopCount: typeof msg.hopCount === 'number'
+            ? Math.min(Math.max(0, msg.hopCount), 10)
+            : 0
+    };
+}
+
 class GhostMesh {
     constructor(identity) {
         this.identity = identity; // { id, nodeId, pub }
@@ -132,12 +184,14 @@ class GhostMesh {
     // ── [F1] Auth token retrieval ─────────────────────────────────────────────
 
     getAuthToken() {
-        // Try sessionStorage first (set by auth flow), then localStorage fallback
-        return sessionStorage.getItem('ghostnet_jwt') ||
-            localStorage.getItem('ghostnet_jwt') ||
-            sessionStorage.getItem('ghostnet_token') ||
-            localStorage.getItem('ghostnet_token') ||
-            null;
+        try {
+            const legacyJwt = localStorage.getItem('ghostnet_jwt');
+            if (legacyJwt) {
+                sessionStorage.setItem('ghostnet_jwt', legacyJwt);
+                localStorage.removeItem('ghostnet_jwt');
+            }
+        } catch (_) { }
+        return sessionStorage.getItem('ghostnet_jwt') || null;
     }
 
     // ── [F2] WS URL builder ───────────────────────────────────────────────────
@@ -312,12 +366,9 @@ class GhostMesh {
             };
 
             this.ws.onmessage = (event) => {
-                try {
-                    const msg = JSON.parse(event.data);
-                    this.handleWSMessage(msg);
-                } catch (_) {
-                    console.warn('WS: malformed message dropped');
-                }
+                const clean = _sanitizeMeshMessage(event.data);
+                if (!clean) return;
+                this.handleWSMessage(clean);
             };
 
             this.ws.onclose = () => {
