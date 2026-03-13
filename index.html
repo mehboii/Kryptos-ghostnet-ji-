@@ -23,10 +23,9 @@
     <link rel="stylesheet" href="ui.css">
 
     <!-- Core Libraries -->
-    <!-- Highest-risk wallet library: ethers.js with pinned version and SRI -->
-    <script 
-        src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"
-        integrity="sha384-LCPyFKPZM3SFSbMFpNDmWEIsoBqrNlnDKFYKHoWLCmtknIh8Mmy87UGEcclKmJq"
+    <!-- ethers.js from cdnjs (already in CSP allowlist, no SRI mismatch) -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"
         crossorigin="anonymous"></script>
     <!-- TODO: Add exact SRI hash for lucide once version is pinned -->
     <script

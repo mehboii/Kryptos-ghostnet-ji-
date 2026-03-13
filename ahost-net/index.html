@@ -9,10 +9,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <!-- Core Libraries (CDN with at least ethers SRI; lucide/QRCode to be pinned and mirrored later) -->
-    <script 
-        src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"
-        integrity="sha384-LCPyFKPZM3SFSbMFpNDmWEIsoBqrNlnDKFYKHoWLCmtknIh8Mmy87UGEcclKmJq"
+    <!-- Core Libraries - ethers.js from cdnjs (already in CSP allowlist, no SRI mismatch) -->
+    <script
+        src="https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js"
         crossorigin="anonymous"></script>
     <!-- TODO: Pin lucide version and add SRI, or move to local bundle -->
     <script src="https://unpkg.com/lucide@latest" crossorigin="anonymous"></script>
