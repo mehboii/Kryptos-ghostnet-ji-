@@ -4,7 +4,7 @@
   "description": "GhostNet — Decentralized Mesh Network Infrastructure",
   "type": "module",
   "scripts": {
-    "start": "node ghostnet-orchestrator.cjs",
+    "start": "node ghostnet-server.js",
     "start:cloud": "node ghostnet-orchestrator.cjs --mode=cloud",
     "start:local": "node ghostnet-orchestrator.cjs --mode=local",
     "start:dev": "node ghostnet-orchestrator.cjs --mode=development",
@@ -25,6 +25,7 @@
   "dependencies": {
     "@abandonware/bleno": "latest",
     "@abandonware/noble": "^1.9.2-26",
+    "acorn": "^8.16.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^16.6.1",
