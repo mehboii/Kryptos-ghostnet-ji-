@@ -350,7 +350,8 @@ const resolveLimiter = rateLimit({
  */
 app.get('/user/shortcode', requireAuth, (req, res) => {
     try {
-        const user = findAuthUserById(req.userId);
+        const authedUserId = req.user?.id;
+        const user = authedUserId ? findAuthUserById(authedUserId) : null;
         if (!user) {
             return res.status(404).json({ error: 'User not found.' });
         }
@@ -371,7 +372,7 @@ app.get('/user/shortcode', requireAuth, (req, res) => {
 
         // Apply any updates
         if (Object.keys(updates).length > 0) {
-            updateUserFields(req.userId, updates);
+            updateUserFields(authedUserId, updates);
             Object.assign(user, updates);
         }
 
@@ -423,7 +424,8 @@ app.get('/resolve/:shortCode', resolveLimiter, (req, res) => {
  */
 app.patch('/user/shortcode', requireAuth, (req, res) => {
     try {
-        const user = findAuthUserById(req.userId);
+        const authedUserId = req.user?.id;
+        const user = authedUserId ? findAuthUserById(authedUserId) : null;
         if (!user) {
             return res.status(404).json({ error: 'User not found.' });
         }
@@ -458,7 +460,7 @@ app.patch('/user/shortcode', requireAuth, (req, res) => {
         }
 
         // Update
-        updateUserFields(req.userId, {
+        updateUserFields(authedUserId, {
             shortCode: normalized,
             shortCodeChangedAt: new Date().toISOString(),
         });
