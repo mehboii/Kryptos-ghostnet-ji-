@@ -150,12 +150,6 @@ class MeshNetwork {
 
 // --- APP LOGIC ---
 
-const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
-const authHeaders = () => ({
-    'Content-Type': 'application/json',
-    'X-Auth-Token': typeof getAuthToken === 'function' ? getAuthToken() : (localStorage.getItem('ghostnet_token') || '')
-});
-
 const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
