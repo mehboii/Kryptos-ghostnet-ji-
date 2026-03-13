@@ -93,7 +93,7 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
-import { requireAuth } from './auth/auth.middleware.js';
+// local inline middleware used instead of auth.middleware.js
 import {
     findById as findAuthUserById,
     findByShortCode,
@@ -470,7 +470,23 @@ app.patch('/user/shortcode', requireAuth, (req, res) => {
     }
 });
 
-// Removed redundant DB_FILE, messages declaration, and requireAuth (imported)
+// ─── Auth middleware ──────────────────────────────────────────────────────────
+// [01][02][03][04][05][08]
+
+function requireAuth(req, res, next) {
+    // Accept both 'Authorization: Bearer <token>' and 'X-Auth-Token: <token>'
+    const authHeader = req.headers.authorization || '';
+    const xAuthToken = req.headers['x-auth-token'] || req.headers['X-Auth-Token'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (xAuthToken || null);
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (_) {
+        res.status(401).json({ error: 'Invalid or expired token' });
+    }
+}
+
 
 // ─── DECENTRALIZED NODE AUTH ──────────────────────────────────────────────────
 
