@@ -195,7 +195,10 @@ window.addEventListener('DOMContentLoaded', async () => {
             });
         } else if (window.app.mesh && !window.app.mesh.wsReady) {
             // Mesh was deferred because no auth token was present at startup — retry now.
-            window.app.mesh.connectWebSocket();
+            const token = sessionStorage.getItem('ghostnet_token') || '';
+            if (token) {
+                window.app.mesh.setAuthToken(token);
+            }
         }
         if (window.UI) {
             setTimeout(() => UI.loadConversations(real.nodeId), 500);
@@ -444,7 +447,9 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             mesh.onStatusChange = (status) => {
                 log.info('Mesh state:', status?.state);
-                if (status?.state === 'error') log.error('Mesh error occurred.');
+                if (status?.state === 'error') {
+                    log.error('Mesh error occurred:', status?.message || '');
+                }
             };
 
             await mesh.start();

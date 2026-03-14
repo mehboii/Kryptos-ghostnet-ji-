@@ -1432,6 +1432,7 @@
                                 if (authRes.ok) {
                                     const { token } = await authRes.json();
                                     sessionStorage.setItem('ghostnet_token', token);
+                                    if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -1538,6 +1539,7 @@
                                 if (authRes.ok) {
                                     const { token } = await authRes.json();
                                     sessionStorage.setItem('ghostnet_token', token);
+                                    if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -1757,6 +1759,7 @@
                                             if (authRes.ok) {
                                                 const { token } = await authRes.json();
                                                 sessionStorage.setItem('ghostnet_token', token);
+                                                if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
                                             }
                                         } catch (e) { console.warn('Node auth failed:', e); }
                                     }
