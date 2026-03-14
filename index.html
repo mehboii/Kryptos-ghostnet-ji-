@@ -1699,26 +1699,19 @@
 
                     function lockIdentity() {
                         GhostIdentity.clearSession();
+                        if (window.app) window.app.identity = null;
+                        if (window.AppState) window.AppState.identity = null;
                         _pendingIdentity = null;
                         showScreen('pin');
                     }
 
                     function destroyIdentity() {
                         if (!confirm('⚠️ This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase. Are you sure?')) return;
-                        localStorage.clear();
-                        sessionStorage.clear();
-                        window.location.reload();
+                        UI.clearSession(true);
                     }
 
                     function signOut() {
-                        GhostIdentity.clearSession();
-                        if (window.GhostVault && typeof window.GhostVault.lockVault === 'function') {
-                            window.GhostVault.lockVault();
-                        }
-                        _pendingIdentity = null;
-                        const sidebarProfile = document.getElementById('sidebar-profile');
-                        if (sidebarProfile) sidebarProfile.style.display = 'none';
-                        showScreen('welcome');
+                        UI.clearSession();
                     }
 
                     function trySignIn() {
