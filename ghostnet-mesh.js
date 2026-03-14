@@ -212,7 +212,14 @@ class GhostMesh {
     async start() {
         this._destroyed = false;
         this.onStatusChange({ state: 'connecting', transport: 'ws' });
-        this.connectWebSocket();
+        
+        const token = this.authToken || this.getAuthToken();
+        if (token) {
+            this.connectWebSocket();
+        } else {
+            console.warn('🔌 Mesh: No auth token found. WebSocket connection deferred until login.');
+        }
+        
         this.startHeartbeat();
 
         if (this.bleAvailable && this.knownBLEDevices.length > 0) {
@@ -329,16 +336,19 @@ class GhostMesh {
 
     // ─────────────────────────────────────────────────────────────────────────
     // WEBSOCKET TRANSPORT
-    // ─────────────────────────────────────────────────────────────────────────
+    setAuthToken(token) {
+        this.authToken = token;
+        if (token && !this.wsReady && (!this.ws || this.ws.readyState !== WebSocket.OPEN)) {
+            this.connectWebSocket();
+        }
+    }
 
     connectWebSocket() {
         if (this._destroyed) return; // [S11]
 
         // [F1] Require a JWT token — abort if missing
-        const token = this.getAuthToken();
+        const token = this.authToken || this.getAuthToken();
         if (!token) {
-            console.warn('🔌 Mesh: No auth token found. WebSocket connection deferred until login.');
-            this.onStatusChange({ state: 'error', message: 'Not authenticated. Please log in.' });
             return;
         }
 
