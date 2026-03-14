@@ -223,16 +223,7 @@ const UI = {
         // 4. Hook Logout (if exists)
         document.querySelectorAll('.auth-logout-btn, #logout-btn, [data-action="logout"]').forEach(btn => {
             btn.addEventListener('click', () => {
-                if (UI.destroyScreenshotProtection) {
-                    UI.destroyScreenshotProtection();
-                }
-
-                // Clear vault local state on logout (does NOT delete server files)
-                if (window.GhostVault && typeof window.GhostVault.clearVaultState === 'function') {
-                    window.GhostVault.clearVaultState();
-                    UI.vaultRenderFiles([]);   // Clear the file card UI
-                    console.log('[UI] Vault state cleared on logout');
-                }
+                UI.clearSession();
             });
         });
 
@@ -369,6 +360,94 @@ const UI = {
                 UI.destroyScreenshotProtection();
             }
         }
+    },
+
+    clearSession: (isDestroy = false) => {
+        console.log('[UI] Initiating unified session clear...');
+        
+        // Preserve current theme unless destroying
+        const theme = document.documentElement.getAttribute('data-theme') || 'dark';
+        
+        // Clear all screenshot protection before storage is wiped
+        if (UI.destroyScreenshotProtection) {
+            UI.destroyScreenshotProtection();
+        }
+
+        // 1. Storage Cleanup (Bug 1 fix)
+        localStorage.clear();
+        sessionStorage.clear();
+        
+        // Restore theme preference if not destroying
+        if (!isDestroy) {
+            localStorage.setItem('ghostnet_theme', theme);
+        }
+        
+        // 2. Vault Cleanup (Bug 2 fix)
+        if (window.GhostVault && typeof window.GhostVault.clearVaultState === 'function') {
+            window.GhostVault.clearVaultState();
+        }
+        UI.vaultRenderFiles([]);
+
+        // 3. Clear In-Memory State (Bug 1 fix)
+        if (window.AppState) {
+            window.AppState.identity = null;
+            window.AppState.messages = [];
+            window.AppState.files = [];
+            window.AppState.ghostCode = null;
+            window.AppState.peers = [];
+        }
+        if (window.app) {
+            window.app.identity = null;
+            window.app.chat = null;
+            window.app.chatTarget = null;
+        }
+
+        // 4. Restore Scroll (Bug 3 fix)
+        document.body.style.overflow = 'auto';
+        document.documentElement.style.overflow = 'auto';
+        
+        // 5. Remove all Modals and Overlays (Bug 3 fix)
+        const blockers = [
+            'ghostcard-modal', 
+            'screenshot-overlay', 
+            'sidebar-overlay', 
+            'vault-upload-progress',
+            'chat-file-overlay',
+            'qr-scanner-modal'
+        ];
+        blockers.forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.remove();
+        });
+        
+        // Remove class-based overlays (like Vault Verify)
+        document.querySelectorAll('.vault-verify-overlay').forEach(el => el.remove());
+
+        if (isDestroy) {
+            console.log('[UI] Identity destroyed. Reloading...');
+            window.location.reload();
+            return;
+        }
+
+        // 6. Navigation: Force redirect to identity screen (Bug 1 fix)
+        // replaceState prevents back-navigation to authenticated URL
+        const loginUrl = new URL(window.location.href);
+        loginUrl.hash = 'profile'; 
+        window.history.replaceState(null, '', loginUrl.href);
+        
+        // Refresh UI View
+        UI.navigate('profile');
+        
+        // If IdentityUI is present, force it to the welcome screen
+        if (window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
+            window.IdentityUI.showScreen('welcome');
+        }
+
+        const sidebarProfile = document.getElementById('sidebar-profile');
+        if (sidebarProfile) sidebarProfile.style.display = 'none';
+        
+        console.log('[UI] Session fully cleared. Redirected to identity screen.');
+        showToast('Safety Logout Complete');
     },
 
     initScreenshotProtection: () => {
