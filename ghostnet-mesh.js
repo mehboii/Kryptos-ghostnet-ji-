@@ -217,7 +217,7 @@ class GhostMesh {
         if (token) {
             this.connectWebSocket();
         } else {
-            console.warn('🔌 Mesh: No auth token found. WebSocket connection deferred until login.');
+            console.log('🔌 Mesh: Standing by for authentication before connecting.');
         }
         
         this.startHeartbeat();
