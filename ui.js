@@ -226,6 +226,13 @@ const UI = {
                 if (UI.destroyScreenshotProtection) {
                     UI.destroyScreenshotProtection();
                 }
+
+                // Clear vault local state on logout (does NOT delete server files)
+                if (window.GhostVault && typeof window.GhostVault.clearVaultState === 'function') {
+                    window.GhostVault.clearVaultState();
+                    UI.vaultRenderFiles([]);   // Clear the file card UI
+                    console.log('[UI] Vault state cleared on logout');
+                }
             });
         });
 
@@ -301,6 +308,16 @@ const UI = {
         // Re-run after identity updates (unlock/login flow)
         window.addEventListener('identity:updated', () => {
             UI.startGhostCodeWatcher(true);
+
+            // Re-initialize vault for newly authenticated user
+            if (window.GhostVault) {
+                window.GhostVault.init().then(() => {
+                    UI.vaultLoadFiles();
+                    console.log('[UI] Vault re-loaded for authenticated user');
+                }).catch(err => {
+                    console.warn('[UI] Vault init on login failed:', err.message);
+                });
+            }
         });
 
         // 9. Anti-screenshot and privacy measures

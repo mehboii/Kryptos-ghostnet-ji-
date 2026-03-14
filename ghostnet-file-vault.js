@@ -834,6 +834,58 @@
         return response.json().catch(() => null);
     }
 
+    // ─── Logout: clear local vault state (UI + storage) ────────────────────────
+    // Does NOT delete files from the server/IPFS — only wipes local references.
+    function clearVaultState() {
+        // 1. Wipe in-memory index
+        vaultIndex = [];
+
+        // 2. Remove localStorage metadata index
+        try { localStorage.removeItem('ghostnet_vault_index'); } catch { }
+
+        // 3. Clear session vault keys & unlock flag
+        lockVault();
+
+        // 4. Reset the VaultKeyManager in-memory key
+        VaultKeyManager.key = null;
+        try { delete window.__vaultKey; } catch { }
+    }
+
+    // ─── Login: re-fetch vault files for the authenticated user ────────────────
+    async function refreshVaultForUser() {
+        const owner = getOwner();
+        if (!owner) return [];
+
+        let serverFiles = [];
+        try {
+            const response = await fetch(`${VAULT_API}/files/${encodeURIComponent(owner)}`, {
+                headers: _secureHeaders(),
+            });
+            if (response.ok) {
+                const data = await response.json().catch(() => ({}));
+                if (Array.isArray(data.files) && data.files.length) {
+                    serverFiles = data.files.map(f => ({
+                        fileId: f.fileId,
+                        fileName: f.fileName,
+                        fileSize: f.fileSize,
+                        originalSize: f.originalSize,
+                        fileHash: f.fileHash || null,
+                        uploadedAt: f.uploadedAt || Date.now(),
+                        chainAnchored: !!f.chainAnchored,
+                        txHash: f.txHash || null,
+                    }));
+                }
+            }
+        } catch (e) {
+            console.warn('[Vault] Could not fetch files for user:', e.message);
+        }
+
+        // Update local state with server-authoritative list
+        vaultIndex = serverFiles;
+        saveVaultIndex(vaultIndex);
+        return vaultIndex.slice();
+    }
+
     // ─── Public API ───────────────────────────────────────────────────────────
 
     async function hasKey(fileId) {
@@ -883,6 +935,8 @@
         formatBytes,
         getOwner,
         lockVault,
+        clearVaultState,
+        refreshVaultForUser,
     };
 
     // [FIX M] Immutable global — cannot be overwritten by later scripts.
