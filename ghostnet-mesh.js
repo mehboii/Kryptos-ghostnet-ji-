@@ -37,6 +37,16 @@
  *       → Payload chunked to MAX_BLE_CHUNK_BYTES (512); awaited with try/catch
  */
 
+let messageQueue = [];
+
+function safeSend(ws, data) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(data);
+    } else {
+        messageQueue.push(data);
+    }
+}
+
 // GHOSTNET SECURITY — WS message sanitizer (mesh layer)
 const _ALLOWED_MESH_TYPES = new Set([
     'chat', 'mesh', 'ping', 'pong', 'signal',
@@ -275,7 +285,7 @@ class GhostMesh {
         };
 
         if (this.ws && this.wsReady) {
-            try { this.ws.send(JSON.stringify(payload)); }
+            try { safeSend(this.ws, JSON.stringify(payload)); }
             catch (e) { console.warn('WS broadcast failed:', e.message); }
         }
 
@@ -303,7 +313,7 @@ class GhostMesh {
         if (peer?.transport === 'ble' && peer.connected && peer.writeChar) {
             await this._bleSend(peer, payload); // [S12]
         } else if (this.ws && this.wsReady) {
-            this.ws.send(JSON.stringify(payload));
+            safeSend(this.ws, JSON.stringify(payload));
         }
     }
 
@@ -365,12 +375,20 @@ class GhostMesh {
                 this.wsReady = true;
                 this._reconnectDelay = 3000; // reset backoff
 
-                this.ws.send(JSON.stringify({
+                safeSend(this.ws, JSON.stringify({
                     type: 'register',
                     id: this.identity.id,
                     nodeId: this.identity.nodeId,
                     capabilities: { ble: this.bleAvailable, ws: true }
                 }));
+
+                // Flush queue
+                messageQueue.forEach(msg => {
+                    if (this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(msg);
+                    }
+                });
+                messageQueue = [];
 
                 this.onStatusChange({ state: 'connected', transport: 'ws' });
             };
@@ -517,7 +535,7 @@ class GhostMesh {
 
             case 'HEARTBEAT':
                 if (this.ws && this.wsReady) {
-                    this.ws.send(JSON.stringify({ type: 'HEARTBEAT_ACK', id: this.identity.id }));
+                    safeSend(this.ws, JSON.stringify({ type: 'HEARTBEAT_ACK', id: this.identity.id }));
                 }
                 break;
 
@@ -709,7 +727,7 @@ class GhostMesh {
 
     relayToWS(msg) {
         if (this.ws && this.wsReady) {
-            try { this.ws.send(JSON.stringify(msg)); }
+            try { safeSend(this.ws, JSON.stringify(msg)); }
             catch (_) { }
         }
     }
@@ -736,7 +754,7 @@ class GhostMesh {
 
             if (this.ws && this.wsReady) {
                 try {
-                    this.ws.send(JSON.stringify({
+                    safeSend(this.ws, JSON.stringify({
                         type: 'HEARTBEAT',
                         id: this.identity.id,
                         ts: now,
