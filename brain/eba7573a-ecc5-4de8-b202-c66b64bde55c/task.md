@@ -9,3 +9,4 @@
 - [x] Correct `/vault/key` endpoint route in `ghostnet-file-vault.js`
 - [x] Verify all fixes
 - [x] Create walkthrough
+- [x] Push changes to GitHub

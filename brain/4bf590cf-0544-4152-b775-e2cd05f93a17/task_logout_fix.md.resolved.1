@@ -1,0 +1,18 @@
+# Unified Logout & Session Cleanup
+
+## Tasks
+- [x] Research navigation and overflow logic in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+- [x] Research in-memory state in [app.js](file:///c:/Users/novtw/.gemini/antigravity/app.js) and [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+- [ ] Define `UI.clearSession()` in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+- [ ] Implement `clearSession()`:
+    - [ ] `localStorage.clear()` & `sessionStorage.clear()`
+    - [ ] Reset `AppState` and `window.app` identity/auth state
+    - [ ] Call `GhostVault.clearVaultState()`
+    - [ ] Reset `body`/[html](file:///c:/Users/novtw/.gemini/antigravity/index.html) overflow
+    - [ ] Remove all modals/overlays
+    - [ ] Navigate to identity/login section
+- [ ] Hook `clearSession()` to all logout buttons
+- [ ] Prevent back-navigation (replace state)
+- [ ] Verify fix for Bug 1 (Identity info cleared)
+- [ ] Verify fix for Bug 2 (Vault cleared)
+- [ ] Verify fix for Bug 3 (Scroll restored)

@@ -1,0 +1,41 @@
+# Vault Login/Logout State Management
+
+On logout, clear all vault files from the UI and local storage (but NOT from server/IPFS). On login, re-fetch the user's vault files from the server and repopulate the UI.
+
+## Proposed Changes
+
+### Vault Module
+
+#### [MODIFY] [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+
+**1. Add `clearVaultState()` function** — clears in-memory `vaultIndex`, removes `ghostnet_vault_index` from localStorage, and clears the vault UI list. Does NOT delete files from server/IPFS. Also calls existing `lockVault()` to clear session keys.
+
+**2. Add `refreshVaultForUser()` function** — re-fetches files from server via the existing `listFiles()` API, updates the in-memory `vaultIndex` and localStorage, and returns the file list for UI rendering.
+
+**3. Expose both new functions** on the `GhostVault` public API object (lines 873-886).
+
+> [!NOTE]
+> Since `GhostVault` is frozen with `Object.defineProperty(..., writable: false, configurable: false)`, we cannot add properties after definition. The new methods must be included in the `GhostVault` object literal before the `defineProperty` call.
+
+---
+
+### UI Layer
+
+#### [MODIFY] [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+
+**1. Logout handler (line ~224)** — add vault cleanup inside the existing logout button event listener:
+- Call `GhostVault.clearVaultState()` to wipe local state
+- Call `UI.vaultRenderFiles([])` to clear the file card UI
+
+**2. Login handler (`identity:updated` listener, line ~302)** — after GhostCode watcher restart, also re-initialize the vault and re-fetch files:
+- Call `GhostVault.init()` to re-set the owner nodeId in sessionStorage
+- Call `UI.vaultLoadFiles()` to re-fetch and render the new user's files
+
+## Verification Plan
+
+### Browser Testing
+1. Open the app in a browser, log in, and navigate to the Vault tab — files should appear
+2. Click logout — vault files should disappear from the UI
+3. Check localStorage — `ghostnet_vault_index` should be cleared
+4. Log back in — vault files for that user should reload from the server
+5. Verify file cards show: filename, size, date, SHA-256 hash, and Stored badge

@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Implementation plan for fixing WebSocket InvalidStateError by queuing messages.",
+  "updatedAt": "2026-03-14T08:06:57.071828100Z"
+}

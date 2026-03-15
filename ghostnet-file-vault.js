@@ -202,12 +202,21 @@
 
     // [FIX B] Every request carries the session auth token.
     function _getAuthToken() {
-        return sessionStorage.getItem('ghostnet_token') || '';
+        if (window.getAuthHeaders) {
+            const h = window.getAuthHeaders();
+            if (h.Authorization) return h.Authorization.replace('Bearer ', '');
+        }
+        return sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
     }
 
     function _secureHeaders(extra = {}) {
+        // [FIX B] Use unified global headers if available (enforces token check/redirect)
+        if (window.getAuthHeaders) {
+            return { ...window.getAuthHeaders(), ...extra };
+        }
         return {
-            'X-Auth-Token': _getAuthToken(),
+            'Authorization': `Bearer ${_getAuthToken()}`,
+            'Content-Type': 'application/json',
             ...extra,
         };
     }
@@ -317,11 +326,8 @@
 
             let serverKeyData = null;
             try {
-                const token = _getAuthToken();
                 const response = await fetch(VAULT_API + '/key', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
+                    headers: _secureHeaders()
                 });
                 if (response.ok) {
                     const data = await response.json();
@@ -405,13 +411,9 @@
                 iv: bufToHex(ivBytes)
             };
 
-            const token = _getAuthToken();
             await fetch(VAULT_API + '/key', {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: _secureHeaders({ 'Content-Type': 'application/json' }),
                 body: JSON.stringify({ keyData: serverKeyData })
             });
             this.key = newKey;
