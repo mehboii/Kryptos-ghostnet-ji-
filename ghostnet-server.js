@@ -115,7 +115,7 @@ const JWT_SECRET = process.env.AUTH_JWT_SECRET;
 const startTime = Date.now();
 
 const MAX_CONTENT_LENGTH = 64 * 1024; // [16] 64 KB message body cap
-const MAX_BODY_SIZE = '64kb';    // [23]
+const MAX_BODY_SIZE = '1mb';    // Increased to 1MB to support avatars (up to 512KB clip limit)
 
 // [20] Explicit CORS allowlist
 const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://ghostnet-ji.vercel.app')

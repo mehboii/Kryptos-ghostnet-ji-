@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary": "Walkthrough of GhostNet bug fixes: session loop fixed, identity data preserved, 413 error resolved, and vault key routes corrected.",
+  "updatedAt": "2026-03-15T07:08:23.849205900Z"
+}
