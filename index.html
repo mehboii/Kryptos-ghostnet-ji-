@@ -1424,33 +1424,43 @@
 
                             // --- Authenticate Node with Server ---
                             try {
+                                const authPayload = { nodeId: _pendingIdentity.nodeId };
+                                console.log('[Auth] POST /auth/node payload:', authPayload);
                                 const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ nodeId: _pendingIdentity.nodeId })
+                                    body: JSON.stringify(authPayload)
                                 });
                                 if (authRes.ok) {
                                     const { token } = await authRes.json();
+                                    // Store in BOTH storages so ui.js can always find it
                                     sessionStorage.setItem('ghostnet_token', token);
+                                    localStorage.setItem('ghostnet_token', token);
                                     if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                } else {
+                                    console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
-                            // Register node with backend
-                            fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
-                                },
-                                body: JSON.stringify({
-                                    nodeId: GhostIdentity.getStoredIdentity().nodeId,
-                                    displayName: GhostIdentity.getStoredIdentity().displayName,
-                                    address: GhostIdentity.getStoredIdentity().address,
-                                    publicKey: GhostIdentity.getStoredIdentity().publicKey,
-                                    avatar: localStorage.getItem('ghostnet_avatar_' + GhostIdentity.getStoredIdentity().address) || ''
-                                })
-                            }).catch(e => console.warn('Node registration failed:', e));
+                            // Register node with backend — only if we got a token
+                            const _regToken = sessionStorage.getItem('ghostnet_token');
+                            if (_regToken) {
+                                const storedId = GhostIdentity.getStoredIdentity();
+                                fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${_regToken}`
+                                    },
+                                    body: JSON.stringify({
+                                        nodeId: storedId.nodeId,
+                                        displayName: storedId.displayName,
+                                        address: storedId.address,
+                                        publicKey: storedId.publicKey,
+                                        avatar: localStorage.getItem('ghostnet_avatar_' + storedId.address) || ''
+                                    })
+                                }).catch(e => console.warn('Node registration failed:', e));
+                            }
 
                             // Save 7-day session token if checked
                             const remember = document.getElementById('remember-session-new');
@@ -1531,33 +1541,42 @@
 
                             // --- Authenticate Node with Server ---
                             try {
+                                const authPayload = { nodeId: stored.nodeId };
+                                console.log('[Auth] POST /auth/node payload:', authPayload);
                                 const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
                                     method: 'POST',
                                     headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify({ nodeId: stored.nodeId })
+                                    body: JSON.stringify(authPayload)
                                 });
                                 if (authRes.ok) {
                                     const { token } = await authRes.json();
+                                    // Store in BOTH storages so ui.js can always find it
                                     sessionStorage.setItem('ghostnet_token', token);
+                                    localStorage.setItem('ghostnet_token', token);
                                     if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                } else {
+                                    console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
-                            // Re-register node with backend on every sign-in
-                            fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
-                                },
-                                body: JSON.stringify({
-                                    nodeId: stored.nodeId,
-                                    displayName: stored.displayName,
-                                    address: stored.address,
-                                    publicKey: stored.publicKey,
-                                    avatar: localStorage.getItem('ghostnet_avatar_' + stored.address) || ''
-                                })
-                            }).catch(e => console.warn('Node registration failed:', e));
+                            // Re-register node with backend — only if we got a token
+                            const _unlockRegToken = sessionStorage.getItem('ghostnet_token');
+                            if (_unlockRegToken) {
+                                fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': `Bearer ${_unlockRegToken}`
+                                    },
+                                    body: JSON.stringify({
+                                        nodeId: stored.nodeId,
+                                        displayName: stored.displayName,
+                                        address: stored.address,
+                                        publicKey: stored.publicKey,
+                                        avatar: localStorage.getItem('ghostnet_avatar_' + stored.address) || ''
+                                    })
+                                }).catch(e => console.warn('Node registration failed:', e));
+                            }
                         } catch (e) {
                             if (GhostIdentity.isLocked()) {
                                 showScreen('locked');
