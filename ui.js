@@ -236,15 +236,32 @@ const UI = {
         console.log("SYSTEM: Booting GhostNet UI...");
 
         // 0a. Load Identity from Storage FIRST
-        const storedId = localStorage.getItem('ghostnet_node_id');
-        if (storedId && window.AppState) {
-            AppState.identity = {
-                nodeId: storedId,
-                displayName: localStorage.getItem('ghostnet_display_name') || 'Guest',
-                address: localStorage.getItem('ghostnet_address') || '0x...',
-                publicKey: localStorage.getItem('ghostnet_pubkey') || ''
-            };
-            console.log("[UI] Identity pre-loaded from storage:", AppState.identity.nodeId);
+        if (window.AppState) {
+            let stored = null;
+            if (window.GhostIdentity) {
+                stored = GhostIdentity.getStoredIdentity();
+            } else {
+                // Fallback if GhostIdentity not yet loaded
+                const nodeId = localStorage.getItem('ghostnet_node_id');
+                if (nodeId) {
+                    stored = {
+                        nodeId,
+                        displayName: localStorage.getItem('ghostnet_display_name'),
+                        address: localStorage.getItem('ghostnet_address'),
+                        publicKey: localStorage.getItem('ghostnet_pubkey')
+                    };
+                }
+            }
+
+            if (stored && stored.nodeId && stored.nodeId !== 'null') {
+                AppState.identity = {
+                    nodeId: stored.nodeId,
+                    displayName: stored.displayName || 'Guest',
+                    address: stored.address || '0x...',
+                    publicKey: stored.publicKey || ''
+                };
+                console.log("[UI] Identity pre-loaded from storage:", AppState.identity.nodeId);
+            }
         }
 
         // 0b. Setup Theme

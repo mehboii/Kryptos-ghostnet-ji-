@@ -63,6 +63,7 @@ const GhostIdentity = (() => {
     // ─── PRIVATE CONSTANTS ───────────────────────────────────────────────────
     // [FIX G] Storage key names are not exported.
     const _SK = {
+        IDENTITY: 'ghostnet_identity', // [Unified] Stores the full identity object
         ENCRYPTED_PK: 'ghostnet_enc_pk',
         PUBLIC_KEY: 'ghostnet_pubkey',
         ADDRESS: 'ghostnet_address',
@@ -178,6 +179,16 @@ const GhostIdentity = (() => {
         return `${pk.length}:${pk}|${name.length}:${name}`;
     }
 
+    /**
+     * Deterministic Node ID Generation.
+     * Uses Keccak256 (ethers.utils.id) of a canonical input.
+     * Always returns the same value for the same public key + display name.
+     */
+    function generateNodeId(publicKey, displayName) {
+        if (!publicKey) return null;
+        return ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+    }
+
     // ─── CORE: Generate New Identity ─────────────────────────────────────────
     async function generateIdentity(displayName) {
         const wallet = ethers.Wallet.createRandom({ locale: ethers.wordlists.en });
@@ -185,8 +196,9 @@ const GhostIdentity = (() => {
         const privateKey = wallet.privateKey;
         const publicKey = wallet.publicKey;
         const address = wallet.address;
-        // [FIX F] Collision-safe derivation.
-        const nodeId = ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+        
+        // [FIX F] Collision-safe deterministic derivation.
+        const nodeId = generateNodeId(publicKey, displayName);
 
         return {
             mnemonic,    // show once, never store
@@ -205,8 +217,9 @@ const GhostIdentity = (() => {
             const privateKey = wallet.privateKey;
             const publicKey = wallet.publicKey;
             const address = wallet.address;
-            // [FIX F] Collision-safe derivation.
-            const nodeId = ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+            
+            // [FIX F] Deterministic derivation during restore.
+            const nodeId = generateNodeId(publicKey, displayName);
 
             return { privateKey, publicKey, address, displayName, nodeId };
         } catch {
@@ -216,24 +229,65 @@ const GhostIdentity = (() => {
 
     // ─── STORAGE HELPERS ─────────────────────────────────────────────────────
     function saveIdentity(publicKey, address, displayName, nodeId, encryptedPK) {
+        // [Unified] Save as a single JSON object
+        const identity = {
+            encryptedPK,
+            publicKey,
+            address,
+            displayName,
+            nodeId
+        };
+        localStorage.setItem(_SK.IDENTITY, JSON.stringify(identity));
+
+        // Legacy: Also keep separate keys for compatibility with older app.js / ui.js logic
         localStorage.setItem(_SK.ENCRYPTED_PK, encryptedPK);
         localStorage.setItem(_SK.PUBLIC_KEY, publicKey);
         localStorage.setItem(_SK.ADDRESS, address);
         localStorage.setItem(_SK.DISPLAY_NAME, displayName);
         localStorage.setItem(_SK.NODE_ID, nodeId);
-        // [FIX B] Lockout state lives in memory only.
+        
         _resetAttempts();
     }
 
     function getStoredIdentity() {
+        // 1. Try unified storage first
+        const unified = localStorage.getItem(_SK.IDENTITY);
+        if (unified) {
+            try {
+                const data = JSON.parse(unified);
+                // [Migration] Fix missing nodeId inside the object
+                if (data && !data.nodeId && data.publicKey) {
+                    console.log("[Identity] Migration: Derived missing nodeId for unified identity.");
+                    data.nodeId = generateNodeId(data.publicKey, data.displayName);
+                    localStorage.setItem(_SK.IDENTITY, JSON.stringify(data));
+                }
+                return data;
+            } catch (e) {
+                console.error("Identity parse error:", e);
+            }
+        }
+
+        // 2. Fallback to separate keys
         const encPK = localStorage.getItem(_SK.ENCRYPTED_PK);
         if (!encPK) return null;
+
+        const publicKey = localStorage.getItem(_SK.PUBLIC_KEY);
+        const displayName = localStorage.getItem(_SK.DISPLAY_NAME);
+        let nodeId = localStorage.getItem(_SK.NODE_ID);
+
+        // [Migration] Fix missing nodeId in separate keys
+        if ((!nodeId || nodeId === 'null') && publicKey) {
+            console.log("[Identity] Migration: Derived missing nodeId from separate keys.");
+            nodeId = generateNodeId(publicKey, displayName);
+            localStorage.setItem(_SK.NODE_ID, nodeId);
+        }
+
         return {
             encryptedPK: encPK,
-            publicKey: localStorage.getItem(_SK.PUBLIC_KEY),
+            publicKey: publicKey,
             address: localStorage.getItem(_SK.ADDRESS),
-            displayName: localStorage.getItem(_SK.DISPLAY_NAME),
-            nodeId: localStorage.getItem(_SK.NODE_ID),
+            displayName: displayName,
+            nodeId: nodeId,
         };
     }
 
@@ -384,5 +438,6 @@ const GhostIdentity = (() => {
         // Display helpers.
         shortenKey,
         shortenNodeId,
+        generateNodeId, // Exposed publicly for deterministic derivation
     };
 })();
