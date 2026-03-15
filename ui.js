@@ -28,22 +28,30 @@ window.AppState = {
 // --- CONSTANTS ---
 const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
 
+const getAuthHeaders = () => {
+    const token = localStorage.getItem('ghostnet_token') || sessionStorage.getItem('ghostnet_token');
+    
+    if (!token) {
+        console.warn("[Auth] Token missing or expired. Redirecting to login...");
+        // Use a slight delay to avoid interrupt cycles
+        setTimeout(() => {
+            if (window.UI && UI.clearSession) UI.clearSession();
+        }, 100);
+        return {};
+    }
+
+    return {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+    };
+};
+
 /**
  * Get auth headers for authenticated API calls.
- * Reads the JWT token from localStorage.
+ * (Legacy wrapper for compatibility)
  */
 function authHeaders() {
-    const token =
-        sessionStorage.getItem('ghostnet_token') ||
-        localStorage.getItem('ghostnet_jwt') ||
-        localStorage.getItem('ghostnet_token') ||
-        '';
-    return {
-        'Content-Type': 'application/json',
-        // Server accepts both Bearer and X-Auth-Token
-        'Authorization': token ? `Bearer ${token}` : '',
-        'X-Auth-Token': token || ''
-    };
+    return getAuthHeaders();
 }
 
 /**
@@ -276,7 +284,11 @@ const UI = {
 
         // 6. Mock Initial Data (for visual validation)
         setTimeout(() => {
-            UI.mockData();
+            // Only try to fetch if we appear to have a token
+            const token = localStorage.getItem('ghostnet_token') || sessionStorage.getItem('ghostnet_token');
+            if (token) {
+                UI.mockData();
+            }
             // Emit Initial State
             window.dispatchEvent(new Event("app:state"));
         }, 800);
@@ -299,6 +311,9 @@ const UI = {
         // Re-run after identity updates (unlock/login flow)
         window.addEventListener('identity:updated', () => {
             UI.startGhostCodeWatcher(true);
+            
+            // Re-fetch data once authenticated
+            UI.fetchRealData();
 
             // Re-initialize vault for newly authenticated user
             if (window.GhostVault) {
@@ -687,8 +702,11 @@ const UI = {
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
+            const headers = getAuthHeaders();
+            if (!headers.Authorization) return; // Silent stop if not authed
+
             const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet', {
-                headers: { 'X-Auth-Token': getAuthToken() }
+                headers
             });
 
             if (!res.ok) throw new Error("Bridge Error");
@@ -789,8 +807,12 @@ const UI = {
         alert(`Transaction Broadcasted!\nSending ${amount} ${symbol} to ${to}`);
 
         try {
+            const headers = getAuthHeaders();
+            if (!headers.Authorization) return;
+
             await fetch('http://localhost:3001/wallet/send', {
                 method: 'POST',
+                headers,
                 body: JSON.stringify({ symbol, to, amount })
             });
         } catch (e) { console.error(e); }
@@ -1027,7 +1049,7 @@ const UI = {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
             const res = await fetch(validateUrl, {
-                headers: { 'X-Auth-Token': getAuthToken() }
+                headers: getAuthHeaders()
             });
 
             if (!res.ok) {
@@ -1091,7 +1113,7 @@ const UI = {
     loadConversations: async (userId) => {
         try {
             const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`, {
-                headers: { 'X-Auth-Token': getAuthToken() }
+                headers: getAuthHeaders()
             });
             if (res.ok) {
                 const convos = await res.json();
@@ -1233,7 +1255,7 @@ const UI = {
         if (convoId && convoId !== 'new') {
             try {
                 const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`, {
-                    headers: { 'X-Auth-Token': getAuthToken() }
+                    headers: getAuthHeaders()
                 });
                 if (res.ok) {
                     const msgs = await res.json();
@@ -1522,7 +1544,7 @@ const UI = {
                 try {
                     const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getAuthHeaders(),
                         body: JSON.stringify({
                             senderId: myId,
                             receiverId: targetId,
@@ -2474,7 +2496,9 @@ const UI = {
                     }
 
                     try {
-                        const res = await fetch(`${BACKEND_URL}/resolve/${encodeURIComponent(code)}`);
+                        const res = await fetch(`${BACKEND_URL}/resolve/${encodeURIComponent(code)}`, {
+                            headers: getAuthHeaders()
+                        });
                         if (res.ok) {
                             const data = await res.json();
                             // Build result row using DOM API

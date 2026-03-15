@@ -1,0 +1,42 @@
+# Unified Logout & Session Cleanup Plan
+
+Introduce a robust `UI.clearSession()` function in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js) to handle all cleanup tasks and fix the 3 bugs related to logout persistence, vault state, and broken scrolling.
+
+## User Review Required
+
+> [!IMPORTANT]
+> This change will call `localStorage.clear()` and `sessionStorage.clear()`. This is the most reliable way to ensure NO session data persists, but it will also clear non-auth settings like current theme if they are stored in localStorage. The implementation will explicitly restore the theme after clearing to maintain UX.
+
+## Proposed Changes
+
+### UI Logic
+
+#### [MODIFY] [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+
+**1. Implement `UI.clearSession()`**
+A single function that performs the following steps:
+- **Storage Cleanup**: Calls `localStorage.clear()` and `sessionStorage.clear()`.
+- **State Reset**:
+    - Resets `AppState.identity` to `null`.
+    - Resets `window.app.identity` to null or a guest state.
+    - Calls `GhostVault.clearVaultState()` to wipe local vault keys and metadata.
+- **UI Reset**:
+    - Calls `UI.vaultRenderFiles([])` to clear the vault UI.
+    - Removes all modals and overlays (IDs: `ghostcard-modal`, `screenshot-overlay`, `sidebar-overlay`).
+- **Scroll Restore**:
+    - Sets `document.body.style.overflow = 'auto'`.
+    - Sets `document.documentElement.style.overflow = 'auto'`.
+- **Theme Restoration**: Since `localStorage.clear()` wipes the theme, re-save the current theme preference immediately after.
+- **Navigation**:
+    - Uses `history.replaceState` or `location.replace('#profile')` to move to the identity screen.
+    - Force navigation to the 'profile' view (which contains the PIN/Login UI).
+
+**2. Unified Hooking**
+- Update ALL logout button listeners (selectors: `.auth-logout-btn, #logout-btn, [data-action="logout"]`) to call `UI.clearSession()`.
+
+## Verification Plan
+
+### Manual Verification
+1. **Bug 1 (Auth Persistence)**: Log in -> Log out -> Verify `localStorage` and `sessionStorage` are empty. Verify name "boi" and hash are gone. Try back button -> Should not see authenticated data.
+2. **Bug 2 (Vault Cleanup)**: Log in -> View Vault -> Log out -> Verify Vault list is empty on next login (until fresh fetch).
+3. **Bug 3 (Scroll Lock)**: Open a modal (e.g., GhostCard) -> Log out -> Verify body style no longer has `overflow: hidden` and scrolling works.

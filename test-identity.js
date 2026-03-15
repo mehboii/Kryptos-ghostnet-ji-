@@ -33,7 +33,7 @@ function withTimeout(promise, ms, label) {
 
 function failTest(label, err) {
     // [7] Only log the message, never the full stack (may contain file paths)
-    console.error(`❌ FAILED [${label}]:`, err instanceof Error ? err.message : String(err));
+    console.error(` FAILED [${label}]:`, err instanceof Error ? err.message : String(err));
 }
 
 // ─── [5][6] IDENTITY VALIDATOR ──────────────────────────

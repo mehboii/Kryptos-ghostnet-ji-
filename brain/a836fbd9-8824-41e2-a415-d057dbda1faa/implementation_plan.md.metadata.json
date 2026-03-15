@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Implementation plan for building a local Grammarly-like web application using React, Vite, and harper.js. Includes details on project setup, design system, core components, and verification steps.",
+  "updatedAt": "2026-03-14T08:45:22.413498700Z"
+}

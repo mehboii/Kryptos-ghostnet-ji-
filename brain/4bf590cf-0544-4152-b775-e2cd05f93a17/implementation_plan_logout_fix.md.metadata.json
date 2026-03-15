@@ -1,0 +1,5 @@
+{
+  "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary": "Implementation plan to fix 3 logout/session bugs by introducing a unified `UI.clearSession()` method. This method will clear all storage, reset in-memory states, restore scroll overflow, remove all modals, and redirect to the login screen without back-navigation.",
+  "updatedAt": "2026-03-14T14:01:25.464450300Z"
+}
