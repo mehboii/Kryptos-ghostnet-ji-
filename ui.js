@@ -28,18 +28,40 @@ window.AppState = {
 // --- CONSTANTS ---
 const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
 
-const getAuthHeaders = () => {
-    const token = localStorage.getItem('ghostnet_token') || sessionStorage.getItem('ghostnet_token');
-    
-    if (!token) {
-        console.warn("[Auth] Token missing or expired. Redirecting to login...");
-        // Use a slight delay to avoid interrupt cycles
-        setTimeout(() => {
-            if (window.UI && UI.clearSession) UI.clearSession();
-        }, 100);
-        return {};
-    }
+// ── AUTH TOKEN HELPERS ─────────────────────────────────────────────────────
+// Guard flag: once clearSession fires, block all further calls in this page load
+let _authRedirectFired = false;
 
+/**
+ * Read the JWT token. Returns the raw token string or '' if none.
+ * Checks BOTH storages because index.html writes to sessionStorage
+ * while the long-lived "remember me" path may write to localStorage.
+ */
+function _readToken() {
+    return sessionStorage.getItem('ghostnet_token')
+        || localStorage.getItem('ghostnet_token')
+        || localStorage.getItem('ghostnet_jwt')
+        || '';
+}
+
+/**
+ * Quick boolean check — does a valid-looking token exist?
+ */
+function hasAuthToken() {
+    return !!_readToken();
+}
+
+/**
+ * Build { Authorization, Content-Type } headers if a token exists.
+ * If no token is present, returns {} — callers MUST check first
+ * with hasAuthToken() or check `!headers.Authorization`.
+ *
+ * IMPORTANT: This function NEVER calls clearSession or redirects.
+ * Redirecting on missing token is done explicitly by callers.
+ */
+const getAuthHeaders = () => {
+    const token = _readToken();
+    if (!token) return {};
     return {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
@@ -47,8 +69,7 @@ const getAuthHeaders = () => {
 };
 
 /**
- * Get auth headers for authenticated API calls.
- * (Legacy wrapper for compatibility)
+ * Legacy wrapper for compatibility.
  */
 function authHeaders() {
     return getAuthHeaders();
@@ -284,9 +305,7 @@ const UI = {
 
         // 6. Mock Initial Data (for visual validation)
         setTimeout(() => {
-            // Only try to fetch if we appear to have a token
-            const token = localStorage.getItem('ghostnet_token') || sessionStorage.getItem('ghostnet_token');
-            if (token) {
+            if (hasAuthToken()) {
                 UI.mockData();
             }
             // Emit Initial State
@@ -296,8 +315,10 @@ const UI = {
         // 7. State Listener
         window.addEventListener("app:state", UI.render);
 
-        // 6. Load Profile
-        UI.loadProfile();
+        // 6. Load Profile — only if we have a session
+        if (hasAuthToken()) {
+            UI.loadProfile();
+        }
 
         // 7. Init Vault
         UI.initVault();
@@ -305,15 +326,21 @@ const UI = {
         // 8. Init GhostCode search
         UI.initChatSearch();
 
-        // 9. GhostCode watcher (covers slow auth/identity + avoids infinite Loading)
-        UI.startGhostCodeWatcher(false);
+        // 9. GhostCode watcher — only if authenticated
+        if (hasAuthToken()) {
+            UI.startGhostCodeWatcher(false);
+        }
 
         // Re-run after identity updates (unlock/login flow)
         window.addEventListener('identity:updated', () => {
-            UI.startGhostCodeWatcher(true);
-            
-            // Re-fetch data once authenticated
-            UI.fetchRealData();
+            // Reset auth guard so new session can work
+            _authRedirectFired = false;
+
+            if (hasAuthToken()) {
+                UI.startGhostCodeWatcher(true);
+                UI.fetchRealData();
+                UI.loadProfile();
+            }
 
             // Re-initialize vault for newly authenticated user
             if (window.GhostVault) {
@@ -378,9 +405,13 @@ const UI = {
     },
 
     clearSession: (isDestroy = false) => {
-        // Prevent recursive / infinite loop (Bug 1 fix)
-        if (window._isClearingSession) return;
+        // --- ONE-TIME GUARD: never fire more than once per page load ---
+        if (_authRedirectFired || window._isClearingSession) {
+            console.log('[UI] clearSession blocked — already fired this page load.');
+            return;
+        }
         window._isClearingSession = true;
+        _authRedirectFired = true;  // permanent flag for this page load
 
         console.log(`[UI] Initiating unified session clear (destroy=${isDestroy})...`);
         
@@ -392,8 +423,8 @@ const UI = {
             UI.destroyScreenshotProtection();
         }
 
-        // 1. Selective Storage Cleanup (Bug 2 fix)
-        // Instead of .clear(), we remove only session/temporary keys
+        // 1. Selective Storage Cleanup
+        // ONLY remove session/token keys — NEVER touch identity or seed phrase
         const sessionKeys = [
             'ghostnet_token',
             'ghostnet_jwt',
@@ -410,7 +441,6 @@ const UI = {
 
         if (isDestroy) {
             console.log('[UI] Full identity destruction requested...');
-            // Keys to keep safe even during signout, but wipe during DESTROY
             const identityKeys = [
                 'ghostnet_identity',
                 'ghostnet_identity_vault',
@@ -425,7 +455,7 @@ const UI = {
                 const key = localStorage.key(i);
                 if (key && key.startsWith('ghostnet_avatar_')) {
                     localStorage.removeItem(key);
-                    i--; // adjust index after removal
+                    i--;
                 }
             }
         }
@@ -484,18 +514,13 @@ const UI = {
         }
 
         // 6. Navigation
-        // replaceState prevents back-navigation to authenticated URL
         const loginUrl = new URL(window.location.href);
         loginUrl.hash = 'profile'; 
         window.history.replaceState(null, '', loginUrl.href);
         
-        // Refresh UI View
         UI.navigate('profile');
         
-        // If IdentityUI is present, force it to the welcome screen
         if (window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
-            // Restore from mnemonic flow relies on stored identity being present
-            // but the login loop happened because it couldn't find it.
             window.IdentityUI.init(); 
         }
 
@@ -505,7 +530,7 @@ const UI = {
         console.log('[UI] Session fully cleared. Redirected to identity screen.');
         showToast('Safety Logout Complete');
         
-        // Release guard after a short delay to allow navigation to settle
+        // Release the recursion guard (NOT the page-load guard)
         setTimeout(() => { window._isClearingSession = false; }, 1000);
     },
 
@@ -699,6 +724,8 @@ const UI = {
     },
 
     fetchRealData: async () => {
+        // Skip entirely when not authenticated
+        if (!hasAuthToken()) return;
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
@@ -1781,17 +1808,17 @@ const UI = {
     },
 
     loadProfile: async () => {
-        // Silent fallback: cache profile if available, otherwise use last cached copy.
-        // No user-facing warning/toast for a 404 here.
-        try {
-            const res = await fetch(`${BACKEND_URL}/user/profile`, { headers: authHeaders() });
-            if (res.ok) {
-                const user = await res.json();
-                localStorage.setItem('ghostnet_profile_cache', JSON.stringify(user));
-                // Back-compat with older key
-                localStorage.setItem('ghostnet_user', JSON.stringify(user));
-            }
-        } catch { }
+        // Skip server fetch when not authenticated — use cached data only
+        if (hasAuthToken()) {
+            try {
+                const res = await fetch(`${BACKEND_URL}/user/profile`, { headers: authHeaders() });
+                if (res.ok) {
+                    const user = await res.json();
+                    localStorage.setItem('ghostnet_profile_cache', JSON.stringify(user));
+                    localStorage.setItem('ghostnet_user', JSON.stringify(user));
+                }
+            } catch { }
+        }
 
         const stored = localStorage.getItem('ghostnet_profile_cache') || localStorage.getItem('ghostnet_user');
         if (stored) {
@@ -2340,6 +2367,8 @@ const UI = {
      * Fetch the current user's GhostCode from the server and display it.
      */
     fetchGhostCode: async () => {
+        // Skip when not authenticated to avoid 401 errors
+        if (!hasAuthToken()) return;
         try {
             const nodeId = AppState.identity ? (AppState.identity.nodeId || AppState.identity.id) : null;
             const displayName = AppState.identity ? (AppState.identity.displayName || AppState.identity.username) : null;

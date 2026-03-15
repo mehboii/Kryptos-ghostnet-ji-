@@ -1,5 +1,6 @@
 {
   "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
-  "summary": "Walkthrough of GhostNet bug fixes: session loop fixed, identity data preserved, 413 error resolved, and vault key routes corrected.",
-  "updatedAt": "2026-03-15T07:08:23.849205900Z"
+  "summary": "Detailed walkthrough of the auth token infinite loop bug fix. Documents the three compounding root causes (token key mismatch between sessionStorage/localStorage, getAuthHeaders() triggering clearSession() on missing token, and no auth guards on UI.init calls). Shows before/after code for all 7 fixes across ui.js and index.html.",
+  "updatedAt": "2026-03-15T08:23:18.156153400Z",
+  "version": "2"
 }
