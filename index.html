@@ -1424,21 +1424,26 @@
 
                             // --- Authenticate Node with Server ---
                             try {
-                                const authPayload = { nodeId: _pendingIdentity.nodeId };
-                                console.log('[Auth] POST /auth/node payload:', authPayload);
-                                const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(authPayload)
-                                });
-                                if (authRes.ok) {
-                                    const { token } = await authRes.json();
-                                    // Store in BOTH storages so ui.js can always find it
-                                    sessionStorage.setItem('ghostnet_token', token);
-                                    localStorage.setItem('ghostnet_token', token);
-                                    if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                const _authNodeId = _pendingIdentity.nodeId;
+                                // Robust null check: detect missing, null, or string "null"
+                                if (!_authNodeId || _authNodeId === 'null' || _authNodeId === 'undefined') {
+                                    console.error('[Auth] nodeId not ready or invalid — aborting /auth/node call');
                                 } else {
-                                    console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
+                                    const authPayload = { nodeId: _authNodeId };
+                                    console.log('[Auth] POST /auth/node payload:', authPayload);
+                                    const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(authPayload)
+                                    });
+                                    if (authRes.ok) {
+                                        const { token } = await authRes.json();
+                                        sessionStorage.setItem('ghostnet_token', token);
+                                        localStorage.setItem('ghostnet_token', token);
+                                        if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                    } else {
+                                        console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
+                                    }
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -1541,21 +1546,26 @@
 
                             // --- Authenticate Node with Server ---
                             try {
-                                const authPayload = { nodeId: stored.nodeId };
-                                console.log('[Auth] POST /auth/node payload:', authPayload);
-                                const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(authPayload)
-                                });
-                                if (authRes.ok) {
-                                    const { token } = await authRes.json();
-                                    // Store in BOTH storages so ui.js can always find it
-                                    sessionStorage.setItem('ghostnet_token', token);
-                                    localStorage.setItem('ghostnet_token', token);
-                                    if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                const _authNodeId = stored.nodeId;
+                                // Robust null check: detect missing, null, or string "null"
+                                if (!_authNodeId || _authNodeId === 'null' || _authNodeId === 'undefined') {
+                                    console.error('[Auth] stored.nodeId is null or invalid — aborting /auth/node call. Identity may be corrupted.');
                                 } else {
-                                    console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
+                                    const authPayload = { nodeId: _authNodeId };
+                                    console.log('[Auth] POST /auth/node payload:', authPayload);
+                                    const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify(authPayload)
+                                    });
+                                    if (authRes.ok) {
+                                        const { token } = await authRes.json();
+                                        sessionStorage.setItem('ghostnet_token', token);
+                                        localStorage.setItem('ghostnet_token', token);
+                                        if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                    } else {
+                                        console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
+                                    }
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -1791,15 +1801,21 @@
                                     }
                                     if (!sessionStorage.getItem('ghostnet_token')) {
                                         try {
-                                            const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
-                                                method: 'POST',
-                                                headers: { 'Content-Type': 'application/json' },
-                                                body: JSON.stringify({ nodeId: stored.nodeId })
-                                            });
-                                            if (authRes.ok) {
-                                                const { token } = await authRes.json();
-                                                sessionStorage.setItem('ghostnet_token', token);
-                                                if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                            const _authNodeId = stored.nodeId;
+                                            if (!_authNodeId || _authNodeId === 'null' || _authNodeId === 'undefined') {
+                                                console.warn('[Auth] stored.nodeId missing or invalid in init — aborting auth/node');
+                                            } else {
+                                                const authRes = await fetch('https://ghostnet-ji-production.up.railway.app/auth/node', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ nodeId: _authNodeId })
+                                                });
+                                                if (authRes.ok) {
+                                                    const { token } = await authRes.json();
+                                                    sessionStorage.setItem('ghostnet_token', token);
+                                                    localStorage.setItem('ghostnet_token', token);
+                                                    if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
+                                                }
                                             }
                                         } catch (e) { console.warn('Node auth failed:', e); }
                                     }

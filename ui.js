@@ -235,7 +235,19 @@ const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
 
-        // 0. Setup Theme
+        // 0a. Load Identity from Storage FIRST
+        const storedId = localStorage.getItem('ghostnet_node_id');
+        if (storedId && window.AppState) {
+            AppState.identity = {
+                nodeId: storedId,
+                displayName: localStorage.getItem('ghostnet_display_name') || 'Guest',
+                address: localStorage.getItem('ghostnet_address') || '0x...',
+                publicKey: localStorage.getItem('ghostnet_pubkey') || ''
+            };
+            console.log("[UI] Identity pre-loaded from storage:", AppState.identity.nodeId);
+        }
+
+        // 0b. Setup Theme
         UI.initTheme();
 
         // 1. Setup Nav
@@ -425,10 +437,11 @@ const UI = {
 
         // 1. Selective Storage Cleanup
         // ONLY remove session/token keys — NEVER touch identity or seed phrase
+        // NOTE: 'ghostnet_node_id' is IDENTITY data (used by getStoredIdentity),
+        //       NOT a session key. Removing it breaks nodeId on next login.
         const sessionKeys = [
             'ghostnet_token',
             'ghostnet_jwt',
-            'ghostnet_node_id',
             'ghostnet_vault_unlocked',
             'ghostnet_session_key',
             'ghostnet_last_convo'
