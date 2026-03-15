@@ -1,0 +1,10 @@
+# Task: Fix GhostNet App Bugs
+
+- [/] Research bug causes in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js), [ghostnet-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js), and [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+- [ ] Create implementation plan
+- [ ] Fix session clear loop in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+- [ ] Modify signout flow to preserve identity data
+- [ ] Fix seed phrase restore flow
+- [ ] Reduce payload size for `/register-node` in [ghostnet-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js)
+- [ ] Correct `/vault/key` endpoint route in [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+- [ ] Verify all fixes

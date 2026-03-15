@@ -1646,33 +1646,61 @@
 
                         const reader = new FileReader();
                         reader.onload = function (event) {
-                            const avatarData = event.target.result;
-                            const stored = GhostIdentity.getStoredIdentity();
-                            if (stored) {
-                                localStorage.setItem('ghostnet_avatar_' + stored.address, avatarData);
-                                document.getElementById('dash-avatar-img').src = avatarData;
-                                document.getElementById('dash-avatar-img').style.display = 'block';
-                                document.getElementById('dash-avatar-placeholder').style.display = 'none';
+                            const img = new Image();
+                            img.onload = function() {
+                                // Create canvas for resizing
+                                const canvas = document.createElement('canvas');
+                                const MAX_WIDTH = 256;
+                                const MAX_HEIGHT = 256;
+                                let width = img.width;
+                                let height = img.height;
 
-                                if (window.AppState && window.AppState.identity) {
-                                    window.AppState.identity.avatar = avatarData;
+                                if (width > height) {
+                                    if (width > MAX_WIDTH) {
+                                        height *= MAX_WIDTH / width;
+                                        width = MAX_WIDTH;
+                                    }
+                                } else {
+                                    if (height > MAX_HEIGHT) {
+                                        width *= MAX_HEIGHT / height;
+                                        height = MAX_HEIGHT;
+                                    }
                                 }
+                                canvas.width = width;
+                                canvas.height = height;
+                                const ctx = canvas.getContext('2d');
+                                ctx.drawImage(img, 0, 0, width, height);
 
-                                fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
-                                    method: 'POST',
-                                    headers: {
-                                        'Content-Type': 'application/json',
-                                        'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
-                                    },
-                                    body: JSON.stringify({
-                                        nodeId: stored.nodeId,
-                                        displayName: stored.displayName,
-                                        address: stored.address,
-                                        publicKey: stored.publicKey,
-                                        avatar: avatarData
-                                    })
-                                }).catch(e => console.warn('Node registration failed:', e));
-                            }
+                                // Compress to JPEG with 0.8 quality
+                                const avatarData = canvas.toDataURL('image/jpeg', 0.8);
+                                const stored = GhostIdentity.getStoredIdentity();
+                                if (stored) {
+                                    localStorage.setItem('ghostnet_avatar_' + stored.address, avatarData);
+                                    document.getElementById('dash-avatar-img').src = avatarData;
+                                    document.getElementById('dash-avatar-img').style.display = 'block';
+                                    document.getElementById('dash-avatar-placeholder').style.display = 'none';
+
+                                    if (window.AppState && window.AppState.identity) {
+                                        window.AppState.identity.avatar = avatarData;
+                                    }
+
+                                    fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
+                                        },
+                                        body: JSON.stringify({
+                                            nodeId: stored.nodeId,
+                                            displayName: stored.displayName,
+                                            address: stored.address,
+                                            publicKey: stored.publicKey,
+                                            avatar: avatarData
+                                        })
+                                    }).catch(e => console.warn('Node registration failed:', e));
+                                }
+                            };
+                            img.src = event.target.result;
                         };
                         reader.readAsDataURL(file);
                     }

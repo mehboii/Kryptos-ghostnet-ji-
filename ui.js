@@ -363,32 +363,72 @@ const UI = {
     },
 
     clearSession: (isDestroy = false) => {
-        console.log('[UI] Initiating unified session clear...');
+        // Prevent recursive / infinite loop (Bug 1 fix)
+        if (window._isClearingSession) return;
+        window._isClearingSession = true;
+
+        console.log(`[UI] Initiating unified session clear (destroy=${isDestroy})...`);
         
-        // Preserve current theme unless destroying
+        // Preserve current theme
         const theme = document.documentElement.getAttribute('data-theme') || 'dark';
         
-        // Clear all screenshot protection before storage is wiped
+        // Clear screenshot protection
         if (UI.destroyScreenshotProtection) {
             UI.destroyScreenshotProtection();
         }
 
-        // 1. Storage Cleanup (Bug 1 fix)
-        localStorage.clear();
-        sessionStorage.clear();
-        
-        // Restore theme preference if not destroying
+        // 1. Selective Storage Cleanup (Bug 2 fix)
+        // Instead of .clear(), we remove only session/temporary keys
+        const sessionKeys = [
+            'ghostnet_token',
+            'ghostnet_jwt',
+            'ghostnet_node_id',
+            'ghostnet_vault_unlocked',
+            'ghostnet_session_key',
+            'ghostnet_last_convo'
+        ];
+
+        sessionKeys.forEach(k => {
+            localStorage.removeItem(k);
+            sessionStorage.removeItem(k);
+        });
+
+        if (isDestroy) {
+            console.log('[UI] Full identity destruction requested...');
+            // Keys to keep safe even during signout, but wipe during DESTROY
+            const identityKeys = [
+                'ghostnet_identity',
+                'ghostnet_identity_vault',
+                'ghostnet_vault_index',
+                'ghostnet_seed_words',
+                'ghostnet_ble_devices'
+            ];
+            identityKeys.forEach(k => localStorage.removeItem(k));
+            
+            // Also wipe all avatars
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('ghostnet_avatar_')) {
+                    localStorage.removeItem(key);
+                    i--; // adjust index after removal
+                }
+            }
+        }
+
+        // Restore theme preference
         if (!isDestroy) {
             localStorage.setItem('ghostnet_theme', theme);
         }
         
-        // 2. Vault Cleanup (Bug 2 fix)
+        // 2. Vault Cleanup
         if (window.GhostVault && typeof window.GhostVault.clearVaultState === 'function') {
             window.GhostVault.clearVaultState();
         }
-        UI.vaultRenderFiles([]);
+        if (typeof UI.vaultRenderFiles === 'function') {
+            UI.vaultRenderFiles([]);
+        }
 
-        // 3. Clear In-Memory State (Bug 1 fix)
+        // 3. Clear In-Memory State
         if (window.AppState) {
             window.AppState.identity = null;
             window.AppState.messages = [];
@@ -402,11 +442,11 @@ const UI = {
             window.app.chatTarget = null;
         }
 
-        // 4. Restore Scroll (Bug 3 fix)
+        // 4. Restore Scroll Style
         document.body.style.overflow = 'auto';
         document.documentElement.style.overflow = 'auto';
         
-        // 5. Remove all Modals and Overlays (Bug 3 fix)
+        // 5. Remove all Modals and Overlays
         const blockers = [
             'ghostcard-modal', 
             'screenshot-overlay', 
@@ -420,7 +460,6 @@ const UI = {
             if (el) el.remove();
         });
         
-        // Remove class-based overlays (like Vault Verify)
         document.querySelectorAll('.vault-verify-overlay').forEach(el => el.remove());
 
         if (isDestroy) {
@@ -429,7 +468,7 @@ const UI = {
             return;
         }
 
-        // 6. Navigation: Force redirect to identity screen (Bug 1 fix)
+        // 6. Navigation
         // replaceState prevents back-navigation to authenticated URL
         const loginUrl = new URL(window.location.href);
         loginUrl.hash = 'profile'; 
@@ -440,7 +479,9 @@ const UI = {
         
         // If IdentityUI is present, force it to the welcome screen
         if (window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
-            window.IdentityUI.showScreen('welcome');
+            // Restore from mnemonic flow relies on stored identity being present
+            // but the login loop happened because it couldn't find it.
+            window.IdentityUI.init(); 
         }
 
         const sidebarProfile = document.getElementById('sidebar-profile');
@@ -448,6 +489,9 @@ const UI = {
         
         console.log('[UI] Session fully cleared. Redirected to identity screen.');
         showToast('Safety Logout Complete');
+        
+        // Release guard after a short delay to allow navigation to settle
+        setTimeout(() => { window._isClearingSession = false; }, 1000);
     },
 
     initScreenshotProtection: () => {

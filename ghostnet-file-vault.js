@@ -317,9 +317,14 @@
 
             let serverKeyData = null;
             try {
-                const res = await fetch(`${VAULT_API.replace('/vault', '')}/vault/key`, { headers: _secureHeaders() });
-                if (res.ok) {
-                    const data = await res.json();
+                const token = _getAuthToken();
+                const response = await fetch(VAULT_API + '/key', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+                if (response.ok) {
+                    const data = await response.json();
                     if (data.keyData) serverKeyData = data.keyData;
                 }
             } catch (e) {
@@ -400,9 +405,13 @@
                 iv: bufToHex(ivBytes)
             };
 
-            await fetch(`${VAULT_API.replace('/vault', '')}/vault/key`, {
+            const token = _getAuthToken();
+            await fetch(VAULT_API + '/key', {
                 method: 'POST',
-                headers: { ..._secureHeaders(), 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({ keyData: serverKeyData })
             });
             this.key = newKey;

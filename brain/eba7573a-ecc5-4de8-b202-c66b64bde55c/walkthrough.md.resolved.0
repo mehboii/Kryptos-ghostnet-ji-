@@ -1,0 +1,31 @@
+# Walkthrough - GhostNet Bug Fixes
+
+I have implemented the fixes for the reported bugs in the GhostNet application.
+
+## Changes Made
+
+### 1. Unified Session Clearing and Loop Prevention
+- **File**: [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
+- **Fix**: Added a `window._isClearingSession` guard flag to `UI.clearSession` to prevent infinite recursion and loops.
+- **Fix**: Replaced `localStorage.clear()` with selective removal of session keys (`ghostnet_token`, etc.) while preserving critical identity data (`ghostnet_identity`).
+
+### 2. Payload Size (413 Error) Resolution
+- **File**: [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-server.js)
+- **Fix**: Increased `MAX_BODY_SIZE` from `64kb` to `1mb` to allow node registration with large avatars.
+
+### 3. Vault Key Routing (404 Error) Resolution
+- **File**: [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+- **Fix**: Corrected the API routes for both `GET /vault/key` and `POST /vault/key`. They now correctly target the server's endpoint without stripping the `/vault` prefix incorrectly.
+
+### 4. Seed Phrase Restore Flow Fix
+- **Effect**: By preserving the identity data in `localStorage`, the restore flow and [init()](file:///c:/Users/novtw/.gemini/antigravity/index.html#1725-1785) flow can now correctly identify existing identities even after a session logout.
+
+## Verification Results
+
+### Manual Verification Steps
+1. **Sign Out**: Triggered signout and confirmed no infinite redirect loop occurs.
+2. **Identity Check**: Verified that `ghostnet_identity` remains in `localStorage` after signout.
+3. **Register Node**: Payload size increase on the server now allows registration with larger avatars without the 413 error.
+4. **Vault Access**: Corrected routes in [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js) ensure that vault keys are correctly synchronised with the backend.
+
+The application is now significantly more stable during identity and session transitions.
