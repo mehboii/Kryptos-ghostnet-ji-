@@ -138,10 +138,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     let stored = null;
     try {
-        const nodeId = localStorage.getItem('ghostnet_node_id');
-        const displayName = localStorage.getItem('ghostnet_display_name');
-        const address = localStorage.getItem('ghostnet_address');
-        if (nodeId) stored = { nodeId, displayName, address };
+        if (window.GhostIdentity) {
+            stored = GhostIdentity.getStoredIdentity();
+        } else {
+            const nodeId = localStorage.getItem('ghostnet_node_id');
+            const displayName = localStorage.getItem('ghostnet_display_name');
+            const address = localStorage.getItem('ghostnet_address');
+            if (nodeId && nodeId !== 'null') stored = { nodeId, displayName, address };
+        }
     } catch (e) {
         log.error('Failed to read identity from storage:', e.message);
     }
