@@ -1164,7 +1164,7 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
     }
 });
 
-app.get('/vault/key', requireAuth, (req, res) => {
+app.get('/vault/keys', requireAuth, (req, res) => {
     const ownerId = req.user.id;
     const keyData = vaultKeys[ownerId];
     if (keyData) {
@@ -1174,7 +1174,7 @@ app.get('/vault/key', requireAuth, (req, res) => {
     }
 });
 
-app.post('/vault/key', requireAuth, (req, res) => {
+app.post('/vault/keys', requireAuth, (req, res) => {
     const ownerId = req.user.id;
     const { keyData } = req.body;
     if (!keyData || typeof keyData.wrappedKey !== 'string') {
