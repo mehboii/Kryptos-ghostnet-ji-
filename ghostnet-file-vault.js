@@ -332,7 +332,7 @@
 
             let serverKeyData = null;
             try {
-                const response = await fetch(VAULT_API + '/key', {
+                const response = await fetch(VAULT_API + '/keys', {
                     headers: _secureHeaders()
                 });
                 if (response.ok) {
@@ -418,7 +418,7 @@
             };
 
             if (_hasToken()) {
-                await fetch(VAULT_API + '/key', {
+                await fetch(VAULT_API + '/keys', {
                     method: 'POST',
                     headers: _secureHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ keyData: serverKeyData })
@@ -570,9 +570,12 @@
         let response;
         try {
             // [FIX B] Auth token on every request.
+            const uploadHeaders = _secureHeaders();
+            delete uploadHeaders['Content-Type']; // Let browser set boundary for FormData
+
             response = await fetch(`${VAULT_API}/upload`, {
                 method: 'POST',
-                headers: _secureHeaders(),  // Content-Type omitted: FormData sets its own
+                headers: uploadHeaders,
                 body: formData,
             });
         } catch {
