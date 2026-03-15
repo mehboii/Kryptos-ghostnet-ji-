@@ -201,21 +201,22 @@
     // ─── Auth header helper ───────────────────────────────────────────────────
 
     // [FIX B] Every request carries the session auth token.
-    function _getAuthToken() {
-        if (window.getAuthHeaders) {
-            const h = window.getAuthHeaders();
-            if (h.Authorization) return h.Authorization.replace('Bearer ', '');
-        }
-        return sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+    function _hasToken() {
+        const token = (window.getAuthHeaders && window.getAuthHeaders().Authorization)
+            || sessionStorage.getItem('ghostnet_token')
+            || localStorage.getItem('ghostnet_token');
+        return !!token;
     }
 
     function _secureHeaders(extra = {}) {
         // [FIX B] Use unified global headers if available (enforces token check/redirect)
         if (window.getAuthHeaders) {
-            return { ...window.getAuthHeaders(), ...extra };
+            const h = window.getAuthHeaders();
+            if (h.Authorization) return { ...h, ...extra };
         }
+        const token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
         return {
-            'Authorization': `Bearer ${_getAuthToken()}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
             ...extra,
         };
@@ -324,6 +325,11 @@
         async getOrGenerateKey() {
             if (this.key) return this.key;
 
+            if (!_hasToken()) {
+                console.warn('[Vault] No auth token — skipping vault key sync');
+                throw new Error('Authenticated session required for vault access.');
+            }
+
             let serverKeyData = null;
             try {
                 const response = await fetch(VAULT_API + '/key', {
@@ -411,11 +417,13 @@
                 iv: bufToHex(ivBytes)
             };
 
-            await fetch(VAULT_API + '/key', {
-                method: 'POST',
-                headers: _secureHeaders({ 'Content-Type': 'application/json' }),
-                body: JSON.stringify({ keyData: serverKeyData })
-            });
+            if (_hasToken()) {
+                await fetch(VAULT_API + '/key', {
+                    method: 'POST',
+                    headers: _secureHeaders({ 'Content-Type': 'application/json' }),
+                    body: JSON.stringify({ keyData: serverKeyData })
+                });
+            }
             this.key = newKey;
             try {
                 window.__vaultKey = newKey;
@@ -506,7 +514,7 @@
             if (window.app && window.app.chatTarget && window.app.chatTarget !== 'broadcast') {
                 const targetId = window.app.chatTarget;
                 let targetPub = targetId;
-                if (!targetPub.startsWith('0x')) {
+                if (!targetPub.startsWith('0x') && _hasToken()) {
                     const valRes = await fetch(`${VAULT_API.replace('/vault', '')}/validate-node/${encodeURIComponent(targetId)}`, { headers: _secureHeaders() });
                     if (valRes.ok) {
                         const valData = await valRes.json();
@@ -753,6 +761,9 @@
         const owner = getOwner();
         if (!owner) return vaultIndex.slice();
 
+        // Skip server call if no auth token exists — prevents 401 cascade
+        if (!_hasToken()) return vaultIndex.slice();
+
         let response;
         try {
             // [FIX B] Auth token on every request.
@@ -866,6 +877,9 @@
     async function refreshVaultForUser() {
         const owner = getOwner();
         if (!owner) return [];
+
+        // Guard: skip server call if unauthenticated
+        if (!_hasToken()) return vaultIndex.slice();
 
         let serverFiles = [];
         try {
