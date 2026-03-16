@@ -207,6 +207,7 @@ const GhostIdentity = (() => {
             address,
             displayName,
             nodeId,
+            ghostTag: identity.ghostTag || '', // [Feature 1]
         };
     }
 
@@ -221,21 +222,22 @@ const GhostIdentity = (() => {
             // [FIX F] Deterministic derivation during restore.
             const nodeId = generateNodeId(publicKey, displayName);
 
-            return { privateKey, publicKey, address, displayName, nodeId };
+            return { privateKey, publicKey, address, displayName, nodeId, ghostTag: '' };
         } catch {
             throw new Error('Invalid seed phrase. Please check your words.');
         }
     }
 
     // ─── STORAGE HELPERS ─────────────────────────────────────────────────────
-    function saveIdentity(publicKey, address, displayName, nodeId, encryptedPK) {
+    function saveIdentity(publicKey, address, displayName, nodeId, encryptedPK, ghostTag = '') {
         // [Unified] Save as a single JSON object
         const identity = {
             encryptedPK,
             publicKey,
             address,
             displayName,
-            nodeId
+            nodeId,
+            ghostTag // [Feature 1]
         };
         localStorage.setItem(_SK.IDENTITY, JSON.stringify(identity));
 
@@ -288,6 +290,7 @@ const GhostIdentity = (() => {
             address: localStorage.getItem(_SK.ADDRESS),
             displayName: displayName,
             nodeId: nodeId,
+            ghostTag: localStorage.getItem('ghostnet_ghost_tag') || '', // Fallback for legacy
         };
     }
 
@@ -427,7 +430,7 @@ const GhostIdentity = (() => {
         // Primary API for saving a newly generated or restored identity
         saveNewIdentity: async (identity, pin) => {
             const encryptedPK = await _encryptWithPin(identity.privateKey, pin);
-            saveIdentity(identity.publicKey, identity.address, identity.displayName, identity.nodeId, encryptedPK);
+            saveIdentity(identity.publicKey, identity.address, identity.displayName, identity.nodeId, encryptedPK, identity.ghostTag);
         },
         // Primary unlock path — handles lockout internally.
         unlockWithPin,

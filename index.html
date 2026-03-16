@@ -740,6 +740,14 @@
                                     <input type="text" id="id-display-name" class="auth-input" placeholder="e.g. Madbo"
                                         maxlength="24" autocomplete="off">
                                 </div>
+                                <div class="auth-input-group" style="margin-top: 12px;">
+                                    <label class="auth-label">GHOSTTAG (@USERNAME)</label>
+                                    <div style="position: relative;">
+                                        <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--accent); font-weight: bold;">@</span>
+                                        <input type="text" id="id-ghost-tag" class="auth-input" placeholder="username"
+                                            maxlength="20" autocomplete="off" style="padding-left: 28px;">
+                                    </div>
+                                </div>
                                 <div id="id-name-error" class="id-error"></div>
                                 <button class="auth-btn-primary" onclick="IdentityUI.submitName()">CONTINUE</button>
                             </div>
@@ -1124,6 +1132,26 @@
                                         </div>
                                     </div>
                                     <div class="id-detail-row">
+                                        <span class="id-detail-label">GhostTag</span>
+                                        <span class="id-detail-value" id="dash-ghosttag" style="color:var(--accent); font-weight:700;"></span>
+                                    </div>
+                                    <div class="id-detail-row" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+                                        <span class="id-detail-label">Invite Link</span>
+                                        <div style="display: flex; align-items: center; gap: 8px; width: 100%;">
+                                            <span class="id-detail-value" id="dash-invite-link" style="font-size: 0.65rem; color: var(--text-muted); opacity: 0.8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;"></span>
+                                            <button onclick="IdentityUI.copyInviteLink(this)"
+                                                style="background: rgba(139, 92, 246, 0.1); border: 1px solid rgba(139, 92, 246, 0.3); border-radius: 4px; padding: 2px 6px; cursor: pointer; color: #8b5cf6; display: flex; align-items: center; gap: 4px; font-size: 0.6rem; transition: all 0.2s;">
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+                                                    stroke="currentColor" stroke-width="2">
+                                                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1">
+                                                    </path>
+                                                </svg>
+                                                COPY
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="id-detail-row">
                                         <span class="id-detail-label">Encryption</span>
                                         <span class="id-detail-value" style="color:#10b981;">AES-256-GCM ✓</span>
                                     </div>
@@ -1201,6 +1229,16 @@
                                     el.style.color = '';
                                 }, 2000);
                             }
+                        });
+                    }
+
+                    function copyInviteLink(btn) {
+                        const el = document.getElementById('dash-invite-link');
+                        const val = el.textContent;
+                        navigator.clipboard.writeText(val).then(() => {
+                            const originalHTML = btn.innerHTML;
+                            btn.innerHTML = '<span>COPIED!</span>';
+                            setTimeout(() => { btn.innerHTML = originalHTML; }, 2000);
                         });
                     }
 
@@ -1316,19 +1354,30 @@
                     // ─── SCREEN 2: Name ───────────────────────────
                     function submitName() {
                         const name = document.getElementById('id-display-name').value.trim();
+                        const ghostTag = document.getElementById('id-ghost-tag').value.trim().replace(/^@/, '');
                         const err = document.getElementById('id-name-error');
+                        
                         if (!name || name.length < 2) {
                             err.textContent = 'Name must be at least 2 characters.';
                             return;
                         }
+                        if (!ghostTag || ghostTag.length < 3) {
+                            err.textContent = 'GhostTag must be at least 3 characters.';
+                            return;
+                        }
+                        if (!/^[a-zA-Z0-9_]+$/.test(ghostTag)) {
+                            err.textContent = 'GhostTag can only contain letters, numbers, and underscores.';
+                            return;
+                        }
+
                         err.textContent = '';
-                        _pendingIdentity = { displayName: name };
+                        _pendingIdentity = { displayName: name, ghostTag: ghostTag };
                         showScreen('generating');
-                        _runGeneration(name);
+                        _runGeneration(name, ghostTag);
                     }
 
                     // ─── SCREEN 3: Generating (animated) ──────────
-                    async function _runGeneration(displayName) {
+                    async function _runGeneration(displayName, ghostTag) {
                         const steps = ['gen-step-1', 'gen-step-2', 'gen-step-3', 'gen-step-4'];
                         for (let i = 0; i < steps.length; i++) {
                             await _sleep(500 + Math.random() * 400);
@@ -1340,7 +1389,7 @@
                         }
                         // Actually generate
                         const identity = await GhostIdentity.generateIdentity(displayName);
-                        _pendingIdentity = { ...identity };
+                        _pendingIdentity = { ...identity, ghostTag };
 
                         await _sleep(600);
                         _showSeedPhrase(identity.mnemonic);
@@ -1493,6 +1542,7 @@
                                     address: _pendingIdentity.address,
                                     nodeId: _pendingIdentity.nodeId,
                                     id: _pendingIdentity.nodeId,
+                                    ghostTag: _pendingIdentity.ghostTag, // [Feature 1]
                                 };
                             }
                             window.dispatchEvent(new Event('identity:updated'));
@@ -1527,6 +1577,7 @@
                                     address: stored.address,
                                     nodeId: stored.nodeId,
                                     id: stored.nodeId,
+                                    ghostTag: stored.ghostTag, // [Feature 1]
                                 };
                             }
 
@@ -1666,6 +1717,17 @@
                         const dashNodeEl = document.getElementById('dash-nodeid');
                         dashNodeEl.dataset.fullid = identity.nodeId;
                         dashNodeEl.textContent = GhostIdentity.shortenNodeId(identity.nodeId);
+
+                        // [Feature 1] GhostTag and Invite Link
+                        const tagEl = document.getElementById('dash-ghosttag');
+                        if (tagEl) tagEl.textContent = '@' + (identity.ghostTag || 'not_set');
+
+                        const inviteEl = document.getElementById('dash-invite-link');
+                        if (inviteEl) {
+                            const inviteUrl = `ghostnet.n11x.dev/invite/@${identity.ghostTag || 'username'}`;
+                            inviteEl.textContent = inviteUrl;
+                        }
+
                         showScreen('dashboard');
                     }
 
@@ -1797,6 +1859,7 @@
                                             address: stored.address,
                                             nodeId: stored.nodeId,
                                             id: stored.nodeId,
+                                            ghostTag: stored.ghostTag, // [Feature 1]
                                         };
                                     }
                                     if (!sessionStorage.getItem('ghostnet_token')) {
@@ -1865,6 +1928,7 @@
                         destroyIdentity,
                         signOut,
                         trySignIn,
+                        copyInviteLink, // [Feature 1]
                         init,
                         handleAvatarUpload
                     };
