@@ -135,6 +135,13 @@ class GhostMesh {
 
         this.bleAvailable = typeof navigator !== 'undefined' && !!navigator.bluetooth;
         console.log(`🕸️ GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
+
+        // [Feature 4] Relay Monitor State
+        this.relayStats = {
+            packets: 0,
+            bytes: 0,
+            startTime: Date.now()
+        };
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -340,7 +347,15 @@ class GhostMesh {
             bleScanning: this.bleScanning,
             totalPeers: this.peers.size,
             blePeers, wsPeers,
-            knownBLEDevices: this.knownBLEDevices.length
+            knownBLEDevices: this.knownBLEDevices.length,
+            relayStats: this.relayStats // [Feature 4]
+        };
+    }
+
+    getRelayStats() {
+        return {
+            ...this.relayStats,
+            uptime: Math.floor((Date.now() - this.relayStats.startTime) / 1000)
         };
     }
 
@@ -504,6 +519,30 @@ class GhostMesh {
                 if (window.UI) window.UI.addMessage(safeBody, 'them');
                 if (window.UI && window.AppState?.identity) {
                     window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
+                }
+                break;
+            }
+
+            case 'MESH_DIRECT': {
+                const toId = this.validatePeerId(msg.to);
+                const fromId = this.validatePeerId(msg.from);
+                
+                // If it's for me, it will be handled by onMessage via standard MSG flow if renamed on server,
+                // but usually direct messages in mesh are intended for relay.
+                if (toId && toId !== this.identity.id) {
+                    // SILENT RELAY [Feature 4]
+                    this.relayStats.packets++;
+                    this.relayStats.bytes += JSON.stringify(msg).length;
+                    
+                    const hops = typeof msg.hops === 'number' ? msg.hops : 0;
+                    if (hops < this.MAX_HOPS) {
+                        const relayMsg = { ...msg, hops: hops + 1 };
+                        this.relayToWS(relayMsg);
+                        this.relayToBLE(relayMsg);
+                    }
+                } else if (toId === this.identity.id) {
+                    // It's for me!
+                    this.onMessage(msg.data || msg, fromId, 'mesh-direct');
                 }
                 break;
             }
