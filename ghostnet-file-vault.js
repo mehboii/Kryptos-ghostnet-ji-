@@ -332,7 +332,7 @@
 
             let serverKeyData = null;
             try {
-                const response = await fetch(VAULT_API + '/keys', {
+                const response = await fetch(`${VAULT_API}/keys`, {
                     headers: _secureHeaders()
                 });
                 if (response.ok) {
@@ -354,7 +354,25 @@
                 }
             }
 
-            throw new Error('Vault Key unavailable. Cannot encrypt or decrypt files.');
+            // [Fallback] If remote fetch failed and recovery was skipped/failed, use local key
+            console.warn('[Vault] Remote fetch and recovery failed. Falling back to local key.');
+            try {
+                const localKeyData = localStorage.getItem('ghostnet_vault_local_key');
+                if (localKeyData) {
+                    const jwk = JSON.parse(localKeyData);
+                    this.key = await crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+                } else {
+                    // Generate new local key so uploads don't break
+                    this.key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+                    const exported = await crypto.subtle.exportKey('jwk', this.key);
+                    localStorage.setItem('ghostnet_vault_local_key', JSON.stringify(exported));
+                }
+                try { window.__vaultKey = this.key; } catch {}
+                return this.key;
+            } catch (fallbackErr) {
+                console.error('[Vault] Fallback failed:', fallbackErr);
+                throw new Error('Vault Key unavailable. Local fallback failed.');
+            }
         },
 
         async _deriveWrappingKey(pin, saltHexString) {

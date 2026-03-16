@@ -1170,7 +1170,8 @@ app.get('/vault/keys', requireAuth, (req, res) => {
     if (keyData) {
         res.json({ success: true, keyData: keyData });
     } else {
-        res.status(404).json({ error: 'Vault key not found' });
+        // [Resilience] Return 200 with success: false instead of 404 to avoid "Route Not Found" ambiguity
+        res.json({ success: false, error: 'Vault key not found' });
     }
 });
 
