@@ -1169,7 +1169,20 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+            let token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+
+            // [FIX] Guard: If token is missing (e.g. race condition after re-login), retry once
+            if (!token) {
+                console.warn('[UI] Auth token not found for conversations, retrying in 500ms...');
+                await new Promise(r => setTimeout(r, 500));
+                token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+            }
+
+            if (!token) {
+                console.error('[UI] Aborting conversations fetch: No auth token available.');
+                return;
+            }
+
             const res = await fetch(`${BACKEND_URL}/conversations?userId=${userId}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
