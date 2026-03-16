@@ -1169,8 +1169,12 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`, {
-                headers: getAuthHeaders()
+            const token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+            const res = await fetch(`${BACKEND_URL}/conversations?userId=${userId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
             });
             if (res.ok) {
                 const convos = await res.json();
