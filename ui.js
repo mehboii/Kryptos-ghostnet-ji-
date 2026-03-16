@@ -76,6 +76,20 @@ function authHeaders() {
 }
 
 /**
+ * Poll for the auth token to exist (handles race conditions during re-login).
+ */
+async function _waitForToken(maxWait = 5000) {
+    const start = Date.now();
+    while (Date.now() - start < maxWait) {
+        // Check both storages for maximum resilience
+        const token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+        if (token) return token;
+        await new Promise(r => setTimeout(r, 200));
+    }
+    return null;
+}
+
+/**
  * Show a toast notification for a given duration.
  */
 function showToast(message, durationMs = 2000) {
@@ -1169,17 +1183,12 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            let token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
-
-            // [FIX] Guard: If token is missing (e.g. race condition after re-login), retry once
-            if (!token) {
-                console.warn('[UI] Auth token not found for conversations, retrying in 500ms...');
-                await new Promise(r => setTimeout(r, 500));
-                token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
-            }
+            // [FIX] Robust Polling: Wait for the token to actually exist (up to 5s)
+            // to prevent 401s during the re-login race condition.
+            const token = await _waitForToken();
 
             if (!token) {
-                console.error('[UI] Aborting conversations fetch: No auth token available.');
+                console.error('[UI] Aborting conversations fetch: Auth token never arrived after 5s.');
                 return;
             }
 
