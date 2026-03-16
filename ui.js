@@ -445,6 +445,16 @@ const UI = {
                 UI.destroyScreenshotProtection();
             }
         }
+
+        // [Feature 4] Node Monitor Polling
+        if (target === 'nodes-monitor') {
+            if (UI._relayTimer) clearInterval(UI._relayTimer);
+            UI._relayTimer = setInterval(UI.updateRelayMonitor, 2000);
+            UI.updateRelayMonitor();
+        } else {
+            if (UI._relayTimer) clearInterval(UI._relayTimer);
+            UI._relayTimer = null;
+        }
     },
 
     clearSession: (isDestroy = false) => {
@@ -1367,6 +1377,33 @@ const UI = {
         // Update Stats
         const statNodes = document.getElementById('stat-nodes');
         if (statNodes) statNodes.innerText = AppState.peers.length;
+
+        UI.updateRelayMonitor(); // [Feature 4]
+    },
+
+    updateRelayMonitor: () => {
+        if (!window.app || !window.app.mesh) return;
+        const stats = window.app.mesh.getRelayStats();
+        
+        const packetsEl = document.getElementById('relay-stat-packets');
+        const bytesEl = document.getElementById('relay-stat-bytes');
+        const uptimeEl = document.getElementById('relay-stat-uptime');
+
+        if (packetsEl) packetsEl.textContent = stats.packets.toLocaleString();
+        if (bytesEl) {
+            let size = stats.bytes;
+            let unit = 'B';
+            if (size > 1024) { size /= 1024; unit = 'KB'; }
+            if (size > 1024) { size /= 1024; unit = 'MB'; }
+            bytesEl.textContent = `${size.toFixed(1)} ${unit}`;
+        }
+        if (uptimeEl) {
+            let s = stats.uptime;
+            let m = Math.floor(s / 60);
+            let h = Math.floor(m / 60);
+            s %= 60; m %= 60;
+            uptimeEl.textContent = `${h > 0 ? h + 'h ' : ''}${m > 0 ? m + 'm ' : ''}${s}s`;
+        }
     },
 
     updateChatStatus: () => {
