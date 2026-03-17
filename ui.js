@@ -375,24 +375,32 @@ const UI = {
         }
 
         // Re-run after identity updates (unlock/login flow)
-        window.addEventListener('identity:updated', () => {
+        // Re-run after identity updates (unlock/login flow)
+        window.addEventListener('identity:updated', async () => {
             // Reset auth guard so new session can work
             _authRedirectFired = false;
 
-            if (hasAuthToken()) {
+            // Wait for token to be available (fetched by IdentityUI)
+            const token = await _waitForToken(5000);
+            
+            if (token) {
                 UI.startGhostCodeWatcher(true);
                 UI.fetchRealData();
                 UI.loadProfile();
             }
 
-            // Re-initialize vault for newly authenticated user
+            // Re-initialize vault and FORCE re-fetch for newly authenticated user
             if (window.GhostVault) {
-                window.GhostVault.init().then(() => {
-                    UI.vaultLoadFiles();
-                    console.log('[UI] Vault re-loaded for authenticated user');
-                }).catch(err => {
+                try {
+                    await window.GhostVault.init();
+                    // Give server a moment to settle if token was just written
+                    setTimeout(() => {
+                        UI.vaultLoadFiles();
+                        console.log('[UI] Vault re-loaded and fetched for user');
+                    }, 300);
+                } catch (err) {
                     console.warn('[UI] Vault init on login failed:', err.message);
-                });
+                }
             }
         });
 
@@ -519,11 +527,23 @@ const UI = {
             localStorage.setItem('ghostnet_theme', theme);
         }
         
-        // 2. Vault Cleanup
+        // 2. Vault Cleanup [MODIFIED - Feature Isolation]
+        // Do NOT wipe local storage metadata (ghostnet_vault_index) unless it's a destroy.
+        // This allows files to show up immediately on re-login before fetch completes.
         if (window.GhostVault && typeof window.GhostVault.clearVaultState === 'function') {
-            window.GhostVault.clearVaultState();
+            // We'll call a less destructive lock if not destroying
+            if (isDestroy) {
+                window.GhostVault.clearVaultState();
+            } else if (typeof window.GhostVault.lockVault === 'function') {
+                window.GhostVault.lockVault();
+            }
         }
+        
+        // Only clear the UI list, but don't wipe the backend re-fetch path
         if (typeof UI.vaultRenderFiles === 'function') {
+            // If just logging out, we can keep the UI list visual or clear it.
+            // User requested not to wipe file data, so we'll clear UI for security
+            // but the storage keys remain for the next login.
             UI.vaultRenderFiles([]);
         }
 
