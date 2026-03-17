@@ -229,8 +229,12 @@
     function getOwner() {
         const nodeId = sessionStorage.getItem('ghostnet_node_id');
         if (nodeId) return nodeId;
-        // Fallback to in-memory app state — still not from writable localStorage.
-        return window.app?.identity?.nodeId || window.app?.identity?.id || null;
+        // Fallback to in-memory app state — prioritize AppState then window.app
+        return window.AppState?.identity?.nodeId || 
+               window.AppState?.identity?.id || 
+               window.app?.identity?.nodeId || 
+               window.app?.identity?.id || 
+               null;
     }
 
     // ─── IndexedDB key store ──────────────────────────────────────────────────
@@ -958,7 +962,11 @@
         try {
             const existing = sessionStorage.getItem('ghostnet_node_id');
             if (!existing) {
-                const nodeId = window.app?.identity?.nodeId || window.app?.identity?.id || null;
+                const nodeId = window.AppState?.identity?.nodeId || 
+                               window.AppState?.identity?.id || 
+                               window.app?.identity?.nodeId || 
+                               window.app?.identity?.id || 
+                               null;
                 if (nodeId) sessionStorage.setItem('ghostnet_node_id', nodeId);
             }
         } catch {

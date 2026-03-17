@@ -6,7 +6,7 @@
 (function() {
     'use strict';
 
-    const SENSITIVE_IDS = ['view-chat', 'view-vault'];
+    const SENSITIVE_IDS = ['view-chat', 'view-vault', 'view-profile', 'id-screen-sync_export'];
     
     // ─── STYLES Injection ──────────────────────────────────────────────────
     const style = document.createElement('style');
