@@ -1,3 +1,6 @@
+import { initScreenshotProtection } from './screenshot-protection.js'
+initScreenshotProtection()
+
 /**
  * GhostNet Immersive UI
  * Single-file logic for Visualization, State, and Interaction.
