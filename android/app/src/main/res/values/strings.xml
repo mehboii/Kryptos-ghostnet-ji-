@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">GhostNet</string>
+    <string name="title_activity_main">GhostNet</string>
+    <string name="package_name">dev.n11x.ghostnet</string>
+    <string name="custom_url_scheme">dev.n11x.ghostnet</string>
+</resources>
