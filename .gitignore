@@ -1,3 +1,8 @@
+node_modules/
+.DS_Store
+.npm/
+.vscode/
+
 ghostnet-client/bridge.j.txt
 # Sensitive files — never commit
 ghostnet-bridge/cache/console-history.txt
