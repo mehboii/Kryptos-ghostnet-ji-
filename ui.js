@@ -249,6 +249,12 @@ const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
 
+        // Prevent Railway cold starts (ping every 4 minutes)
+        setInterval(() => {
+            fetch('https://ghostnet-ji-production.up.railway.app/health', { method: 'GET' })
+                .catch(() => {}) // silent fail
+        }, 4 * 60 * 1000);
+
         // 0a. Load Identity from Storage FIRST
         if (window.AppState) {
             let stored = null;
@@ -393,8 +399,36 @@ const UI = {
             
             if (token) {
                 UI.startGhostCodeWatcher(true);
-                UI.fetchRealData();
-                UI.loadProfile();
+
+                // Add a loading state so UI appears instantly while data loads in background
+                const loadingOverlay = document.createElement('div');
+                loadingOverlay.id = 'data-loading-overlay';
+                loadingOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.8);z-index:9999;display:flex;justify-content:center;align-items:center;backdrop-filter:blur(5px);';
+                loadingOverlay.innerHTML = '<div style="border:4px solid rgba(255,255,255,0.1);border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;"></div><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
+                document.body.appendChild(loadingOverlay);
+
+                // Instead of awaiting each one separately — make them parallel
+                const fetchWallet = UI.fetchLiveWalletData ? UI.fetchLiveWalletData() : Promise.resolve();
+                
+                // Get userId for conversations fetch
+                let userId = null;
+                const storedId = localStorage.getItem('ghostnet_user');
+                if (storedId) {
+                    try { userId = JSON.parse(storedId).id; } catch(e){}
+                }
+                if (!userId && AppState && AppState.identity) {
+                    userId = AppState.identity.nodeId || AppState.identity.id;
+                }
+                
+                const fetchConv = userId && UI.loadConversations ? UI.loadConversations(userId) : Promise.resolve();
+                const fetchProf = UI.loadProfile ? UI.loadProfile() : Promise.resolve();
+
+                Promise.all([fetchProf, fetchWallet, fetchConv])
+                    .catch(err => console.error('[UI] Error during parallel fetch:', err))
+                    .finally(() => {
+                        const overlay = document.getElementById('data-loading-overlay');
+                        if (overlay) overlay.remove();
+                    });
             }
 
             // Re-initialize vault and FORCE re-fetch for newly authenticated user
