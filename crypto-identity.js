@@ -38,7 +38,7 @@
  *     reducing the AES-256-GCM protection to a 1-digit brute-force.
  *     Fixed: minimum 6 characters enforced; pure-numeric short PINs warned.
  *
- * [F] MEDIUM — nodeId derived via ethers.utils.id(publicKey + displayName)
+ * [F] MEDIUM — nodeId derived via ethers.id(publicKey + displayName)
  *     uses bare string concatenation without a separator. This creates a
  *     second-preimage collision: publicKey "abc" + displayName "def" produces
  *     the same nodeId as publicKey "abcd" + displayName "ef".
@@ -181,20 +181,21 @@ const GhostIdentity = (() => {
 
     /**
      * Deterministic Node ID Generation.
-     * Uses Keccak256 (ethers.utils.id) of a canonical input.
+     * Uses Keccak256 (ethers.id) of a canonical input.
      * Always returns the same value for the same public key + display name.
      */
     function generateNodeId(publicKey, displayName) {
         if (!publicKey) return null;
-        return ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+        return ethers.id(_canonicalNodeInput(publicKey, displayName));
     }
 
     // ─── CORE: Generate New Identity ─────────────────────────────────────────
     async function generateIdentity(displayName) {
-        const wallet = ethers.Wallet.createRandom({ locale: ethers.wordlists.en });
+        // ethers v6: createRandom() returns HDNodeWallet directly
+        const wallet = ethers.Wallet.createRandom();
         const mnemonic = wallet.mnemonic.phrase;
         const privateKey = wallet.privateKey;
-        const publicKey = wallet.publicKey;
+        const publicKey = wallet.signingKey.publicKey;
         const address = wallet.address;
         
         // [FIX F] Collision-safe deterministic derivation.
@@ -207,16 +208,17 @@ const GhostIdentity = (() => {
             address,
             displayName,
             nodeId,
-            ghostTag: identity.ghostTag || '', // [Feature 1]
+            ghostTag: '', // [Feature 1]
         };
     }
 
     // ─── CORE: Restore from Seed Phrase ──────────────────────────────────────
     async function restoreFromMnemonic(mnemonic, displayName) {
         try {
-            const wallet = ethers.Wallet.fromMnemonic(mnemonic.trim());
+            // ethers v6: fromPhrase() replaces fromMnemonic()
+            const wallet = ethers.Wallet.fromPhrase(mnemonic.trim());
             const privateKey = wallet.privateKey;
-            const publicKey = wallet.publicKey;
+            const publicKey = wallet.signingKey.publicKey;
             const address = wallet.address;
             
             // [FIX F] Deterministic derivation during restore.
