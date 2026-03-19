@@ -283,7 +283,9 @@ const UI = {
 
         // 1. Setup Nav
         document.querySelectorAll('.nav-btn').forEach(btn => {
-            btn.onclick = () => UI.navigate(btn.dataset.target);
+            const handler = () => UI.navigate(btn.dataset.target);
+            btn.addEventListener('click', handler);
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); handler(); });
         });
 
         // 2. Start Visualizer
@@ -294,9 +296,9 @@ const UI = {
 
         // 4. Hook Logout (if exists)
         document.querySelectorAll('.auth-logout-btn, #logout-btn, [data-action="logout"]').forEach(btn => {
-            btn.addEventListener('click', () => {
-                UI.clearSession();
-            });
+            const handler = () => UI.clearSession();
+            btn.addEventListener('click', handler);
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); handler(); });
         });
 
         // 5. Add Ghost Card buttons dynamically
@@ -308,7 +310,9 @@ const UI = {
                 gcBtn.className = 'btn-primary ghostcard-btn';
                 gcBtn.style.marginTop = '12px';
                 gcBtn.innerText = 'My Ghost Card';
-                gcBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                const gcHandler = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                gcBtn.addEventListener('click', gcHandler);
+                gcBtn.addEventListener('touchend', (e) => { e.preventDefault(); gcHandler(); });
                 pContainer.appendChild(gcBtn);
             }
 
@@ -327,7 +331,9 @@ const UI = {
                 scanBtn.style.color = '#a855f7'; // Purple-tinted icon
                 scanBtn.style.borderColor = 'rgba(168,85,247,0.3)';
                 scanBtn.style.background = 'rgba(168,85,247,0.1)';
-                scanBtn.onclick = () => { if(UI.startQRScanner) UI.startQRScanner(); };
+                const scanHandler = () => { if(UI.startQRScanner) UI.startQRScanner(); };
+                scanBtn.addEventListener('click', scanHandler);
+                scanBtn.addEventListener('touchend', (e) => { e.preventDefault(); scanHandler(); });
                 newChatBtn.parentNode.insertBefore(scanBtn, newChatBtn);
 
                 // Existing QR button
@@ -341,7 +347,9 @@ const UI = {
                 qrBtn.style.display = 'flex';
                 qrBtn.style.alignItems = 'center';
                 qrBtn.style.justifyContent = 'center';
-                qrBtn.onclick = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                const qrHandler = () => { if(UI.generateGhostCard) UI.generateGhostCard(); };
+                qrBtn.addEventListener('click', qrHandler);
+                qrBtn.addEventListener('touchend', (e) => { e.preventDefault(); qrHandler(); });
                 newChatBtn.parentNode.insertBefore(qrBtn, newChatBtn);
             }
         }, 1500);
@@ -1002,7 +1010,9 @@ const UI = {
         startBtn.className = 'btn-primary';
         startBtn.id = 'chat-start-btn';
         startBtn.textContent = 'START SESSION';
-        startBtn.addEventListener('click', () => UI.submitNewChat());
+        const startHandler = () => UI.submitNewChat();
+        startBtn.addEventListener('click', startHandler);
+        startBtn.addEventListener('touchend', (e) => { e.preventDefault(); startHandler(); });
         card.appendChild(startBtn);
 
         modal.appendChild(card);
@@ -1094,13 +1104,15 @@ const UI = {
                 editBtn.textContent = '✕';
                 editBtn.title = 'Clear and re-enter manually';
                 editBtn.style.cssText = 'position:absolute;right:10px;background:none;border:none;color:#ef4444;cursor:pointer;font-size:1rem;padding:4px;';
-                editBtn.addEventListener('click', () => {
+                const editHandler = () => {
                     keyInput.value = '';
                     keyInput.readOnly = false;
                     keyInput.style.opacity = '1';
                     editBtn.remove();
                     if (feedbackEl) feedbackEl.textContent = '';
-                });
+                };
+                editBtn.addEventListener('click', editHandler);
+                editBtn.addEventListener('touchend', (e) => { e.preventDefault(); editHandler(); });
                 keyInput.parentElement.appendChild(editBtn);
                 // Remove spinner to make room for edit button
                 if (spinnerEl) spinnerEl.style.display = 'none';
@@ -1267,7 +1279,9 @@ const UI = {
             const row = document.createElement('div');
             row.className = `chat-user-row ${(AppState.activeConvoId === c.id) ? 'active' : ''}`;
             row.dataset.convo = c.id;
-            row.onclick = () => UI.selectChat(c.id, username, c.otherUser ? c.otherUser.id : '');
+            const selectHandler = () => UI.selectChat(c.id, username, c.otherUser ? c.otherUser.id : '');
+            row.addEventListener('click', selectHandler);
+            row.addEventListener('touchend', (e) => { e.preventDefault(); selectHandler(); });
 
             const avatarWrap = document.createElement('div');
             avatarWrap.className = 'chat-avatar-wrap';
@@ -1665,7 +1679,7 @@ const UI = {
         const modes = document.querySelectorAll('.mode-btn');
 
         if (btn && input) {
-            btn.onclick = async () => {
+            const sendHandler = async () => {
                 // Delegate to app.js sendMessage if available (it handles HTTP persistence)
                 if (window.app && window.app.sendMessage) {
                     await window.app.sendMessage();
@@ -1700,6 +1714,8 @@ const UI = {
                     console.error("Direct HTTP fallback failed:", e);
                 }
             };
+            btn.addEventListener('click', sendHandler);
+            btn.addEventListener('touchend', (e) => { e.preventDefault(); sendHandler(); });
 
             input.onkeypress = (e) => {
                 if (e.key === 'Enter') btn.click();
@@ -1707,10 +1723,12 @@ const UI = {
         }
 
         modes.forEach(m => {
-            m.onclick = () => {
+            const modeHandler = () => {
                 modes.forEach(b => b.classList.remove('active'));
                 m.classList.add('active');
-            }
+            };
+            m.addEventListener('click', modeHandler);
+            m.addEventListener('touchend', (e) => { e.preventDefault(); modeHandler(); });
         });
     },
 
@@ -1894,7 +1912,8 @@ const UI = {
 
             window._vaultKeyResolver = resolve;
 
-            document.getElementById('vault-pin-submit').onclick = async () => {
+            const pinBtn = document.getElementById('vault-pin-submit');
+            const pinHandler = async () => {
                 const pin = document.getElementById('vault-pin-input').value;
                 if (pin.length < 6) {
                     document.getElementById('vault-pin-error').textContent = 'Enter full 6-digit PIN';
@@ -1917,6 +1936,8 @@ const UI = {
                     document.getElementById('vault-pin-submit').disabled = false;
                 }
             };
+            pinBtn.addEventListener('click', pinHandler);
+            pinBtn.addEventListener('touchend', (e) => { e.preventDefault(); pinHandler(); });
         });
     },
 
@@ -2115,22 +2136,28 @@ const UI = {
         const lockBtn = document.getElementById('vault-lock-btn');
         if (lockBtn && !lockBtn._wired) {
             lockBtn._wired = true;
-            lockBtn.addEventListener('click', () => {
+            const lockHandler = () => {
                 if (window.GhostVault && typeof window.GhostVault.lockVault === 'function') {
                     window.GhostVault.lockVault();
                     showToast('Vault locked for this session');
                 }
-            });
+            };
+            lockBtn.addEventListener('click', lockHandler);
+            lockBtn.addEventListener('touchend', (e) => { e.preventDefault(); lockHandler(); });
         }
 
         // Browse button
-        browseBtn?.addEventListener('click', (e) => {
+        const browseHandler = (e) => {
             e.stopPropagation();
             fileInput.click();
-        });
+        };
+        browseBtn?.addEventListener('click', browseHandler);
+        browseBtn?.addEventListener('touchend', (e) => { e.preventDefault(); browseHandler(e); });
 
         // Drop zone click
-        dropZone.addEventListener('click', () => fileInput.click());
+        const zoneHandler = () => fileInput.click();
+        dropZone.addEventListener('click', zoneHandler);
+        dropZone.addEventListener('touchend', (e) => { e.preventDefault(); zoneHandler(); });
 
         // File input change
         fileInput.addEventListener('change', (e) => {
@@ -2361,7 +2388,9 @@ const UI = {
             downloadBtn.appendChild(document.createTextNode(' ' + (hasKey ? 'Download' : 'No Key')));
             downloadBtn.disabled = !hasKey;
             if (!hasKey) downloadBtn.title = 'Key not found on this device';
-            downloadBtn.addEventListener('click', () => UI.vaultDownload(f.fileId));
+            const downloadHandler = () => UI.vaultDownload(f.fileId);
+            downloadBtn.addEventListener('click', downloadHandler);
+            downloadBtn.addEventListener('touchend', (e) => { e.preventDefault(); downloadHandler(); });
 
             const verifyBtn = document.createElement('button');
             verifyBtn.className = 'vault-action-btn verify';
@@ -2370,7 +2399,9 @@ const UI = {
             verifyIcon.style.width = '14px';
             verifyBtn.appendChild(verifyIcon);
             verifyBtn.appendChild(document.createTextNode(' Verify'));
-            verifyBtn.addEventListener('click', () => UI.vaultVerify(f.fileId));
+            const verifyHandler = () => UI.vaultVerify(f.fileId);
+            verifyBtn.addEventListener('click', verifyHandler);
+            verifyBtn.addEventListener('touchend', (e) => { e.preventDefault(); verifyHandler(); });
 
             const delBtn = document.createElement('button');
             delBtn.className = 'vault-action-btn danger';
@@ -2378,7 +2409,9 @@ const UI = {
             delIcon.setAttribute('data-lucide', 'trash-2');
             delIcon.style.width = '14px';
             delBtn.appendChild(delIcon);
-            delBtn.addEventListener('click', () => UI.vaultDelete(f.fileId, f.fileName || 'file'));
+            const delHandler = () => UI.vaultDelete(f.fileId, f.fileName || 'file');
+            delBtn.addEventListener('click', delHandler);
+            delBtn.addEventListener('touchend', (e) => { e.preventDefault(); delHandler(); });
 
             actions.appendChild(downloadBtn);
             actions.appendChild(verifyBtn);
@@ -2460,7 +2493,9 @@ const UI = {
             closeBtn.className = 'btn-primary';
             closeBtn.textContent = 'Close';
             closeBtn.style.marginTop = '16px';
-            closeBtn.addEventListener('click', () => modal.remove());
+            const closeHandler = () => modal.remove();
+            closeBtn.addEventListener('click', closeHandler);
+            closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); closeHandler(); });
             cardEl.appendChild(closeBtn);
 
             modal.appendChild(cardEl);
@@ -2664,7 +2699,7 @@ const UI = {
                             const addBtn = document.createElement('button');
                             addBtn.textContent = '+';
                             addBtn.style.cssText = 'background:#00f0ff;color:#0d1117;border:none;border-radius:50%;width:28px;height:28px;font-size:1.2rem;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;';
-                            addBtn.addEventListener('click', (e) => {
+                            const addHandler = (e) => {
                                 e.stopPropagation();
                                 // Open new chat pre-filled
                                 UI.openNewChat();
@@ -2685,7 +2720,9 @@ const UI = {
                                 }, 100);
                                 searchInput.value = '';
                                 resultContainer.style.display = 'none';
-                            });
+                            };
+                            addBtn.addEventListener('click', addHandler);
+                            addBtn.addEventListener('touchend', (e) => { e.preventDefault(); addHandler(e); });
 
                             rowWrap.appendChild(textWrap);
                             rowWrap.appendChild(addBtn);
@@ -2949,7 +2986,7 @@ const UI = {
             const saveBtn = document.createElement('button');
             saveBtn.textContent = 'Save Card';
             saveBtn.style.cssText = 'background:#00f0ff;color:#0a0f1e;border:none;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
-            saveBtn.onclick = () => {
+            const saveHandler = () => {
                 c.toBlob(blob => {
                     const objUrl = URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -2960,11 +2997,13 @@ const UI = {
                     URL.revokeObjectURL(objUrl);
                 }, 'image/png');
             };
+            saveBtn.addEventListener('click', saveHandler);
+            saveBtn.addEventListener('touchend', (e) => { e.preventDefault(); saveHandler(); });
 
             const shareBtn = document.createElement('button');
             shareBtn.textContent = 'Share';
             shareBtn.style.cssText = 'background:transparent;color:#fff;border:1px solid #00f0ff;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
-            shareBtn.onclick = () => {
+            const shareHandler = () => {
                 if (navigator.canShare) {
                     c.toBlob(blob => {
                         const safeName = String(displayName).replace(/[^a-zA-Z0-9]/g, '_');
@@ -2976,6 +3015,8 @@ const UI = {
                     alert("Node ID copied to share.");
                 }
             };
+            shareBtn.addEventListener('click', shareHandler);
+            shareBtn.addEventListener('touchend', (e) => { e.preventDefault(); shareHandler(); });
 
             const closeBtn = document.createElement('button');
             closeBtn.textContent = '✕ Close';
@@ -2997,11 +3038,19 @@ const UI = {
                 setTimeout(() => modal.remove(), 300);
             };
 
-            closeBtn.onclick = triggerClose;
+            closeBtn.addEventListener('click', triggerClose);
+            closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); triggerClose(); });
             
             // Close on backdrop click (not inner elements)
-            modal.addEventListener('click', (e) => {
+            const backdropHandler = (e) => {
                 if (e.target === modal) triggerClose();
+            };
+            modal.addEventListener('click', backdropHandler);
+            modal.addEventListener('touchend', (e) => {
+                if (e.target === modal) {
+                    e.preventDefault();
+                    triggerClose();
+                }
             });
 
             btnContainer.appendChild(saveBtn);

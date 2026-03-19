@@ -1,13 +1,16 @@
 {
   "appId": "dev.n11x.ghostnet",
   "appName": "GhostNet",
-  "webDir": "./",
+  "webDir": "ghostnet-dist",
   "server": {
     "url": "https://ghostnet.n11x.dev",
     "cleartext": false
   },
+  "ios": {
+    "scrollEnabled": true
+  },
   "android": {
     "allowMixedContent": false,
-    "backgroundColor": "#0a0f1e"
+    "captureInput": true
   }
 }

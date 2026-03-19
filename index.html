@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <meta http-equiv="Content-Security-Policy"
       content="default-src 'self';
         script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com https://cdn.ethers.io;
@@ -21,6 +21,10 @@
         href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="ui.css">
+    <style>
+        * { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+        button, a, [onclick] { cursor: pointer; touch-action: manipulation; }
+    </style>
 
     <!-- Core Libraries -->
     <!-- ethers.js from cdnjs (already in CSP allowlist, no SRI mismatch) -->
