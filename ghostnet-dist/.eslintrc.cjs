@@ -1,0 +1,1 @@
+module.exports = { env: { es2022: true, node: true }, parserOptions: { ecmaVersion: 'latest', sourceType: 'module' }, rules: { 'no-undef': 'error', 'no-unused-vars': 'warn', 'no-redeclare': 'error' } };
