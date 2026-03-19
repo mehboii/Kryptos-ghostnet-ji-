@@ -141,7 +141,7 @@ async function initWallet() {
 
     // Try to restore from memory-only session first
     if (_sessionMnemonic) {
-        wallet = ethers.Wallet.fromMnemonic(_sessionMnemonic);
+        wallet = ethers.Wallet.fromPhrase(_sessionMnemonic);
     } else {
         // [1] Check if we have a stored address (public — safe to store)
         const storedAddress = localStorage.getItem('ahost_address');

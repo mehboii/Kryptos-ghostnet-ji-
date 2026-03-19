@@ -547,7 +547,7 @@
                 if (targetPub.startsWith('0x') && window.GhostIdentity && window.GhostIdentity.getSessionPrivateKey) {
                     const myPriv = await window.GhostIdentity.getSessionPrivateKey();
                     if (myPriv && typeof ethers !== 'undefined') {
-                        const sharedSecretHex = new ethers.utils.SigningKey(myPriv).computeSharedSecret(targetPub);
+                        const sharedSecretHex = new ethers.SigningKey(myPriv).computeSharedSecret(targetPub);
                         const sharedSecret = hexToBuf(sharedSecretHex.slice(2));
 
                         const derivedKey = await crypto.subtle.importKey(
@@ -669,7 +669,7 @@
                 if (senderPub.startsWith('0x') && window.GhostIdentity && window.GhostIdentity.getSessionPrivateKey) {
                     const myPriv = await window.GhostIdentity.getSessionPrivateKey();
                     if (myPriv && typeof ethers !== 'undefined') {
-                        const sharedSecretHex = new ethers.utils.SigningKey(myPriv).computeSharedSecret(senderPub);
+                        const sharedSecretHex = new ethers.SigningKey(myPriv).computeSharedSecret(senderPub);
                         const sharedSecret = hexToBuf(sharedSecretHex.slice(2));
 
                         const derivedKey = await crypto.subtle.importKey(
