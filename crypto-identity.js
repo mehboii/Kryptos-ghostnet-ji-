@@ -191,6 +191,18 @@ const GhostIdentity = (() => {
 
     // ─── CORE: Generate New Identity ─────────────────────────────────────────
     async function generateIdentity(displayName) {
+        // Before generating seed phrase always check first
+        const existingIdentityStr = localStorage.getItem('ghostnet_identity');
+        if (existingIdentityStr) {
+            try {
+                const existingIdentity = JSON.parse(existingIdentityStr);
+                // identity already exists — skip generation entirely
+                if (existingIdentity && (existingIdentity.seedPhrase || existingIdentity.mnemonic || existingIdentity.encryptedPK)) {
+                    return existingIdentity;
+                }
+            } catch (e) {}
+        }
+
         // ethers v6: createRandom() returns HDNodeWallet directly
         const wallet = ethers.Wallet.createRandom();
         const mnemonic = wallet.mnemonic.phrase;
