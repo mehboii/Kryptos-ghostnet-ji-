@@ -1,0 +1,24 @@
+interactive rebase in progress; onto 5235f87
+Last command done (1 command done):
+   pick 0bb69cc # fix(ui.js): remove redeclared variables BACKEND_URL and authHeaders
+No commands remaining.
+You are currently rebasing branch 'main' on '5235f87'.
+  (all conflicts fixed: run "git rebase --continue")
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   ui.js
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   implicit/d508251e-5e3c-4d05-8c7d-e67dc1835f2d.pb
+	modified:   scratch (new commits)
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	.git_status.txt
+	.merge_diff.txt
+	conversations/eec9d5fa-47d2-4fa2-b175-0332faba4248.pb
+	implicit/2a8a6a38-a751-4165-b2ea-bd7a7d15a5bd.pb
+
