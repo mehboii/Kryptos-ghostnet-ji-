@@ -12,7 +12,8 @@ class SignalIntelligenceEngine {
 
     // Process an raw detected signal object
     processSignal(device) {
-        if (!device || !device.mac) return;
+        if (!device || typeof device !== 'object') return null;
+        if (!device.mac) return null;
         
         const timestamp = Date.now();
         const prevData = this.signals.get(device.mac);
@@ -39,6 +40,20 @@ class SignalIntelligenceEngine {
         
         this.signals.set(device.mac, signalAnalysis);
         return signalAnalysis;
+    }
+
+    _hasHighInterference(signal) {
+        // Returns true if signal is causing interference
+        // Check: signal strength below -80 dBm OR channel collision with GhostNet
+        return (signal.rssi && signal.rssi < -80) || 
+               (signal.channel && this._isChannelCollision(signal.channel));
+    }
+
+    _isChannelCollision(channel) {
+        // GhostNet typically uses channels 1, 6, 11
+        // Interference if another strong signal is on same channel
+        const ghostnetChannels = [1, 6, 11];
+        return ghostnetChannels.includes(channel);
     }
 
     _analyzeSignal(device) {
