@@ -839,6 +839,10 @@ const UI = {
      * Falls back to a stored address or empty state.
      */
     _deriveWalletAddress: () => {
+        if (typeof ethers === 'undefined') {
+            console.error('ethers.js not loaded — wallet disabled');
+            return;
+        }
         let ethAddress = '';
 
         try {
@@ -1659,6 +1663,10 @@ const UI = {
     // --- RENDERERS ---
 
     renderWallet: () => {
+        if (typeof ethers === 'undefined') {
+            console.error('ethers.js not loaded — wallet disabled');
+            return;
+        }
         const el = document.getElementById('wallet');
         if (!el) return;
 
