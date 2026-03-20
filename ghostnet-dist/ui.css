@@ -672,8 +672,8 @@ canvas#mesh {
 /* --- Card Grid --- */
 .wlt-grid {
     display: grid;
-    gap: 18px;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
 }
 
 /* --- Outer Card: Animated Gradient Border --- */
@@ -2366,7 +2366,33 @@ canvas#mesh {
         padding: 55px 15px 80px 15px;
         /* top for hamburger, bottom for nav */
         overflow-y: auto;
-        height: 100vh;
+        height: auto;
+        min-height: 100vh;
+    }
+
+    .section-container {
+        height: auto !important;
+        overflow-y: visible !important;
+    }
+
+    .wallet-container {
+        height: auto !important;
+        overflow: visible !important;
+        display: block !important;
+    }
+
+    .wlt-grid {
+        display: grid !important;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)) !important;
+        gap: 16px !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    .wlt-card-outer {
+        visibility: visible !important;
+        opacity: 1 !important;
+        animation: none !important; /* Disable problematic animation on mobile */
     }
 
     .glow-text {

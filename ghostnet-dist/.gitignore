@@ -18,3 +18,11 @@ bridge.j.txt
 auth-users.json
 users.json
 vault-keys.json
+android/
+ghostnet-dist/
+.vercel/
+.env.local
+*.log
+
+.vercel
+.env*.local

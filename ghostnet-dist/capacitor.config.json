@@ -3,7 +3,7 @@
   "appName": "GhostNet",
   "webDir": "ghostnet-dist",
   "server": {
-    "url": "https://ghostnet.n11x.dev",
+    "url": "https://ghostnet-ji.vercel.app",
     "cleartext": false
   },
   "ios": {
