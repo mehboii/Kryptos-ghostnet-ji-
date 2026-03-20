@@ -139,6 +139,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         .level-card.active .active-badge { display: block; }
         
+        .btn-full-ghost {
+            width: 100%;
+            margin-bottom: 30px;
+            padding: 16px;
+            border-radius: 12px;
+            font-family: monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: rgba(226, 75, 74, 0.1);
+            border: 1px solid #e24b4a;
+            color: #e24b4a;
+        }
+        .btn-full-ghost.active {
+            background: rgba(226, 75, 74, 0.3);
+            border: 2px solid #e24b4a;
+            color: #ffdddd;
+            box-shadow: 0 0 20px rgba(226, 75, 74, 0.5);
+            animation: pulse-red 2s infinite;
+        }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 20px rgba(226, 75, 74, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(226, 75, 74, 0.8); }
+            100% { box-shadow: 0 0 20px rgba(226, 75, 74, 0.5); }
+        }
+        
         .btn-disable-shield {
             background: rgba(239, 68, 68, 0.1);
             color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);
@@ -271,6 +299,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="lvl-desc">Ghost + Fake device decoys, rapid MAC rotation, maximum mesh routing hops.</div>
                 </div>
             </div>
+            
+            <button class="btn-full-ghost" id="btn-full-ghost" onclick="GhostShieldUI.toggleEnableAll()">
+                ⚡ FULL GHOST PROTOCOL
+            </button>
 
             <button class="btn-disable-shield" id="btn-disable-shield" onclick="GhostShieldUI.disable()" style="display:none;">
                 DISABLE GHOST SHIELD
@@ -308,6 +340,16 @@ document.addEventListener('DOMContentLoaded', () => {
     window.GhostShieldUI = {
         scanInterval: null,
 
+        toggleEnableAll() {
+            const status = window.GhostShield.getStatus();
+            if (status.currentLevel === 'ALL') {
+                window.GhostShield.disableAll();
+            } else {
+                window.GhostShield.enableAll();
+            }
+            this.updateView();
+        },
+
         activateLevel(lvl) {
             window.GhostShield.enable(lvl);
             this.updateView();
@@ -327,15 +369,26 @@ document.addEventListener('DOMContentLoaded', () => {
             box.className = `shield-status-box shield-level-${status.level}`;
             
             [1,2,3].forEach(l => {
-                document.getElementById(`card-lvl-${l}`).classList.toggle('active', l === status.level);
+                document.getElementById(`card-lvl-${l}`).classList.toggle('active', status.activeStates[l] === true);
             });
+            
+            const fullGhostBtn = document.getElementById('btn-full-ghost');
+            if (status.currentLevel === 'ALL') {
+                fullGhostBtn.classList.add('active');
+                fullGhostBtn.innerText = '🔴 FULL PROTOCOL ACTIVE — TAP TO DISABLE';
+            } else {
+                fullGhostBtn.classList.remove('active');
+                fullGhostBtn.innerText = '⚡ FULL GHOST PROTOCOL';
+            }
 
             if (status.level === 0) {
                 mainText.textContent = 'GHOST SHIELD OFFLINE';
                 disableBtn.style.display = 'none';
             } else {
-                const names = ['STEALTH', 'GHOST', 'PHANTOM'];
                 mainText.textContent = `GHOST SHIELD ACTIVE — LEVEL ${status.level}`;
+                if (status.currentLevel === 'ALL') {
+                    mainText.textContent = 'GHOST SHIELD ACTIVE — MAX LEVEL';
+                }
                 disableBtn.style.display = 'block';
             }
         },
