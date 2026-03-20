@@ -1,0 +1,12 @@
+# GhostNet Node Firmware Dashboard Walkthrough
+
+## Progress Checklist
+- [ ] Open http://localhost:8000
+- [ ] Wait for boot screen to complete
+- [ ] Explore Dashboard tab
+- [ ] Explore Peers tab
+- [ ] Explore Monitor tab
+- [ ] Explore Identity tab
+- [ ] Explore Settings tab
+- [ ] Observe animations and transitions
+- [ ] Take a final look at Settings (Sliders and Toggles)

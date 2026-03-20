@@ -249,6 +249,12 @@ const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
 
+        // Prevent Railway cold starts (ping every 4 minutes)
+        setInterval(() => {
+            fetch('https://ghostnet-ji-production.up.railway.app/health', { method: 'GET' })
+                .catch(() => {}) // silent fail
+        }, 4 * 60 * 1000);
+
         // 0a. Load Identity from Storage FIRST
         if (window.AppState) {
             let stored = null;
@@ -393,8 +399,36 @@ const UI = {
             
             if (token) {
                 UI.startGhostCodeWatcher(true);
-                UI.fetchRealData();
-                UI.loadProfile();
+
+                // Add a loading state so UI appears instantly while data loads in background
+                const loadingOverlay = document.createElement('div');
+                loadingOverlay.id = 'data-loading-overlay';
+                loadingOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.8);z-index:9999;display:flex;justify-content:center;align-items:center;backdrop-filter:blur(5px);';
+                loadingOverlay.innerHTML = '<div style="border:4px solid rgba(255,255,255,0.1);border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;"></div><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
+                document.body.appendChild(loadingOverlay);
+
+                // Instead of awaiting each one separately — make them parallel
+                const fetchWallet = UI.fetchLiveWalletData ? UI.fetchLiveWalletData() : Promise.resolve();
+                
+                // Get userId for conversations fetch
+                let userId = null;
+                const storedId = localStorage.getItem('ghostnet_user');
+                if (storedId) {
+                    try { userId = JSON.parse(storedId).id; } catch(e){}
+                }
+                if (!userId && AppState && AppState.identity) {
+                    userId = AppState.identity.nodeId || AppState.identity.id;
+                }
+                
+                const fetchConv = userId && UI.loadConversations ? UI.loadConversations(userId) : Promise.resolve();
+                const fetchProf = UI.loadProfile ? UI.loadProfile() : Promise.resolve();
+
+                Promise.all([fetchProf, fetchWallet, fetchConv])
+                    .catch(err => console.error('[UI] Error during parallel fetch:', err))
+                    .finally(() => {
+                        const overlay = document.getElementById('data-loading-overlay');
+                        if (overlay) overlay.remove();
+                    });
             }
 
             // Re-initialize vault and FORCE re-fetch for newly authenticated user
@@ -790,64 +824,220 @@ const UI = {
             { id: 'node_charlie', type: 'Mobile', latency: 112 },
             { id: 'node_delta', type: 'Desktop', latency: 8 },
         ];
-        AppState.wallet = [
-            { symbol: "ETH", balance: 0.00, chain: "Sepolia" }, // Will update from backend
-            { symbol: "BTC", balance: 0.00, chain: "Bitcoin" }, // Will update from backend
-            { symbol: "SOL", balance: 0.00, chain: "Solana" },   // Will update from backend
-            { symbol: "USDT", balance: 0.00, chain: "Ethereum" }  // Will update from backend
-        ];
         AppState.files = [
             { name: 'encrypted_shard_01.dat', size: '4.2 MB' },
             { name: 'keys_backup.json.enc', size: '12 KB' }
         ];
 
-        // Attempt to fetch real data
-        UI.fetchRealData();
+        // Derive wallet address from identity and fetch live data
+        UI._deriveWalletAddress();
+        UI.fetchLiveWalletData();
     },
 
-    fetchRealData: async () => {
-        // Skip entirely when not authenticated
-        if (!hasAuthToken()) return;
+    /**
+     * Derive ETH address from the user's stored identity keypair using ethers.js.
+     * Falls back to a stored address or empty state.
+     */
+    _deriveWalletAddress: () => {
+        if (typeof ethers === 'undefined') {
+            console.error('ethers.js not loaded — wallet disabled');
+            return;
+        }
+        let ethAddress = '';
+
         try {
-            console.log("🔗 Connecting to GhostNet Bridge...");
-
-            const headers = getAuthHeaders();
-            if (!headers.Authorization) return; // Silent stop if not authed
-
-            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet', {
-                headers
-            });
-
-            if (!res.ok) throw new Error("Bridge Error");
-
-            const walletData = await res.json();
-
-            console.log(" Bridge Data Received:", walletData);
-
-            if (Array.isArray(walletData)) {
-                AppState.wallet = walletData;
+            // 1. Try to get address from stored identity (crypto-identity.js saves it)
+            const storedIdentity = localStorage.getItem('ghostnet_identity');
+            if (storedIdentity) {
+                const parsed = JSON.parse(storedIdentity);
+                if (parsed.address && /^0x[a-fA-F0-9]{40}$/.test(parsed.address)) {
+                    ethAddress = parsed.address;
+                }
             }
 
+            // 2. Fallback: try the legacy localStorage key
+            if (!ethAddress) {
+                const legacyAddr = localStorage.getItem('ghostnet_address');
+                if (legacyAddr && /^0x[a-fA-F0-9]{40}$/.test(legacyAddr)) {
+                    ethAddress = legacyAddr;
+                }
+            }
 
-            console.log("Wallet hydrated:", AppState.wallet);
+            // 3. Fallback: try to derive from AppState identity
+            if (!ethAddress && window.AppState && AppState.identity && AppState.identity.address) {
+                const addr = AppState.identity.address;
+                if (/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+                    ethAddress = addr;
+                }
+            }
 
-            // Re-render
-            window.dispatchEvent(new Event("app:state"));
-
+            // 4. Fallback: derive from privateKey if available in session
+            if (!ethAddress && typeof ethers !== 'undefined') {
+                const encPK = localStorage.getItem('ghostnet_enc_pk');
+                // Can't decrypt without PIN, but the address should already be saved
+                // If we have a publicKey, we can compute the address from it
+                const storedPubKey = localStorage.getItem('ghostnet_pubkey');
+                if (storedPubKey) {
+                    try {
+                        ethAddress = ethers.computeAddress(storedPubKey);
+                    } catch (e) {
+                        console.warn('[Wallet] Could not compute address from pubkey:', e.message);
+                    }
+                }
+            }
         } catch (e) {
-            console.warn(" Bridge Disconnected (Using Fallback Data):", e);
+            console.warn('[Wallet] Address derivation error:', e.message);
+        }
 
-            // Safety: Fallback if fetch fails
-            if (!AppState.wallet || AppState.wallet.length === 0) {
-                AppState.wallet = [
-                    { symbol: "ETH", balance: 0.0, chain: "Sepolia", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
-                    { symbol: "BTC", balance: 0.0, chain: "Bitcoin", address: "tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx" },
-                    { symbol: "SOL", balance: 0.0, chain: "Solana", address: "HN7cABqLq46Es1jh92dQQisAq662SmxELLLsHHe4YWrH" },
-                    { symbol: "USDT", balance: 0.0, chain: "Ethereum", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" }
-                ];
-                console.log("Wallet hydrated (FALLBACK)::", AppState.wallet);
-                window.dispatchEvent(new Event("app:state"));
+        if (ethAddress) {
+            console.log('[Wallet] ETH address derived:', ethAddress);
+        } else {
+            console.warn('[Wallet] No ETH address found — wallet will show 0 balance');
+        }
+
+        // Initialize wallet assets with derived address
+        AppState.wallet = [
+            { symbol: "ETH", balance: 0.00, chain: "Ethereum", address: ethAddress, usdValue: 0, usdPrice: 0 },
+            { symbol: "BTC", balance: 0.00, chain: "Bitcoin", address: "", usdValue: 0, usdPrice: 0 },
+            { symbol: "SOL", balance: 0.00, chain: "Solana", address: "", usdValue: 0, usdPrice: 0 },
+            { symbol: "USDT", balance: 0.00, chain: "Ethereum", address: ethAddress, usdValue: 0, usdPrice: 0 }
+        ];
+
+        // Store ETH address for wallet reference
+        AppState._ethAddress = ethAddress;
+    },
+
+    /**
+     * Fetch real balances from public RPCs and prices from CoinGecko.
+     * No backend server or API key needed.
+     */
+    fetchLiveWalletData: async () => {
+        const ethAddress = AppState._ethAddress || '';
+
+        // Run all fetches in parallel
+        const [ethBalance, solBalance, prices] = await Promise.all([
+            UI._fetchETHBalance(ethAddress),
+            UI._fetchSOLBalance(), // SOL address would need separate derivation
+            UI._fetchPrices()
+        ]);
+
+        // Update wallet state with real balances and prices
+        if (AppState.wallet && Array.isArray(AppState.wallet)) {
+            AppState.wallet.forEach(asset => {
+                if (asset.symbol === 'ETH') {
+                    asset.balance = ethBalance;
+                    asset.usdPrice = prices.ethereum || 0;
+                    asset.usdValue = ethBalance * (prices.ethereum || 0);
+                } else if (asset.symbol === 'BTC') {
+                    asset.balance = 0; // No BTC key derived yet
+                    asset.usdPrice = prices.bitcoin || 0;
+                    asset.usdValue = 0;
+                } else if (asset.symbol === 'SOL') {
+                    asset.balance = solBalance;
+                    asset.usdPrice = prices.solana || 0;
+                    asset.usdValue = solBalance * (prices.solana || 0);
+                } else if (asset.symbol === 'USDT') {
+                    asset.balance = 0; // USDT balance requires ERC-20 contract call
+                    asset.usdPrice = prices.tether || 1;
+                    asset.usdValue = 0;
+                }
+            });
+        }
+
+        console.log('[Wallet] Live data loaded:', AppState.wallet);
+
+        // Re-render wallet
+        UI.renderWallet();
+        window.dispatchEvent(new Event("app:state"));
+    },
+
+    /**
+     * Fetch ETH balance from Ankr public RPC (no API key needed).
+     */
+    _fetchETHBalance: async (address) => {
+        if (!address || !/^0x[a-fA-F0-9]{40}$/.test(address)) return 0;
+        try {
+            const res = await fetch('https://rpc.ankr.com/eth', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    method: 'eth_getBalance',
+                    params: [address, 'latest'],
+                    id: 1
+                })
+            });
+            const data = await res.json();
+            if (data.result) {
+                const balance = parseInt(data.result, 16) / 1e18;
+                console.log('[Wallet] ETH balance:', balance);
+                return balance;
             }
+        } catch (e) {
+            console.warn('[Wallet] ETH balance fetch failed:', e.message);
+        }
+        return 0;
+    },
+
+    /**
+     * Fetch SOL balance from public Solana RPC (no API key needed).
+     * SOL address derivation from ETH keypair is not straightforward,
+     * so this currently checks if a SOL address is stored.
+     */
+    _fetchSOLBalance: async () => {
+        // Check if we have a stored SOL address
+        let solAddress = '';
+        try {
+            const stored = localStorage.getItem('ghostnet_sol_address');
+            if (stored && stored.length >= 32) {
+                solAddress = stored;
+            }
+        } catch (e) { /* ignore */ }
+
+        if (!solAddress) return 0;
+
+        try {
+            const res = await fetch('https://api.mainnet-beta.solana.com', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: 1,
+                    method: 'getBalance',
+                    params: [solAddress]
+                })
+            });
+            const data = await res.json();
+            if (data.result && data.result.value !== undefined) {
+                const balance = data.result.value / 1e9;
+                console.log('[Wallet] SOL balance:', balance);
+                return balance;
+            }
+        } catch (e) {
+            console.warn('[Wallet] SOL balance fetch failed:', e.message);
+        }
+        return 0;
+    },
+
+    /**
+     * Fetch real USD prices from CoinGecko (no API key needed).
+     * Returns { ethereum, bitcoin, solana, tether } in USD.
+     */
+    _fetchPrices: async () => {
+        try {
+            const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum,bitcoin,solana,tether&vs_currencies=usd');
+            const data = await res.json();
+            const prices = {
+                ethereum: data.ethereum ? data.ethereum.usd : 0,
+                bitcoin: data.bitcoin ? data.bitcoin.usd : 0,
+                solana: data.solana ? data.solana.usd : 0,
+                tether: data.tether ? data.tether.usd : 1
+            };
+            console.log('[Wallet] Prices fetched:', prices);
+            return prices;
+        } catch (e) {
+            console.warn('[Wallet] Price fetch failed:', e.message);
+            return { ethereum: 0, bitcoin: 0, solana: 0, tether: 1 };
         }
     },
 
@@ -1473,6 +1663,10 @@ const UI = {
     // --- RENDERERS ---
 
     renderWallet: () => {
+        if (typeof ethers === 'undefined') {
+            console.error('ethers.js not loaded — wallet disabled');
+            return;
+        }
         const el = document.getElementById('wallet');
         if (!el) return;
 
@@ -1498,18 +1692,22 @@ const UI = {
         } else if (AppState.wallet && AppState.wallet.balance) {
             walletAssets = [
                 { symbol: "AHT", balance: AppState.wallet.balance, chain: "GhostNet" },
-                { symbol: "ETH", balance: 0.0, chain: "Sepolia" }
+                { symbol: "ETH", balance: 0.0, chain: "Ethereum" }
             ];
         }
 
-        const totalBalance = walletAssets.reduce((sum, a) => sum + (a.balance || 0), 0);
+        // Calculate total portfolio value in USD
+        const totalUsdValue = walletAssets.reduce((sum, a) => sum + (a.usdValue || 0), 0);
+        const totalBalanceDisplay = totalUsdValue > 0
+            ? '$' + totalUsdValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+            : '$0.00';
 
         // Portfolio Overview Banner
         let html = `
             <div class="wlt-portfolio-banner">
                 <div class="wlt-portfolio-left">
                     <div class="wlt-portfolio-label">Portfolio Value</div>
-                    <div class="wlt-portfolio-total">${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</div>
+                    <div class="wlt-portfolio-total">${totalBalanceDisplay}</div>
                     <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · GhostNet Wallet</div>
                 </div>
                 <div class="wlt-portfolio-tokens">
@@ -1529,6 +1727,13 @@ const UI = {
             const logo = CRYPTO_LOGOS[asset.symbol] || CRYPTO_LOGOS['ETH'];
             const meta = CRYPTO_META[asset.symbol] || CRYPTO_META['ETH'];
             const delay = i * 0.1;
+            const usdVal = (asset.usdValue || 0);
+            const usdPriceStr = (asset.usdPrice || 0) > 0
+                ? '$' + (asset.usdPrice).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : '—';
+            const usdValStr = usdVal > 0
+                ? '$' + usdVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                : '$0.00';
 
             html += `
               <div class="wlt-card-outer" style="--c1:${meta.color}; --cg:${meta.gradient}; --cd:${meta.darkGlow}; animation-delay:${delay}s;">
@@ -1553,10 +1758,14 @@ const UI = {
                         </div>
                     </div>
 
-                    <!-- Middle: Balance -->
+                    <!-- Middle: Balance + USD -->
                     <div class="wlt-card-mid">
                         <div class="wlt-bal-value">${asset.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</div>
                         <div class="wlt-bal-label">${asset.symbol} Balance</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06);">
+                            <span style="font-size:0.75rem; color:var(--text-muted);">≈ ${usdValStr}</span>
+                            <span style="font-size:0.7rem; color:var(--text-muted); opacity:0.7;">@ ${usdPriceStr}</span>
+                        </div>
                     </div>
 
                     <!-- Address chip -->

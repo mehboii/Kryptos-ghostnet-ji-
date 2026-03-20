@@ -1,0 +1,61 @@
+# GhostNet Node Firmware Dashboard
+
+### Design Architecture & Aesthetic
+The dashboard follows a **"Palantir Gotham meets Cyberpunk"** design language, emphasizing high-contrast data visualization, military-grade security cues, and a deep matte black foundation.
+
+- **Primary Base**: `#080B12` (Matte Black)
+- **Primary Accent**: `#1d9e75` (Teal Glow)
+- **Secondary Accent**: `#7f77dd` (Cyber Purple)
+- **Typography**: `JetBrains Mono` for cryptographic data and status logs; `Inter` for UI labels.
+- **Micro-interactions**: Linear animations for packet flow, rotating radar sweeps for peer discovery, and pulse effects for node status.
+
+### Component Breakdown
+
+#### 1. Boot Sequence (Node Initialization)
+- **Animated Ghost Icon**: Glows as identity loads.
+- **Monospace Terminal Logs**: Sequential status updates for crypto engines and peer scanning.
+- **Teal Progress Bar**: Smooth transition to the active OS.
+
+#### 2. Main Dashboard (Network Topology)
+- **Real-time Stats**: 4 key performance indicators (Peers, Packets, Encryption, Signal).
+- **Mesh Network Viz**: 
+  - Central node (User) with radial connections to peers.
+  - **Radar Sweep**: Persistent rotation for discovery simulation.
+  - **Packet Bursts**: Animated amber dots traversing connections in response to traffic.
+- **Operational Mode Toggles**: Quick access to Relay, Bridge, and Stealth modes.
+
+#### 3. Peer Management (Mesh Radar)
+- **Discovery Radar**: Concentric rings with rotating conic sweep.
+- **Node-specific Stat Cards**: Signal strength bars, latency metrics (ms), and trust scores (AES-validated).
+
+#### 4. Packet Monitor (Traffic Analytics)
+- **Terminal View**: Scrolling live traffic log with color-coded packet types (Relay, Drop, Bridge).
+- **Network Metrics**: Bandwidth usage and uptime counters.
+
+#### 5. Identity & Security (Crypto Core)
+- **Self-Sovereign Identity**: Large Ghost logo with pulsed glow rings.
+- **QR Recovery**: High-contrast grid for seed phrase/public key transfer.
+- **Warning Zones**: Destructive actions (Regeneration/Wipe) with secondary confirmation cues.
+
+#### 6. Settings (Node Configuration)
+- **System Toggles**: Switch between mesh modes.
+- **Firmware Controls**: Automatic updates and hardware-specific toggles (LoRa).
+- **Sliders**: Range adjustment for mesh parameters (Max Peers, TTL).
+
+### Tech Stack
+- **Framework**: Vue 3 (Composition API) for lightweight reactive state.
+- **Icons**: Lucide (Teal Glow effects).
+- **Animations**: CSS3 Transitions, Keyframes, and Conic Gradients.
+- **Responsive**: Mobile-first design (390x844) scales seamlessly to Desktop (1440x900).
+
+---
+
+### How to Launch
+
+1. **Standalone File**: Open `c:\Users\novtw\Documents\ghostnet-node-dashboard\index.html` in any modern browser.
+2. **Local Server (Python)**:
+   ```powershell
+   cd c:\Users\novtw\Documents\ghostnet-node-dashboard
+   python -m http.server 8000
+   ```
+   Then navigate to `http://localhost:8000`.
