@@ -596,6 +596,18 @@ window.addEventListener('DOMContentLoaded', async () => {
             '⚠ Running from file:// — run node ghostnet-server.js and visit http://localhost:8080'
         );
     }
+
+    const isNativeCheck = window.Capacitor?.isNativePlatform?.() ?? false;
+    if (!isNativeCheck) {
+        const splash = document.getElementById('splash');
+        if (splash) splash.style.display = 'none';
+    } else {
+        if (typeof window !== 'undefined' && window.Capacitor) {
+            import('@capacitor/splash-screen').then(({ SplashScreen }) => {
+                SplashScreen.hide();
+            }).catch(() => {});
+        }
+    }
 });
 
 // ─────────────────────────────────────────────
