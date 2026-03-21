@@ -14,6 +14,10 @@
  * Fix: a bounded watcher that retries while auth settles, then shows "Not connected" + Retry.
  */
 
+const IS_NATIVE = window.Capacitor?.isNativePlatform?.() ?? false;
+const PLATFORM = window.Capacitor?.getPlatform?.() ?? 'web';
+console.log('[GhostNet] Platform:', PLATFORM, '| Native:', IS_NATIVE);
+
 // --- GLOBAL STATE ---
 window.AppState = {
     meshReady: false,
