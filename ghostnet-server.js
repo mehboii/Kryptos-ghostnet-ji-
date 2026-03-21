@@ -1402,6 +1402,11 @@ wss.on('connection', (ws) => {
                     }
                     break;
 
+                case 'ping':
+                    ws.isAlive = true;
+                    safeSend(ws, { type: 'pong', timestamp: Date.now() });
+                    break;
+
                 case 'message':
                 case 'MESH_DIRECT': {
                     const targetId = typeof msg.to === 'string' ? msg.to : null;

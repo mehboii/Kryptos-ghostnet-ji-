@@ -559,6 +559,33 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // ── 5.5 BACKGROUND RECONNECT ─────────────────
+    try {
+        if (typeof window !== 'undefined' && window.Capacitor) {
+            import('@capacitor/app').then(({ App }) => {
+                App.addListener('appStateChange', ({ isActive }) => {
+                    if (isActive) {
+                        log.info('[GhostNet] App resumed — checking WebSocket...');
+                        if (window.app.mesh && (!window.app.mesh.ws || window.app.mesh.ws.readyState !== WebSocket.OPEN)) {
+                            window.app.mesh.connectWebSocket();
+                        }
+                    }
+                });
+            }).catch(() => {});
+
+            import('@capacitor/network').then(({ Network }) => {
+                Network.addListener('networkStatusChange', status => {
+                    if (status.connected) {
+                        log.info('[GhostNet] Network restored — reconnecting WebSocket...');
+                        if (window.app.mesh && (!window.app.mesh.ws || window.app.mesh.ws.readyState !== WebSocket.OPEN)) {
+                            window.app.mesh.connectWebSocket();
+                        }
+                    }
+                });
+            }).catch(() => {});
+        }
+    } catch (e) { }
+
     // ── 6. READY ──────────────────────────────────
 
     window.dispatchEvent(new Event('app:ready'));

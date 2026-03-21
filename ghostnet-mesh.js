@@ -430,21 +430,25 @@ class GhostMesh {
 
                 if (!this._destroyed) { // [S11]
                     clearTimeout(this.reconnectTimer);
-                    // Exponential backoff capped at 30s
-                    this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, 30_000);
-                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), this._reconnectDelay);
+                    console.log('[GhostNet] WebSocket closed — reconnecting in 3s...');
+                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
                 }
             };
 
             this.ws.onerror = () => {
                 console.warn('[GhostMesh] WebSocket error.'); // [S8] no raw event details
+                console.log('[GhostNet] WebSocket error — reconnecting...');
+                if (!this._destroyed) {
+                    clearTimeout(this.reconnectTimer);
+                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
+                }
             };
 
         } catch (_) {
             console.warn('WebSocket setup failed');
             if (!this._destroyed) {
                 clearTimeout(this.reconnectTimer);
-                this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 5000);
+                this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
             }
         }
     }
@@ -780,6 +784,29 @@ class GhostMesh {
         this.heartbeatTimer = setInterval(() => {
             const now = Date.now();
 
+            if (this.ws && this.wsReady) {
+                if (this.ws.readyState === WebSocket.OPEN) {
+                    // Critical ping to keep Android background socket alive
+                    try {
+                        this.ws.send(JSON.stringify({ type: 'ping', timestamp: now }));
+                    } catch (_) {}
+                    
+                    // Normal mesh heartbeat
+                    try {
+                        safeSend(this.ws, JSON.stringify({
+                            type: 'HEARTBEAT',
+                            id: this.identity.id,
+                            ts: now,
+                            peers: this.peers.size
+                        }));
+                    } catch (_) { }
+                } else {
+                    console.log('[GhostNet] Heartbeat detected dropped connection. Forcing reconnect...');
+                    clearInterval(this.heartbeatTimer);
+                    if (!this._destroyed) this.connectWebSocket();
+                }
+            }
+
             // [S10] Collect stale IDs first — never delete during iteration
             const stale = [];
             for (const [id, peer] of this.peers) {
@@ -791,19 +818,8 @@ class GhostMesh {
                 this.onPeerLeave(peer);
             });
 
-            if (this.ws && this.wsReady) {
-                try {
-                    safeSend(this.ws, JSON.stringify({
-                        type: 'HEARTBEAT',
-                        id: this.identity.id,
-                        ts: now,
-                        peers: this.peers.size
-                    }));
-                } catch (_) { }
-            }
-
             this.onMeshUpdate(this.getPeers());
-        }, 15_000);
+        }, 25_000);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
