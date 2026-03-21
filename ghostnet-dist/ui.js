@@ -14,6 +14,10 @@
  * Fix: a bounded watcher that retries while auth settles, then shows "Not connected" + Retry.
  */
 
+const IS_NATIVE = window.Capacitor?.isNativePlatform?.() ?? false;
+const PLATFORM = window.Capacitor?.getPlatform?.() ?? 'web';
+console.log('[GhostNet] Platform:', PLATFORM, '| Native:', IS_NATIVE);
+
 // --- GLOBAL STATE ---
 window.AppState = {
     meshReady: false,
@@ -362,6 +366,9 @@ const UI = {
 
         // 6. Mock Initial Data (for visual validation)
         setTimeout(() => {
+            // Always initial derive so address is ready even without server token
+            UI._deriveWalletAddress();
+
             if (hasAuthToken()) {
                 UI.mockData();
             }
@@ -476,6 +483,12 @@ const UI = {
 
         // Auto-load vault files when navigating to vault
         if (target === 'vault') UI.vaultLoadFiles();
+
+        // [Wallet Fix] Ensure wallet is initialized and data is refetched on navigation
+        if (target === 'wallet') {
+            UI._deriveWalletAddress();
+            UI.fetchLiveWalletData();
+        }
 
         // Close mobile sidebar if open
         const sidebar = document.getElementById('app-sidebar');
