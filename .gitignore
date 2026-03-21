@@ -19,6 +19,7 @@ auth-users.json
 users.json
 vault-keys.json
 android/
+dist/
 ghostnet-dist/
 .vercel/
 .env.local
