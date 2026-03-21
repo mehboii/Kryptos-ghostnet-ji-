@@ -20,7 +20,8 @@
     "check": "node ghostnet-watchdog.cjs --once",
     "server": "node ghostnet-server.js",
     "bridge": "node ghostnet-bridge/bridge.js",
-    "client": "node ghostnet-client/server.js"
+    "client": "node ghostnet-client/server.js",
+    "build": "echo 'static site'"
   },
   "dependencies": {
     "@abandonware/bleno": "latest",
