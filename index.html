@@ -2,6 +2,14 @@
 <html lang="en">
 
 <head>
+    <script>
+        window.addEventListener('error', function(e) {
+            if (e.target.tagName === 'SCRIPT') {
+                console.log('[GhostNet] Script load failed, retrying from cache...');
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        }, true);
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <link rel="preconnect" href="https://ghostnet-ji-production.up.railway.app">
