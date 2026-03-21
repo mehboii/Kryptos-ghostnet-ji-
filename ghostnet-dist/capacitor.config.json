@@ -1,16 +1,13 @@
 {
   "appId": "dev.n11x.ghostnet",
   "appName": "GhostNet",
-  "webDir": "ghostnet-dist",
+  "webDir": "dist",
   "server": {
-    "url": "https://ghostnet-ji.vercel.app",
-    "cleartext": false
+    "androidScheme": "https"
   },
-  "ios": {
-    "scrollEnabled": true
-  },
-  "android": {
-    "allowMixedContent": false,
-    "captureInput": true
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0
+    }
   }
 }
