@@ -55,7 +55,7 @@ const _ALLOWED_MESH_TYPES = new Set([
     // server/control types already used by GhostMesh
     'HELLO', 'MESH_HELLO', 'welcome',
     'PEER_JOIN', 'PEER_LEAVE', 'MESH_MSG',
-    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK'
+    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK', 'receipt'
 ]);
 
 function _sanitizeMeshMessage(raw) {
@@ -579,6 +579,12 @@ class GhostMesh {
             case 'HEARTBEAT':
                 if (this.ws && this.wsReady) {
                     safeSend(this.ws, JSON.stringify({ type: 'HEARTBEAT_ACK', id: this.identity.id }));
+                }
+                break;
+
+            case 'receipt':
+                if (window.UI) {
+                    window.UI.updateMessageStatus(msg.msgId, msg.status);
                 }
                 break;
 

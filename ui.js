@@ -2033,12 +2033,13 @@ const UI = {
         document.body.appendChild(modal);
     },
 
-    addMessage: (text, type) => {
+    addMessage: (text, type, msgId = null) => {
         const feed = document.getElementById('chat-feed');
         if (!feed) return;
 
         const msg = document.createElement('div');
         msg.className = `message ${type}`;
+        if (msgId) msg.dataset.id = msgId;
 
         let fileId, mimeType, encKeyStr, fileName;
         if (typeof text === 'string' && text.startsWith('[FILE:') && text.endsWith(']')) {
@@ -2046,7 +2047,7 @@ const UI = {
             if (parts.length >= 4) {
                 fileId = parts[0];
                 mimeType = parts[1];
-                encKeyStr = parts[2] || '';
+                encKeyStr = parts[1] || '';
                 fileName = parts.slice(3).join(':');
             } else if (parts.length === 3) {
                 fileId = parts[0];
@@ -2066,11 +2067,41 @@ const UI = {
                 </div>
             `;
         } else {
-            msg.innerText = text;
+            const textContent = document.createElement('span');
+            textContent.innerText = text;
+            msg.appendChild(textContent);
+        }
+
+        // Add status element for outgoing messages
+        if (type === 'me') {
+            const status = document.createElement('div');
+            status.className = 'msg-status';
+            status.style.fontSize = '0.65rem';
+            status.style.opacity = '0.6';
+            status.style.marginTop = '4px';
+            status.style.textAlign = 'right';
+            status.textContent = '✓ sent';
+            msg.appendChild(status);
         }
 
         feed.appendChild(msg);
         feed.scrollTop = feed.scrollHeight;
+    },
+
+    updateMessageStatus: (msgId, status) => {
+        if (!msgId) return;
+        const msgEl = document.querySelector(`.message.me[data-id="${msgId}"]`);
+        if (!msgEl) return;
+        const statusEl = msgEl.querySelector('.msg-status');
+        if (!statusEl) return;
+
+        if (status === 'delivered') {
+            statusEl.textContent = '✓✓ delivered';
+            statusEl.style.color = '#00f0ff';
+        } else if (status === 'queued') {
+            statusEl.textContent = '🕐 queued';
+            statusEl.style.color = '#64748b';
+        }
     },
 
     promptFileType: () => {
