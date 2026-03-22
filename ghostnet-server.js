@@ -199,16 +199,6 @@ function assertLoopbackUrl(rawUrl, envVarName) {
     return parsed.origin; // scheme + host + port only; no path
 }
 
-// [Bridge Fix] Added health endpoint
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'ok',
-        connections: activeConnections.size,
-        queued: messageQueue.size,
-        uptime: process.uptime()
-    });
-});
-
 const VAULT_ORIGIN = process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL || null;
 const BRIDGE_ORIGIN = assertLoopbackUrl(
     process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001',
@@ -348,6 +338,16 @@ app.use(cors({
     },
     credentials: true,
 }));
+
+// [Bridge Fix] Added health endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        connections: activeConnections.size,
+        queued: messageQueue.size,
+        uptime: process.uptime()
+    });
+});
 
 // [22] Global rate limit
 const globalLimiter = rateLimit({
