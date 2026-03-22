@@ -211,7 +211,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // ── 2. HTTP PERSISTENCE ───────────────────────
 
-    window.app.persistMessage = async (text, targetId) => {
+    window.app.persistMessage = async (text, targetId, msgId = null) => {
         if (!text || typeof text !== 'string') return null;
         if (text.length > MAX_MSG_LENGTH) {
             log.warn('Message exceeds max length, truncating.');
@@ -237,6 +237,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
         try {
             const payload = {
+                id: msgId || generateSecureId('msg'),
                 senderId: myId,
                 receiverId: safeTargetId,
                 contactName: safeContactName,
@@ -306,21 +307,23 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             const recipientNodeId = window.app.chatTarget || 'broadcast';
             const myId = window.app.identity.nodeId || window.app.identity.id;
+            const msgId = generateSecureId('msg');
 
-            if (window.UI) UI.addMessage(text, 'me');
+            if (window.UI) UI.addMessage(text, 'me', msgId);
             input.value = '';
 
             try {
-                const result = await window.app.persistMessage(text, recipientNodeId);
+                const result = await window.app.persistMessage(text, recipientNodeId, msgId);
                 if (result?.success) {
                     log.info('Message sent and persisted.');
                 } else if (result === null) {
                     if (window.app.mesh?.ws?.readyState === WebSocket.OPEN) {
                         _safeSendWS(window.app.mesh.ws, {
                             type: 'message',
+                            id: msgId,
                             to: recipientNodeId,
                             from: myId,
-                            content: { body: text, from: myId, to: recipientNodeId, ts: Date.now(), type: 'MSG' },
+                            content: { body: text, from: myId, to: recipientNodeId, ts: Date.now(), type: 'MSG', id: msgId },
                             timestamp: Date.now()
                         });
                     }

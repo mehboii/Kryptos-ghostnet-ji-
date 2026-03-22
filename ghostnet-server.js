@@ -199,6 +199,16 @@ function assertLoopbackUrl(rawUrl, envVarName) {
     return parsed.origin; // scheme + host + port only; no path
 }
 
+// [Bridge Fix] Added health endpoint
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'ok',
+        connections: activeConnections.size,
+        queued: messageQueue.size,
+        uptime: process.uptime()
+    });
+});
+
 const VAULT_ORIGIN = process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL || null;
 const BRIDGE_ORIGIN = assertLoopbackUrl(
     process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001',
@@ -229,6 +239,35 @@ let conversations = [];
 let users = [];
 // [11] Object.create(null) — no prototype, blocks __proto__ poisoning
 let registeredNodes = Object.create(null);
+
+// Requested Relay Fix: activeConnections and messageQueue
+const activeConnections = new Map(); // nodeId → ws
+const messageQueue = new Map(); // nodeId → [pending messages]
+
+function queueMessage(recipientId, message) {
+    if (!messageQueue.has(recipientId)) {
+        messageQueue.set(recipientId, []);
+    }
+    messageQueue.get(recipientId).push({
+        ...message,
+        queuedAt: Date.now()
+    });
+    // Also persist via the existing pendingQueue mechanism if available
+    if (typeof enqueuePending === 'function') {
+        enqueuePending(recipientId, message.id || secureId('msg_'));
+    }
+}
+
+function deliverQueuedMessages(recipientId, ws) {
+    const pending = messageQueue.get(recipientId) || [];
+    pending.forEach(msg => {
+        if (ws.readyState === 1) {
+            ws.send(JSON.stringify(msg));
+        }
+    });
+    messageQueue.delete(recipientId);
+    console.log(`[Bridge] Delivered ${pending.length} queued messages to ${recipientId}`);
+}
 
 function loadJson(filePath, fallback) {
     try {
@@ -930,7 +969,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     scheduleWrite(CONVOS_FILE, conversations); // [12]
 
     const msg = {
-        id: secureId('msg_'), // [14]
+        id: req.body.id || secureId('msg_'),
         convoId: convo.id,
         senderId,
         receiverId,
@@ -943,25 +982,36 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     scheduleWrite(MESSAGES_FILE, messages); // [12]
 
     // Real-time delivery
-    const recipientPeer = meshPeers.get(receiverId);
-    const activeWs = clients.get(receiverId) || recipientPeer?.ws;
+    const targetWs = activeConnections.get(receiverId);
+    const senderWs = activeConnections.get(senderId);
 
-    if (activeWs?.readyState === 1) {
+    if (targetWs && targetWs.readyState === 1) {
         const displayName = contactName || registeredNodes[senderId]?.displayName || senderId.slice(0, 10);
-        safeSend(activeWs, {
+        safeSend(targetWs, {
             type: 'CHAT_MESSAGE', id: msg.id, convoId: convo.id,
             senderId, receiverId, content, contactName: displayName, timestamp: msg.timestamp,
         });
-        safeSend(activeWs, {
+        safeSend(targetWs, {
             type: 'NEW_CONVERSATION',
             convo: { ...convo, otherUser: { id: senderId, username: displayName } },
         });
         msg.delivered = true;
         scheduleWrite(MESSAGES_FILE, messages); // [12]
-    } else {
-        // Recipient offline — add to pending queue for delivery on reconnect
-        enqueuePending(receiverId, msg.id);
 
+        // Send delivery receipt to sender if they have a WS
+        if (senderWs) {
+            safeSend(senderWs, { type: 'receipt', status: 'delivered', msgId: msg.id });
+        }
+    } else {
+        // Recipient offline — use new queueMessage
+        queueMessage(receiverId, msg);
+
+        // Send storage receipt to sender if they have a WS
+        if (senderWs) {
+            safeSend(senderWs, { type: 'receipt', status: 'queued', msgId: msg.id });
+        }
+
+        // Legacy compat (redundant but safe)
         if (!pendingMessages[receiverId]) pendingMessages[receiverId] = [];
         pendingMessages[receiverId].push(msg);
     }
@@ -1337,6 +1387,21 @@ wss.on('connection', (ws) => {
             try { msg = JSON.parse(data.toString()); }
             catch (_) { return; }
 
+            // [Bridge Fix] Handle Auth type
+            if (msg.type === 'auth') {
+                activeConnections.set(msg.nodeId, ws);
+                deliverQueuedMessages(msg.nodeId, ws);
+                console.log(`[Bridge] Node connected: ${msg.nodeId}`);
+                
+                // Also trigger legacy registration if needed
+                if (!clientId) {
+                    clientId = msg.nodeId;
+                    const peerEntry = { id: clientId, ws, capabilities: {}, lastSeen: Date.now() };
+                    meshPeers.set(clientId, peerEntry);
+                }
+                return;
+            }
+
             switch (msg.type) {
                 case 'register':
                 case 'HELLO':
@@ -1354,11 +1419,13 @@ wss.on('connection', (ws) => {
 
                     if (clientId && clientId !== newId && meshPeers.has(clientId)) {
                         meshPeers.delete(clientId);
+                        activeConnections.delete(clientId);
                     }
 
                     clientId = newId;
                     const peerEntry = { id: clientId, ws, capabilities: {}, lastSeen: Date.now() };
                     meshPeers.set(clientId, peerEntry);
+                    activeConnections.set(clientId, ws); // Fixed tracking
 
                     // Auto-register
                     if (!registeredNodes[clientId]) {
@@ -1392,6 +1459,7 @@ wss.on('connection', (ws) => {
 
                     // [34] Synchronous delivery — no setTimeout race
                     deliverPendingMessages(clientId, ws);
+                    deliverQueuedMessages(clientId, ws);
                     break;
                 }
 
@@ -1428,14 +1496,19 @@ wss.on('connection', (ws) => {
                     const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Date.now();
                     let wsDelivered = false;
 
-                    const target = meshPeers.get(safeTarget);
-                    if (target?.ws?.readyState === 1) {
-                        safeSend(target.ws, msg);
+                    const targetWs = activeConnections.get(safeTarget);
+                    if (targetWs && targetWs.readyState === 1) {
+                        targetWs.send(JSON.stringify(msg));
                         wsDelivered = true;
+                        // Send delivery receipt to sender
+                        ws.send(JSON.stringify({ type: 'receipt', status: 'delivered', msgId: msg.id || msg.timestamp }));
+                    } else {
+                        queueMessage(safeTarget, msg);
+                        // Send storage receipt to sender
+                        ws.send(JSON.stringify({ type: 'receipt', status: 'queued', msgId: msg.id || msg.timestamp }));
                     }
-                    // Offline queueing happens after newMsg is created below
-
-                    // Persist
+                    
+                    // Legacy persist for internal tracking
                     let convo = conversations.find(c =>
                         c?.participants?.includes(senderId) && c.participants.includes(safeTarget)
                     );
@@ -1455,7 +1528,7 @@ wss.on('connection', (ws) => {
                     scheduleWrite(CONVOS_FILE, conversations); // [12]
 
                     const newMsg = {
-                        id: secureId('msg_'), // [14]
+                        id: msg.id || secureId('msg_'),
                         convoId: convo.id,
                         senderId,
                         receiverId: safeTarget,
@@ -1465,11 +1538,6 @@ wss.on('connection', (ws) => {
                     };
                     messages.push(newMsg);
                     scheduleWrite(MESSAGES_FILE, messages); // [12]
-
-                    // Recipient offline — enqueue for delivery on reconnect
-                    if (!wsDelivered) {
-                        enqueuePending(safeTarget, newMsg.id);
-                    }
                     break;
                 }
 
@@ -1484,6 +1552,15 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
+        // [Bridge Fix] Remove from active connections
+        for (const [nodeId, conn] of activeConnections.entries()) {
+            if (conn === ws) {
+                activeConnections.delete(nodeId);
+                console.log(`[Bridge] Node disconnected: ${nodeId}`);
+                break;
+            }
+        }
+
         // [27] Collect IDs first, then delete after iteration
         const toRemove = [];
         for (const [id, peer] of meshPeers) {
