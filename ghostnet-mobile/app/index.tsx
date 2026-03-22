@@ -73,14 +73,16 @@ const SPLASH_HTML = `
 export default function App() {
   const webViewRef = useRef<WebView>(null);
   const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [showSplash, setShowSplash] = useState(true);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Handle Android back button & immediately hide native static splash
   useEffect(() => {
-    // Hide native static splash immediately so our dynamic HTML animation is visible!
+    // Kill the native static splash screen immediately so our HTML animation shows
     setTimeout(() => SplashScreen.hideAsync(), 50);
+  }, []);
 
+  // Handle Android back button for WebView navigation
+  useEffect(() => {
     if (Platform.OS !== 'android') return;
     const onBackPress = () => {
       if (webViewRef.current) {
@@ -89,70 +91,59 @@ export default function App() {
       }
       return false;
     };
-    const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
-    return () => subscription.remove();
+    const sub = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    return () => sub.remove();
   }, []);
 
-  const INJECTED_JS = `
-    setTimeout(function() {
-      // 1. Force mobile layout constraints
-      var meta = document.querySelector('meta[name="viewport"]');
-      if (!meta) {
-        meta = document.createElement('meta');
-        meta.name = 'viewport';
-        document.head.appendChild(meta);
-      }
-      meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-
-      // 2. Eradicate pointer event blockers
-      var style = document.createElement('style');
-      style.innerHTML = "canvas, #particles-js, .particles-bg { pointer-events: none !important; z-index: -1 !important; } a, button, input, select, textarea, .nav-item, .bottom-nav a, [role='button'], .clickable { pointer-events: auto !important; z-index: 99999 !important; position: relative !important; } body, html { height: 100% !important; overflow-y: auto !important; -webkit-overflow-scrolling: touch !important; }";
-      document.head.appendChild(style);
-    }, 500);
-    true;
-  `;
+  const handleWebViewLoad = () => {
+    // The GhostNet web app finished loading — fade out the splash overlay
+    setTimeout(() => {
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }).start(() => setShowSplash(false));
+    }, 1200);
+  };
 
   if (error) {
-    SplashScreen.hideAsync();
     return (
       <View style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Text style={styles.errorText}>Unable to connect to GhostNet</Text>
+        <StatusBar barStyle="light-content" backgroundColor="#020428" />
+        <View style={styles.errorBox}>
+          <Text style={styles.errorTitle}>Unable to connect to GhostNet</Text>
           <Text style={styles.errorSub}>Check your connection or wait for the server to wake up</Text>
-          <Text style={styles.retryBtn} onPress={() => { setError(false); setLoading(true); fadeAnim.setValue(1); }}>Retry</Text>
+          <Text style={styles.retryBtn} onPress={() => { setError(false); setShowSplash(true); fadeAnim.setValue(1); }}>Retry</Text>
         </View>
       </View>
     );
   }
 
-  const handleLoadEnd = () => {
-    // Wait an extra moment after DOM ready, then fade out our dynamic HTML splash overlay
-    setTimeout(() => {
-      Animated.timing(fadeAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }).start(() => setLoading(false));
-    }, 1500);
-  };
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#020428" />
-      
+
+      {/* Main WebView — loads GhostNet web app with identical UI */}
       <WebView
         ref={webViewRef}
         source={{ uri: GHOSTNET_URL }}
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        injectedJavaScript={INJECTED_JS}
         androidLayerType="hardware"
-        onLoadEnd={handleLoadEnd}
+        onLoadEnd={handleWebViewLoad}
         onError={() => setError(true)}
+        setSupportMultipleWindows={false}
+        mixedContentMode="always"
+        allowFileAccess={true}
+        originWhitelist={['*']}
+        thirdPartyCookiesEnabled={true}
+        sharedCookiesEnabled={true}
+        cacheEnabled={true}
       />
 
-      {loading && (
+      {/* Dynamic animated splash overlay — sits on top until web app is ready */}
+      {showSplash && (
         <Animated.View style={[styles.splashOverlay, { opacity: fadeAnim }]} pointerEvents="none">
           <WebView
             source={{ html: SPLASH_HTML }}
@@ -182,14 +173,13 @@ const styles = StyleSheet.create({
     zIndex: 9999,
     elevation: 9999,
   },
-  errorContainer: {
+  errorBox: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#020428',
   },
-  errorText: {
+  errorTitle: {
     fontSize: 18,
     color: '#ffffff',
     fontWeight: 'bold',
