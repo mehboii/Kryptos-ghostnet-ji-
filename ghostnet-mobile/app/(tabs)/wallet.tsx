@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSize } from '../../constants/Theme';
+import { Colors, Spacing, BorderRadius, FontSize } from '../../constants/theme';
 
 const TOKENS = [
   { symbol: 'ETH', name: 'Ethereum', balance: '0.0000', chain: 'Ethereum', color: '#627eea', icon: 'logo-ethereum' as const },

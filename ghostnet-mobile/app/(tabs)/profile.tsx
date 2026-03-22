@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Spacing, BorderRadius, FontSize, API_BASE } from '../../constants/Theme';
+import { Colors, Spacing, BorderRadius, FontSize, API_BASE } from '../../constants/theme';
 
 export default function ProfileScreen() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);

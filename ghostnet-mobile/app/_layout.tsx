@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { Colors } from '../constants/Theme';
+import { Colors } from '../constants/theme';
 
 SplashScreen.preventAutoHideAsync();
 

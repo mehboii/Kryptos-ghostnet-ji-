@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Spacing, BorderRadius, FontSize, API_BASE } from '../../constants/Theme';
+import { Colors, Spacing, BorderRadius, FontSize, API_BASE } from '../../constants/theme';
 
 const { width } = Dimensions.get('window');
 
