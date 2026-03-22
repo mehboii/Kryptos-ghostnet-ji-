@@ -1,16 +1,17 @@
-import React, { useRef, useState } from 'react';
-import { View, StyleSheet, ActivityIndicator, BackHandler, Platform, SafeAreaView, Text } from 'react-native';
+import React, { useRef, useState, useEffect } from 'react';
+import { View, StyleSheet, BackHandler, Platform, SafeAreaView, Text, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
+import * as SplashScreen from 'expo-splash-screen';
 
 const GHOSTNET_URL = 'https://ghostnet-ji-production.up.railway.app';
 
 export default function App() {
   const webViewRef = useRef<WebView>(null);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true); // fall-back spinner
 
   // Handle Android back button
-  React.useEffect(() => {
+  useEffect(() => {
     if (Platform.OS !== 'android') return;
     const onBackPress = () => {
       if (webViewRef.current) {
@@ -23,26 +24,39 @@ export default function App() {
     return () => subscription.remove();
   }, []);
 
-  // Only inject viewport meta — no CSS overrides that could break functionality
+  // Force minimum touch targets and responsive scrolling behavior
   const INJECTED_JS = `
-    (function() {
-      var existing = document.querySelector('meta[name="viewport"]');
-      if (!existing) {
+    try {
+      if (!document.querySelector('meta[name="viewport"]')) {
         var meta = document.createElement('meta');
         meta.name = 'viewport';
-        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no';
         document.head.appendChild(meta);
       }
-    })();
+      var style = document.createElement('style');
+      style.innerHTML = \`
+        html, body {
+           -webkit-overflow-scrolling: touch; 
+           overflow-y: auto !important; 
+           overflow-x: hidden; 
+           touch-action: pan-y pan-x;
+        }
+        * {
+           -webkit-tap-highlight-color: transparent;
+        }
+      \`;
+      document.head.appendChild(style);
+    } catch(e) {}
     true;
   `;
 
   if (error) {
+    SplashScreen.hideAsync();
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Unable to connect to GhostNet</Text>
-          <Text style={styles.errorSub}>Check your internet connection</Text>
+          <Text style={styles.errorSub}>Wait for the web app to spin up or check your connection</Text>
           <Text
             style={styles.retryBtn}
             onPress={() => { setError(false); setLoading(true); }}
@@ -62,29 +76,31 @@ export default function App() {
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        startInLoadingState={false}
         allowsBackForwardNavigationGestures={true}
         injectedJavaScript={INJECTED_JS}
-        onLoadEnd={() => setLoading(false)}
+        androidLayerType="hardware"
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => {
+          setTimeout(() => SplashScreen.hideAsync(), 500);
+          setLoading(false);
+        }}
         onError={() => setError(true)}
         onHttpError={() => setError(true)}
         setSupportMultipleWindows={false}
         allowsInlineMediaPlayback={true}
-        mediaPlaybackRequiresUserAction={false}
+        mediaPlaybackRequiresUserAction={Platform.OS !== 'android'}
         mixedContentMode="always"
         cacheEnabled={true}
-        javaScriptCanOpenWindowsAutomatically={true}
         allowFileAccess={true}
         allowUniversalAccessFromFileURLs={true}
         originWhitelist={['*']}
         thirdPartyCookiesEnabled={true}
         sharedCookiesEnabled={true}
-        webviewDebuggingEnabled={true}
       />
+      {/* If taking a really long time after Splash hides, show spinner */}
       {loading && (
-        <View style={styles.splashOverlay}>
-          <Text style={styles.logoText}>GHOST{'\n'}NET</Text>
-          <ActivityIndicator size="large" color="#6c5ce7" style={{ marginTop: 20 }} />
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="#6c5ce7" />
         </View>
       )}
     </SafeAreaView>
@@ -94,30 +110,23 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#020428',
+    backgroundColor: '#0a0e27', // Matching the Splash color
   },
   webview: {
     flex: 1,
-    backgroundColor: '#020428',
+    backgroundColor: 'transparent',
   },
-  splashOverlay: {
+  loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#020428',
-  },
-  logoText: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: '#6c5ce7',
-    textAlign: 'center',
-    letterSpacing: 4,
+    zIndex: 9999,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#020428',
+    backgroundColor: '#0a0e27',
     padding: 20,
   },
   errorText: {
@@ -130,6 +139,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#8b8fa3',
     marginBottom: 20,
+    textAlign: 'center',
   },
   retryBtn: {
     fontSize: 16,
