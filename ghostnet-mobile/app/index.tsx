@@ -76,8 +76,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const fadeAnim = useRef(new Animated.Value(1)).current;
 
-  // Handle Android back button
+  // Handle Android back button & immediately hide native static splash
   useEffect(() => {
+    // Hide native static splash immediately so our dynamic HTML animation is visible!
+    setTimeout(() => SplashScreen.hideAsync(), 50);
+
     if (Platform.OS !== 'android') return;
     const onBackPress = () => {
       if (webViewRef.current) {
@@ -123,10 +126,7 @@ export default function App() {
   }
 
   const handleLoadEnd = () => {
-    // 1. Hide native static splash immediately
-    SplashScreen.hideAsync();
-    
-    // 2. Ensure railway has booted, then slowly fade out our dynamic animated HTML splash overlay
+    // Wait an extra moment after DOM ready, then fade out our dynamic HTML splash overlay
     setTimeout(() => {
       Animated.timing(fadeAnim, {
         toValue: 0,
