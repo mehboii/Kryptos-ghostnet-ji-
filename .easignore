@@ -1,0 +1,12 @@
+# Ignore massive artifacts that EAS Cloud Builder tries to mistakenly upload
+scratch/
+browser_recordings/
+brain/
+conversations/
+ghostnet-desktop/
+ghostnet-bridge/
+node_modules/
+android/
+ios/
+.expo/
+*.log

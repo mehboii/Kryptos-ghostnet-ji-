@@ -1,7 +1,9 @@
+import 'react-native-gesture-handler';
 import React, { useRef, useState, useEffect } from 'react';
-import { View, StyleSheet, BackHandler, Platform, Text, StatusBar, Animated } from 'react-native';
+import { View, StyleSheet, BackHandler, Platform, Text, StatusBar, Animated, TouchableOpacity } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as SplashScreen from 'expo-splash-screen';
+import { useKeepAwake } from 'expo-keep-awake';
 
 const GHOSTNET_URL = 'https://ghostnet-ji-production.up.railway.app';
 
@@ -71,6 +73,8 @@ const SPLASH_HTML = `
 `;
 
 export default function App() {
+  useKeepAwake();
+
   const webViewRef = useRef<WebView>(null);
   const [error, setError] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
@@ -113,7 +117,9 @@ export default function App() {
         <View style={styles.errorBox}>
           <Text style={styles.errorTitle}>Unable to connect to GhostNet</Text>
           <Text style={styles.errorSub}>Check your connection or wait for the server to wake up</Text>
-          <Text style={styles.retryBtn} onPress={() => { setError(false); setShowSplash(true); fadeAnim.setValue(1); }}>Retry</Text>
+          <TouchableOpacity onPress={() => { setError(false); setShowSplash(true); fadeAnim.setValue(1); }} activeOpacity={0.7}>
+            <Text style={styles.retryBtn}>Retry</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );

@@ -1,0 +1,33 @@
+# Dependencies (EAS will install these during build)
+node_modules
+
+# Native build folders (EAS generates these)
+android
+ios
+
+# Expo cache
+.expo
+
+# Build artifacts
+dist
+build
+coverage
+web-build
+
+# Logs
+*.log
+
+# APK/AAB binaries
+*.apk
+*.aab
+
+# Environment files
+.env.local
+.env
+
+# IDE
+.vscode
+.idea
+
+# Git
+.git

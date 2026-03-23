@@ -18,6 +18,17 @@ const IS_NATIVE = window.Capacitor?.isNativePlatform?.() ?? false;
 const PLATFORM = window.Capacitor?.getPlatform?.() ?? 'web';
 console.log('[GhostNet] Platform:', PLATFORM, '| Native:', IS_NATIVE);
 
+if (IS_NATIVE && window.Capacitor?.Plugins?.KeepAwake) {
+    try {
+        window.Capacitor.Plugins.KeepAwake.keepAwake().catch(e => {
+            console.warn('Keep awake not supported (Async):', e);
+        });
+    } catch (e) {
+        console.warn('Keep awake not supported:', e);
+        // fail silently, don't crash app
+    }
+}
+
 // --- GLOBAL STATE ---
 window.AppState = {
     meshReady: false,

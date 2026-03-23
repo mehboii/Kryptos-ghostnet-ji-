@@ -71,6 +71,37 @@
 </head>
 
 <body>
+    <!-- NATIVE-LIKE SPLASH SCREEN -->
+    <div id="ghostnet-splash-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#020428;z-index:999999;display:flex;justify-content:center;align-items:center;transition:opacity 0.6s ease-out;">
+      <style>
+        .splash-inner { position: relative; width: 260px; height: 260px; display: flex; justify-content: center; align-items: center; }
+        .splash-glow { position: absolute; width: 180px; height: 180px; background: radial-gradient(circle, rgba(88,217,255,0.28) 0%, rgba(88,217,255,0.08) 45%, transparent 75%); border-radius: 50%; filter: blur(18px); opacity: 0; animation: glowIn 1.1s ease-out forwards; }
+        .splash-logo { width: 180px; opacity: 0; transform: scale(0.82); animation: logoReveal 1.2s ease-out forwards; animation-delay: 0.2s; filter: drop-shadow(0 0 18px rgba(88,217,255,0.15)); }
+        .splash-logo .eye-left, .splash-logo .eye-right { opacity: 0; animation: eyesReveal 0.35s ease-out forwards; animation-delay: 1s; }
+        @keyframes glowIn { 0% { opacity: 0; transform: scale(0.6); } 100% { opacity: 1; transform: scale(1.15); } }
+        @keyframes logoReveal { 0% { opacity: 0; transform: scale(0.82) translateY(8px); } 70% { opacity: 1; transform: scale(1.04) translateY(0); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes eyesReveal { 0% { opacity: 0; transform: translateY(4px); } 100% { opacity: 1; transform: translateY(0); } }
+      </style>
+      <div class="splash-inner">
+        <div class="splash-glow"></div>
+        <svg class="splash-logo" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M256 70C206 88 162 99 140 112V231C140 328 193 391 256 438C319 391 372 328 372 231V112C350 99 306 88 256 70Z" fill="url(#shieldGradient)"/>
+          <path d="M258 127C215 127 192 160 192 215V309C192 309 219 296 241 280C258 328 284 347 284 347C319 311 330 270 330 217C330 161 302 127 258 127Z" fill="#03062E"/>
+          <path class="eye-left" d="M228 196C236 189 248 191 255 199C248 206 235 207 228 196Z" fill="white"/>
+          <path class="eye-right" d="M284 199C291 191 303 189 311 196C304 207 291 206 284 199Z" fill="white"/>
+          <defs>
+            <linearGradient id="shieldGradient" x1="140" y1="70" x2="372" y2="438" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#F4F4F6"/>
+              <stop offset="1" stop-color="#58D9FF"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+    </div>
+    <script>
+      // Hide the dynamic splash screen smoothly after the app connects/renders
+      window.addEventListener('load', () => { setTimeout(() => { const sp = document.getElementById('ghostnet-splash-overlay'); if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.remove(), 600); } }, 1500); });
+    </script>
 
     <div class="app-container">
         <!-- MOBILE HAMBURGER -->
