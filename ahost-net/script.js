@@ -6,7 +6,7 @@
 // --- 0. CRYPTO PRIMITIVES ---
 const GhostSecurity = {
     algo: { name: "AES-GCM", length: 256 },
-    genKey: async () => window.crypto.subtle.generateKey(GhostSecurity.algo, true, ["encrypt", "decrypt"]),
+    genKey: async () => window.crypto.subtle.generateKey(GhostSecurity.algo, false, ["encrypt", "decrypt"]),
     encrypt: async (data, key) => {
         const iv = window.crypto.getRandomValues(new Uint8Array(12));
         const enc = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(data));
@@ -17,8 +17,15 @@ const GhostSecurity = {
         const enc = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, buffer);
         return { iv, data: enc };
     },
-    importKey: async (raw) => window.crypto.subtle.importKey("raw", raw, GhostSecurity.algo, true, ["encrypt", "decrypt"]),
+    importKey: async (raw) => window.crypto.subtle.importKey("raw", raw, GhostSecurity.algo, false, ["encrypt", "decrypt"]),
 };
+
+// --- SANITIZATION ---
+function sanitizeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
 
 // --- 1. MANAGERS & LOGIC ---
 
@@ -65,7 +72,7 @@ window.openReceive = async function () {
             <div style="display:flex;justify-content:center;margin:20px 0;">
                 <canvas id="qr-canvas"></canvas>
             </div>
-            <p style="font-family:monospace;word-break:break-all;text-align:center;color:var(--text-secondary);">${addr}</p>
+            <p style="font-family:monospace;word-break:break-all;text-align:center;color:var(--text-secondary);">${sanitizeHTML(addr)}</p>
             <div class="modal-actions">
                 <button class="btn-primary" onclick="app.closeModal()">Done</button>
             </div>
@@ -91,7 +98,10 @@ const ContactManager = {
         // Load contacts from storage if available
         const stored = localStorage.getItem("ghost_contacts");
         if (stored) {
-            ContactManager.contacts = JSON.parse(stored);
+            try {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) ContactManager.contacts = parsed;
+            } catch (_) { /* ignore corrupt data */ }
         }
 
         ContactManager.renderList();
@@ -174,7 +184,7 @@ const ContactManager = {
         if (history) {
             history.innerHTML = `
                 <div class="sys-msg" style="text-align:center;color:#52525b;font-size:0.8rem;margin:10px 0;">
-                    -- End-to-End Encrypted Session [${c.name}] --
+                    -- End-to-End Encrypted Session [${sanitizeHTML(c.name)}] --
                 </div>`;
 
             // Re-render relevant messages from cache
@@ -228,9 +238,9 @@ const ContactManager = {
 
         el.style.cssText = style;
         el.innerHTML = `
-            <div>${msg.body}${iconHtml}</div>
+            <div>${sanitizeHTML(msg.body)}${iconHtml}</div>
             <div style="font-size:0.65rem; opacity:0.5; margin-top:4px; text-align:right;">
-                ${new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                ${sanitizeHTML(new Date(msg.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))}
             </div>
         `;
 
@@ -297,7 +307,7 @@ const app = {
                 card.style.cssText = "padding:16px;text-align:center;";
                 card.innerHTML = `
                     <i data-lucide="file-lock" style="width:32px;height:32px;color:#a1a1aa;margin-bottom:8px;"></i>
-                    <div style="font-weight:600;font-size:0.9rem;">${meta.name}</div>
+                    <div style="font-weight:600;font-size:0.9rem;">${sanitizeHTML(meta.name)}</div>
                     <div style="font-size:0.8rem;color:#71717a;">${GhostFS.formatBytes(meta.size)}</div>
                     <button class="btn-glass small" style="margin-top:10px;width:100%">Share Key</button>
                 `;

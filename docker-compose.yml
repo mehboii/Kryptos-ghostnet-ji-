@@ -34,8 +34,8 @@ services:
       - ghostnet-logs:/app/logs
       - ./messages.json:/app/messages.json
       - ./conversations.json:/app/conversations.json
-      - ./users.json:/app/users.json
-      - ./auth-users.json:/app/auth-users.json
+      - ./users.json:/app/users.json:ro
+      - ./auth-users.json:/app/auth-users.json:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
       interval: 30s
@@ -135,6 +135,12 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=8081
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8081/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ghostnet
@@ -149,6 +155,12 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=8082
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8082/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ghostnet
@@ -163,6 +175,12 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=8083
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8083/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ghostnet
