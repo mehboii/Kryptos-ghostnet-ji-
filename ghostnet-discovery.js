@@ -111,7 +111,7 @@
     const MAX_GOSSIP_PEERS = 10;    // [FIX G] cap on gossip entries processed
     const GOSSIP_INTERVAL_MS = 15_000;
     const PRUNE_INTERVAL_MS = 300_000;
-    const MIN_GOSSIP_INTERVAL_MS = 10_000; // [FIX D] rate limit
+    const MIN_GOSSIP_INTERVAL_MS = 30_000; // [FIX D] rate limit — minimum 30s between gossip rounds
     const MAX_PEER_ID_LEN = 128;
     const PROTOTYPE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 

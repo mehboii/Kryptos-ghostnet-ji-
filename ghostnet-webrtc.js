@@ -395,6 +395,10 @@
 
             } catch (e) {
                 console.warn(`[GhostWebRTC] Invalid signal from "${from}" rejected: ${e.message}`);
+                // Clean up any partial connection that may exist for this peer
+                if (typeof from === 'string' && this.activeCalls.has(from)) {
+                    this.closePeerConnection(from);
+                }
                 return; // silently drop — don't crash or expose error to remote
             }
 
@@ -415,6 +419,11 @@
                 // [6] Clean up broken connection on signal handling error
                 console.error(`[GhostWebRTC] Signal handling error from "${from}": ${e.message}`);
                 this.closePeerConnection(from);
+            } finally {
+                // Ensure local stream is released if no active calls remain after error cleanup
+                if (this.activeCalls.size === 0) {
+                    this.releaseLocalStream();
+                }
             }
         }
 

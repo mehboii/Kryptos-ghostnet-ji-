@@ -15,6 +15,9 @@
     <link rel="preconnect" href="https://ghostnet-ji-production.up.railway.app">
     <link rel="dns-prefetch" href="https://ghostnet-ji-production.up.railway.app">
 
+    <!-- SECURITY: 'unsafe-inline' is required in script-src because the app uses 100+ inline
+         onclick handlers that cannot be easily refactored. This weakens CSP protection against XSS.
+         TODO: Migrate inline handlers to addEventListener() and remove 'unsafe-inline'. -->
     <meta http-equiv="Content-Security-Policy"
       content="default-src 'self';
         script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com https://cdn.ethers.io;
@@ -24,7 +27,11 @@
         connect-src 'self' wss: ws: https:;
         worker-src 'self' blob:;
         object-src 'none';
-        base-uri 'self';">
+        base-uri 'self';
+        frame-ancestors 'none';">
+
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta http-equiv="X-Frame-Options" content="DENY">
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="apple-touch-icon" href="/favicon.ico">
@@ -55,9 +62,9 @@
             document.head.appendChild(script);
         }
     </script>
-    <!-- TODO: Add exact SRI hash for lucide once version is pinned -->
+    <!-- TODO: Add exact SRI integrity hash for lucide (generate with: curl -s https://unpkg.com/lucide@0.344.0 | openssl dgst -sha384 -binary | openssl base64 -A) -->
     <script
-        src="https://unpkg.com/lucide@latest"
+        src="https://unpkg.com/lucide@0.344.0"
         crossorigin="anonymous"></script>
 
     <!-- Logic Scripts -->
@@ -1438,6 +1445,34 @@
                     let _pendingIdentity = null; // holds mnemonic + keys during onboarding
                     let _confirmPositions = [];  // 3 random seed word positions to verify
 
+                    // PIN brute-force rate limiting
+                    let _pinFailedAttempts = 0;
+                    let _pinLockoutUntil = 0;
+                    let _pinLockoutTimer = null;
+
+                    // Session token with expiry (1 hour)
+                    const TOKEN_EXPIRY_MS = 3600000; // 1 hour
+                    function _setAuthToken(token) {
+                        const wrapped = JSON.stringify({ token, expiresAt: Date.now() + TOKEN_EXPIRY_MS });
+                        sessionStorage.setItem('ghostnet_token', wrapped);
+                    }
+                    function _getAuthToken() {
+                        const raw = sessionStorage.getItem('ghostnet_token');
+                        if (!raw) return null;
+                        try {
+                            const parsed = JSON.parse(raw);
+                            if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+                                sessionStorage.removeItem('ghostnet_token');
+                                console.warn('[Auth] Session token expired, cleared.');
+                                return null;
+                            }
+                            return parsed.token;
+                        } catch (e) {
+                            // Legacy plain token string — treat as valid but wrap on next set
+                            return raw;
+                        }
+                    }
+
                     function copyNodeId(elementId, btn) {
                         const el = document.getElementById(elementId);
                         const val = el.dataset.fullid || el.textContent;
@@ -1643,7 +1678,14 @@
                         words.forEach((word, i) => {
                             const cell = document.createElement('div');
                             cell.className = 'seed-word';
-                            cell.innerHTML = `<span class="seed-num">${i + 1}</span><span class="seed-text">${word}</span>`;
+                            const numSpan = document.createElement('span');
+                            numSpan.className = 'seed-num';
+                            numSpan.textContent = i + 1;
+                            const textSpan = document.createElement('span');
+                            textSpan.className = 'seed-text';
+                            textSpan.textContent = word;
+                            cell.appendChild(numSpan);
+                            cell.appendChild(textSpan);
                             grid.appendChild(cell);
                         });
                     }
@@ -1724,8 +1766,7 @@
                                     });
                                     if (authRes.ok) {
                                         const { token } = await authRes.json();
-                                        sessionStorage.setItem('ghostnet_token', token);
-                                        localStorage.setItem('ghostnet_token', token);
+                                        _setAuthToken(token);
                                         if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
                                     } else {
                                         console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
@@ -1734,7 +1775,7 @@
                             } catch (e) { console.warn('Node auth failed:', e); }
 
                             // Register node with backend — only if we got a token
-                            const _regToken = sessionStorage.getItem('ghostnet_token');
+                            const _regToken = _getAuthToken();
                             if (_regToken) {
                                 const storedId = GhostIdentity.getStoredIdentity();
                                 fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
@@ -1798,6 +1839,14 @@
                         const pin = autoPin || _getPinValue('pin-unlock-inputs');
                         const err = document.getElementById('pin-unlock-error');
 
+                        // Rate limiting: lock out after 5 failed attempts for 30 seconds
+                        const now = Date.now();
+                        if (_pinLockoutUntil > now) {
+                            const secsLeft = Math.ceil((_pinLockoutUntil - now) / 1000);
+                            err.textContent = `Too many failed attempts. Try again in ${secsLeft}s.`;
+                            return;
+                        }
+
                         if (pin.length !== 6) { err.textContent = 'Enter all 6 digits.'; return; }
 
                         const stored = GhostIdentity.getStoredIdentity();
@@ -1805,6 +1854,10 @@
 
                         try {
                             const privateKey = await GhostIdentity.unlockWithPin(pin);
+                            // Reset rate limiter on success
+                            _pinFailedAttempts = 0;
+                            _pinLockoutUntil = 0;
+                            if (_pinLockoutTimer) { clearInterval(_pinLockoutTimer); _pinLockoutTimer = null; }
 
                             // Set global identity state
                             if (window.AppState) {
@@ -1848,8 +1901,7 @@
                                     });
                                     if (authRes.ok) {
                                         const { token } = await authRes.json();
-                                        sessionStorage.setItem('ghostnet_token', token);
-                                        localStorage.setItem('ghostnet_token', token);
+                                        _setAuthToken(token);
                                         if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
                                     } else {
                                         console.error('[Auth] /auth/node returned', authRes.status, await authRes.text().catch(() => ''));
@@ -1858,7 +1910,7 @@
                             } catch (e) { console.warn('Node auth failed:', e); }
 
                             // Re-register node with backend — only if we got a token
-                            const _unlockRegToken = sessionStorage.getItem('ghostnet_token');
+                            const _unlockRegToken = _getAuthToken();
                             if (_unlockRegToken) {
                                 fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
                                     method: 'POST',
@@ -1879,7 +1931,27 @@
                             if (GhostIdentity.isLocked()) {
                                 showScreen('locked');
                             } else {
-                                err.textContent = e.message || 'Wrong PIN';
+                                // Rate limiting: track failed PIN attempts
+                                _pinFailedAttempts++;
+                                if (_pinFailedAttempts >= 5) {
+                                    _pinLockoutUntil = Date.now() + 30000; // 30 second lockout
+                                    _pinFailedAttempts = 0;
+                                    let secsLeft = 30;
+                                    err.textContent = `Too many failed attempts. Locked for ${secsLeft}s.`;
+                                    _pinLockoutTimer = setInterval(() => {
+                                        secsLeft--;
+                                        if (secsLeft <= 0) {
+                                            clearInterval(_pinLockoutTimer);
+                                            _pinLockoutTimer = null;
+                                            err.textContent = '';
+                                            document.getElementById('pin-unlock-attempts').textContent = '';
+                                        } else {
+                                            err.textContent = `Too many failed attempts. Locked for ${secsLeft}s.`;
+                                        }
+                                    }, 1000);
+                                } else {
+                                    err.textContent = e.message || 'Wrong PIN';
+                                }
                                 const attempts = GhostIdentity.getPinAttempts();
                                 const remaining = 5 - attempts; // GhostIdentity doesn't expose MAX_PIN_ATTEMPTS anymore
                                 document.getElementById('pin-unlock-attempts').textContent =
@@ -2016,7 +2088,7 @@
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json',
-                                            'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
+                                            'X-Auth-Token': _getAuthToken() || ''
                                         },
                                         body: JSON.stringify({
                                             nodeId: stored.nodeId,
@@ -2184,7 +2256,7 @@
                                             ghostTag: stored.ghostTag, // [Feature 1]
                                         };
                                     }
-                                    if (!sessionStorage.getItem('ghostnet_token')) {
+                                    if (!_getAuthToken()) {
                                         try {
                                             const _authNodeId = stored.nodeId;
                                             if (!_authNodeId || _authNodeId === 'null' || _authNodeId === 'undefined') {
@@ -2197,8 +2269,7 @@
                                                 });
                                                 if (authRes.ok) {
                                                     const { token } = await authRes.json();
-                                                    sessionStorage.setItem('ghostnet_token', token);
-                                                    localStorage.setItem('ghostnet_token', token);
+                                                    _setAuthToken(token);
                                                     if (window.app && window.app.mesh) window.app.mesh.setAuthToken(token);
                                                 }
                                             }
@@ -2212,7 +2283,7 @@
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json',
-                                            'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || ''
+                                            'X-Auth-Token': _getAuthToken() || ''
                                         },
                                         body: JSON.stringify({
                                             nodeId: stored.nodeId,

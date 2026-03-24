@@ -103,7 +103,17 @@
         constructor() {
             this.peers = new Map();
             this._decayTimer = null; // [B]
+            this._lastScoreUpdate = new Map(); // peerId -> timestamp, for rate limiting
             this._startDecay();
+        }
+
+        /** Per-peer rate limiting: max 1 score update per 10 seconds per peer */
+        _isScoreUpdateRateLimited(peerId) {
+            const now = Date.now();
+            const last = this._lastScoreUpdate.get(peerId) || 0;
+            if (now - last < 10_000) return true;
+            this._lastScoreUpdate.set(peerId, now);
+            return false;
         }
 
         // ── Lifecycle ────────────────────────────────────────────────────────
@@ -168,6 +178,7 @@
         onRelayPacket(peerId, bytes) {
             validatePeerId(peerId);           // [A]
             assertPositiveFinite(bytes, 'bytes'); // [C]
+            if (this._isScoreUpdateRateLimited(peerId)) return; // max 1 update per 10s per peer
 
             const peer = this._getPeer(peerId);
             // [G] Cap per-dimension score before storing
@@ -184,6 +195,7 @@
         onStoreChunk(peerId, chunkSize) {
             validatePeerId(peerId);                    // [A]
             assertPositiveFinite(chunkSize, 'chunkSize'); // [D]
+            if (this._isScoreUpdateRateLimited(peerId)) return; // max 1 update per 10s per peer
 
             const peer = this._getPeer(peerId);
             peer.scores.storage = Math.min(
@@ -202,6 +214,7 @@
         onHeartbeat(peerId, latencyMs) {
             validatePeerId(peerId);                      // [A]
             assertPositiveFinite(latencyMs, 'latencyMs'); // [E]
+            if (this._isScoreUpdateRateLimited(peerId)) return; // max 1 update per 10s per peer
 
             // [E] Clamp to [0, 60 000] — negative values already blocked above;
             //     cap prevents a 0 ms latency from giving an unfairly huge bonus.

@@ -9,13 +9,11 @@ const FRAME_SIZE = 1024;
 const port = Number(process.env.PORT) || Number(process.argv[2]) || 8080;
 const wss = new WebSocket.Server({ port });
 
-// Keys for fallback (Feature from Level 6-7)
-const keys = {
-    8080: Buffer.from("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "utf8"),
-    8081: Buffer.from("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "utf8"),
-    8082: Buffer.from("cccccccccccccccccccccccccccccccc", "utf8")
-};
-const defaultKey = keys[port];
+// Session key must be derived via ECDH — no static fallback
+let sessionKey = null; // Must be derived via ECDH, no fallback
+
+// Authentication token for WebSocket connections
+const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 
 // --- LEVEL 10: REPLAY PROTECTION ---
 const seen = new Map(); // id -> timestamp
@@ -39,8 +37,19 @@ function sendDecoy(ws) {
     }));
 }
 
-wss.on('connection', (ws) => {
-    let sessionKey = defaultKey; // Default to hardcoded for multi-hop dummy demo
+wss.on('connection', (ws, req) => {
+    // Basic token authentication
+    if (RELAY_TOKEN) {
+        const url = new URL(req.url, `http://localhost:${port}`);
+        const token = url.searchParams.get('token') || '';
+        if (token !== RELAY_TOKEN) {
+            console.log(`[Relay:${port}] Unauthorized connection rejected`);
+            ws.close(4001, 'Unauthorized');
+            return;
+        }
+    }
+
+    let connSessionKey = null; // Must be derived via ECDH, no fallback
 
     // Send Handshake for clients that support Level 9
     ws.send(JSON.stringify({
@@ -71,17 +80,24 @@ wss.on('connection', (ws) => {
                         type: "spki"
                     })
                 });
-                sessionKey = crypto.createHash("sha256").update(shared).digest();
+                connSessionKey = crypto.createHash("sha256").update(shared).digest();
                 console.log(`[Relay:${port}] Session Key Established`);
                 return;
             }
 
             // Handle Encrypted Onion Layer
             if (msg.payload) {
+                // Reject if ECDH key exchange has not been completed
+                if (!connSessionKey) {
+                    console.log(`[Relay:${port}] No session key established — rejecting`);
+                    ws.close(4002, 'ECDH key exchange required');
+                    return;
+                }
+
                 // 1. Decrypt
                 let peeled;
                 try {
-                    peeled = decrypt(msg.payload, sessionKey).toString();
+                    peeled = decrypt(msg.payload, connSessionKey).toString();
                 } catch (e) {
                     console.log(`[Relay:${port}] Decrypt Failed -> Decoy`);
                     sendDecoy(ws);

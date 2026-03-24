@@ -1,7 +1,11 @@
 const http = require('http');
 
-const RPC_USER = process.env.BTC_RPC_USER || 'admin';
-const RPC_PASS = process.env.BTC_RPC_PASS || '123';
+const RPC_USER = process.env.BTC_RPC_USER;
+const RPC_PASS = process.env.BTC_RPC_PASS;
+if (!RPC_USER || !RPC_PASS) {
+    console.error('[BTC-RPC] FATAL: BTC_RPC_USER and BTC_RPC_PASS must be set');
+    process.exit(1);
+}
 const RPC_PORT = process.env.BTC_RPC_PORT || 18443;
 const RPC_HOST = '127.0.0.1';
 

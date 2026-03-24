@@ -168,6 +168,15 @@ const resendLimiter = rateLimit({
     message: { error: 'Too many resend requests. Please try again later.' },
 });
 
+// Verify code — max 5 attempts per 15 min
+const verifyLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many verification attempts. Please try again later.' },
+});
+
 // ============================================================
 // POST /auth/signup
 // ============================================================
@@ -211,7 +220,7 @@ router.post('/signup', async (req, res) => {
         const password_hash = await bcrypt.hash(password, BCRYPT_SALT_ROUNDS);
 
         // --- Persist user (unverified) -----------------------------------
-        const userResult = createUser({ email, password_hash });
+        const userResult = await createUser({ email, password_hash });
         const { verifyCode, ...user } = userResult;
 
         // --- Send verification email -------------------------------------
@@ -236,7 +245,7 @@ router.post('/signup', async (req, res) => {
 // ============================================================
 // POST /auth/verify  — Verify email with 6-digit code
 // ============================================================
-router.post('/verify', async (req, res) => {
+router.post('/verify', verifyLimiter, async (req, res) => {
     try {
         const { email, code } = req.body;
 
@@ -244,7 +253,7 @@ router.post('/verify', async (req, res) => {
             return res.status(400).json({ error: 'Email and verification code are required.' });
         }
 
-        const result = verifyEmail(email, code);
+        const result = await verifyEmail(email, code);
 
         if (!result.success) {
             return res.status(400).json({ error: result.error });
@@ -281,7 +290,7 @@ router.post('/resend-code', resendLimiter, async (req, res) => {
             return res.status(400).json({ error: 'Email is required.' });
         }
 
-        const result = resendVerifyCode(email);
+        const result = await resendVerifyCode(email);
 
         if (!result) {
             // Don't reveal if email exists
@@ -374,7 +383,7 @@ router.post('/login', loginLimiter, async (req, res) => {
 // ============================================================
 // POST /auth/forgot-password
 // ============================================================
-router.post('/forgot-password', resetLimiter, (req, res) => {
+router.post('/forgot-password', resetLimiter, async (req, res) => {
     try {
         const { email } = req.body;
 
@@ -382,7 +391,7 @@ router.post('/forgot-password', resetLimiter, (req, res) => {
             return res.status(400).json({ error: 'Email is required.' });
         }
 
-        const result = setResetToken(email);
+        const result = await setResetToken(email);
 
         if (!result) {
             return res.json({
@@ -396,8 +405,7 @@ router.post('/forgot-password', resetLimiter, (req, res) => {
         }
         res.json({
             success: true,
-            message: 'Reset code generated.',
-            resetCode: result.code,  // Dev only — remove in production
+            message: 'Reset code generated. Check your email for the 6-digit code.',
         });
     } catch (err) {
         console.error('Forgot password error:', err.message);
@@ -419,9 +427,21 @@ router.post('/reset-password', resetLimiter, async (req, res) => {
         if (newPassword.length < 8) {
             return res.status(400).json({ error: 'New password must be at least 8 characters.' });
         }
+        if (!/[A-Z]/.test(newPassword)) {
+            return res.status(400).json({ error: 'New password must contain at least one uppercase letter.' });
+        }
+        if (!/[a-z]/.test(newPassword)) {
+            return res.status(400).json({ error: 'New password must contain at least one lowercase letter.' });
+        }
+        if (!/[0-9]/.test(newPassword)) {
+            return res.status(400).json({ error: 'New password must contain at least one number.' });
+        }
+        if (!/[^A-Za-z0-9]/.test(newPassword)) {
+            return res.status(400).json({ error: 'New password must contain at least one special character.' });
+        }
 
         const newHash = await bcrypt.hash(newPassword, BCRYPT_SALT_ROUNDS);
-        const result = resetPassword(email, code, newHash);
+        const result = await resetPassword(email, code, newHash);
 
         if (!result.success) {
             return res.status(400).json({ error: result.error });

@@ -421,6 +421,9 @@
         }
 
         async _handleMessage(packet) {
+            // Reject messages with timestamps more than 5 minutes old or in the future
+            if (Math.abs(Date.now() - packet.ts) > 300000) return;
+
             // [FIX K] Reject replay: duplicate message IDs discarded.
             if (this.messages.has(packet.id)) return;
 
@@ -471,6 +474,9 @@
         }
 
         async _handleDelete(packet) {
+            // Reject DELETE requests with timestamps more than 5 minutes old or in the future
+            if (Math.abs(Date.now() - packet.ts) > 300000) return;
+
             if (!this.messages.has(packet.targetId)) return;
 
             const target = this.messages.get(packet.targetId);
