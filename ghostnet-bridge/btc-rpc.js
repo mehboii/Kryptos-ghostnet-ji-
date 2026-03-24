@@ -50,6 +50,7 @@ async function btcRpc(method, params = []) {
 
         req.on('error', (e) => reject(new Error(`BTC RPC Connection Failed: ${e.message}`)));
         req.write(data);
+        req.setTimeout(5000, () => { req.destroy(new Error('BTC RPC request timed out')); });
         req.end();
     });
 }

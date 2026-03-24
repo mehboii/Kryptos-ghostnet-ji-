@@ -1415,13 +1415,24 @@ wss.on('connection', (ws) => {
 
             // [Bridge Fix] Handle Auth type
             if (msg.type === 'auth') {
-                activeConnections.set(msg.nodeId, ws);
-                deliverQueuedMessages(msg.nodeId, ws);
-                console.log(`[Bridge] Node connected: ${msg.nodeId}`);
-                
+                let nodeId;
+                try { nodeId = validateNodeId(msg.nodeId); }
+                catch (_) { safeSend(ws, { type: 'ERROR', error: 'Invalid nodeId' }); return; }
+
+                // Ownership check: reject if node belongs to a different user
+                const existingNode = registeredNodes[nodeId];
+                if (existingNode && existingNode.ownerId && existingNode.ownerId !== ws._user.id) {
+                    safeSend(ws, { type: 'ERROR', error: 'Not authorized to claim this nodeId' });
+                    return;
+                }
+
+                activeConnections.set(nodeId, ws);
+                deliverQueuedMessages(nodeId, ws);
+                console.log(`[Bridge] Node connected: ${nodeId}`);
+
                 // Also trigger legacy registration if needed
                 if (!clientId) {
-                    clientId = msg.nodeId;
+                    clientId = nodeId;
                     const peerEntry = { id: clientId, ws, capabilities: {}, lastSeen: Date.now() };
                     meshPeers.set(clientId, peerEntry);
                 }

@@ -107,7 +107,10 @@
 
         // Prevent unbounded map growth
         if (_rateLimitMap.size > 10000) {
-            _rateLimitMap.delete(_rateLimitMap.keys().next().value);
+            const cutoff = Date.now() - 60000;
+            for (const [key, val] of _rateLimitMap) {
+                if (val.windowStart < cutoff) _rateLimitMap.delete(key);
+            }
         }
     };
 

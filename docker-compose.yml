@@ -198,6 +198,12 @@ services:
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - GHOSTNET_RELAY_NODES=ws://ghostnet-server:8080,ws://ghostnet-relay-1:8081,ws://ghostnet-relay-2:8082,ws://ghostnet-relay-3:8083
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:9000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ghostnet
@@ -221,6 +227,12 @@ services:
       - GHOSTNET_CHAIN_PORT=4000
       - GHOSTNET_CHAIN_PROVIDER=${GHOSTNET_CHAIN_PROVIDER:-evm}
       - ETH_RPC_URL=${ETH_RPC_URL:-http://127.0.0.1:8545}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - ghostnet
