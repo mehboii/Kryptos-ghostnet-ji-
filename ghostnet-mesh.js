@@ -113,6 +113,10 @@ class GhostMesh {
         this._destroyed = false; // [S11]
         this._reconnectDelay = 3000;  // backoff state
 
+        // Rate limiting maps
+        this._peerAnnounceTimestamps = new Map(); // peerId -> last announcement timestamp
+        this._relaySendCounts = new Map();         // peerId -> { count, windowStart }
+
         // BLE constants
         this.SERVICE_UUID = '67686f73-746e-6574-2d6d-657368000000';
         this.CHAR_DATA = '67686f73-746e-6574-2d64-617461000000';
@@ -559,14 +563,21 @@ class GhostMesh {
 
             case 'MESH_PEERS':
                 if (Array.isArray(msg.peers)) {
+                    const now = Date.now();
                     msg.peers.forEach(p => {
                         const peerId = this.validatePeerId(p.id); // [S9]
                         if (!peerId || peerId === this.identity.id || this.peers.has(peerId)) return;
+
+                        // Per-peer rate limiting: max 1 peer announcement per 5 seconds per source
+                        const lastAnnounce = this._peerAnnounceTimestamps.get(peerId) || 0;
+                        if (now - lastAnnounce < 5000) return;
+                        this._peerAnnounceTimestamps.set(peerId, now);
+
                         const peer = {
                             id: peerId,
                             transport: 'ws',
                             connected: true,
-                            lastSeen: typeof p.lastSeen === 'number' ? p.lastSeen : Date.now(),
+                            lastSeen: typeof p.lastSeen === 'number' ? p.lastSeen : now,
                             name: this.sanitizeText(p.name || peerId.slice(-8)) // [S8]
                         };
                         this.peers.set(peerId, peer);
@@ -766,7 +777,21 @@ class GhostMesh {
     // MESH RELAY
     // ─────────────────────────────────────────────────────────────────────────
 
+    /** Per-sender relay rate limiting: max 10 messages per second per peer */
+    _isRelayRateLimited(senderId) {
+        if (!senderId) return true;
+        const now = Date.now();
+        let entry = this._relaySendCounts.get(senderId);
+        if (!entry || now - entry.windowStart > 1000) {
+            entry = { count: 0, windowStart: now };
+            this._relaySendCounts.set(senderId, entry);
+        }
+        entry.count++;
+        return entry.count > 10;
+    }
+
     relayToBLE(msg) {
+        if (this._isRelayRateLimited(msg.from)) return;
         for (const [, peer] of this.peers) {
             if (peer.transport === 'ble' && peer.connected && peer.writeChar) {
                 this._bleSend(peer, msg); // [S12] size-checked
@@ -775,6 +800,7 @@ class GhostMesh {
     }
 
     relayToWS(msg) {
+        if (this._isRelayRateLimited(msg.from)) return;
         if (this.ws && this.wsReady) {
             try { safeSend(this.ws, JSON.stringify(msg)); }
             catch (_) { }

@@ -14,6 +14,18 @@
  * Fix: a bounded watcher that retries while auth settles, then shows "Not connected" + Retry.
  */
 
+/** Escape user-controlled strings before inserting into HTML / attribute contexts. */
+function _escapeHTML(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+}
+
+/** Escape user-controlled strings before inserting into CSS.querySelector() calls. */
+function _escapeSelector(str) {
+    if (typeof str !== 'string') return '';
+    return CSS.escape(str);
+}
+
 const IS_NATIVE = window.Capacitor?.isNativePlatform?.() ?? false;
 const PLATFORM = window.Capacitor?.getPlatform?.() ?? 'web';
 console.log('[GhostNet] Platform:', PLATFORM, '| Native:', IS_NATIVE);
@@ -1079,14 +1091,14 @@ const UI = {
         modal.innerHTML = `
             <div class="modal-card">
                 <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-                <div class="modal-title">Receive ${symbol}</div>
-                <img src="${qrUrl}" class="qr-code">
+                <div class="modal-title">Receive ${_escapeHTML(symbol)}</div>
+                <img src="${_escapeHTML(qrUrl)}" class="qr-code">
                 <div class="input-group">
                     <label class="input-label">YOUR ADDRESS</label>
-                    <input type="text" class="modal-input" value="${address}" readonly onclick="this.select()">
+                    <input type="text" class="modal-input" value="${_escapeHTML(address)}" readonly onclick="this.select()">
                 </div>
                 <div style="font-size:0.8rem; color:#8b9bb4; margin-top:10px;">
-                    Scan to send ${symbol} to this address.
+                    Scan to send ${_escapeHTML(symbol)} to this address.
                 </div>
             </div>
         `;
@@ -1099,19 +1111,19 @@ const UI = {
         modal.innerHTML = `
             <div class="modal-card">
                 <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-                <div class="modal-title">Send ${symbol}</div>
-                
+                <div class="modal-title">Send ${_escapeHTML(symbol)}</div>
+
                 <div class="input-group">
                     <label class="input-label">RECIPIENT ADDRESS</label>
                     <input type="text" id="send-to" class="modal-input" placeholder="0x...">
                 </div>
-                
+
                 <div class="input-group">
                      <label class="input-label">AMOUNT</label>
                     <input type="number" id="send-amount" class="modal-input" placeholder="0.00">
                 </div>
 
-                <button class="btn-primary" onclick="UI.submitSend('${symbol}')">CONFIRM TRANSACTION</button>
+                <button class="btn-primary" onclick="UI.submitSend('${_escapeHTML(symbol)}')">CONFIRM TRANSACTION</button>
             </div>
         `;
         document.body.appendChild(modal);
@@ -1417,7 +1429,7 @@ const UI = {
             // Clear feed for new chat effect
             const feed = document.getElementById('chat-feed');
             if (feed) {
-                feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${data.displayName || name} Started --</div>`;
+                feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${_escapeHTML(data.displayName || name)} Started --</div>`;
             }
 
             // Setup app state target
@@ -1568,7 +1580,7 @@ const UI = {
         });
 
         // Setup Header Avatar
-        const activeRow = document.querySelector(`.chat-user-row[data-convo="${convoId}"]`);
+        const activeRow = document.querySelector(`.chat-user-row[data-convo="${_escapeSelector(convoId)}"]`);
         const headerAvatar = document.getElementById('active-chat-avatar');
         if (headerAvatar) {
             let avatarData = null;
@@ -1737,8 +1749,8 @@ const UI = {
                 <div class="wlt-portfolio-tokens">
                     ${walletAssets.map(a => {
             const m = CRYPTO_META[a.symbol] || CRYPTO_META['ETH'];
-            return `<div class="wlt-mini-token" style="--tc:${m.color}">
-                            <img src="${CRYPTO_LOGOS[a.symbol] || CRYPTO_LOGOS['ETH']}" alt="${a.symbol}" width="20" height="20">
+            return `<div class="wlt-mini-token" style="--tc:${_escapeHTML(m.color)}">
+                            <img src="${_escapeHTML(CRYPTO_LOGOS[a.symbol] || CRYPTO_LOGOS['ETH'])}" alt="${_escapeHTML(a.symbol)}" width="20" height="20">
                         </div>`;
         }).join('')}
                 </div>
@@ -1760,7 +1772,7 @@ const UI = {
                 : '$0.00';
 
             html += `
-              <div class="wlt-card-outer" style="--c1:${meta.color}; --cg:${meta.gradient}; --cd:${meta.darkGlow}; animation-delay:${delay}s;">
+              <div class="wlt-card-outer" style="--c1:${_escapeHTML(meta.color)}; --cg:${_escapeHTML(meta.gradient)}; --cd:${_escapeHTML(meta.darkGlow)}; animation-delay:${delay}s;">
                 <div class="wlt-card">
                     <!-- Decorative elements -->
                     <div class="wlt-card-orb"></div>
@@ -1770,13 +1782,13 @@ const UI = {
                     <div class="wlt-card-top">
                         <div class="wlt-logo-ring">
                             <div class="wlt-logo-inner">
-                                <img src="${logo}" alt="${asset.symbol}" width="28" height="28" onerror="this.style.display='none'">
+                                <img src="${_escapeHTML(logo)}" alt="${_escapeHTML(asset.symbol)}" width="28" height="28" onerror="this.style.display='none'">
                             </div>
                         </div>
                         <div class="wlt-card-info">
-                            <div class="wlt-card-name">${asset.symbol}<span class="wlt-card-fullname">${meta.name}</span></div>
+                            <div class="wlt-card-name">${_escapeHTML(asset.symbol)}<span class="wlt-card-fullname">${_escapeHTML(meta.name)}</span></div>
                             <div class="wlt-card-chain-row">
-                                <span class="wlt-chain-badge">${asset.chain}</span>
+                                <span class="wlt-chain-badge">${_escapeHTML(asset.chain)}</span>
                                 <span class="wlt-status-dot"></span>
                             </div>
                         </div>
@@ -1784,27 +1796,27 @@ const UI = {
 
                     <!-- Middle: Balance + USD -->
                     <div class="wlt-card-mid">
-                        <div class="wlt-bal-value">${asset.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 })}</div>
-                        <div class="wlt-bal-label">${asset.symbol} Balance</div>
+                        <div class="wlt-bal-value">${_escapeHTML(asset.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }))}</div>
+                        <div class="wlt-bal-label">${_escapeHTML(asset.symbol)} Balance</div>
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06);">
-                            <span style="font-size:0.75rem; color:var(--text-muted);">≈ ${usdValStr}</span>
-                            <span style="font-size:0.7rem; color:var(--text-muted); opacity:0.7;">@ ${usdPriceStr}</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted);">≈ ${_escapeHTML(usdValStr)}</span>
+                            <span style="font-size:0.7rem; color:var(--text-muted); opacity:0.7;">@ ${_escapeHTML(usdPriceStr)}</span>
                         </div>
                     </div>
 
                     <!-- Address chip -->
-                    <div class="wlt-addr-chip" title="${asset.address || ''}">
+                    <div class="wlt-addr-chip" title="${_escapeHTML(asset.address || '')}">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                        <span>${addrDisplay}</span>
+                        <span>${_escapeHTML(addrDisplay)}</span>
                     </div>
 
                     <!-- Bottom: Actions -->
                     <div class="wlt-card-actions">
-                         <button class="wlt-btn wlt-btn-send" onclick="UI.openSend('${asset.symbol}')">
+                         <button class="wlt-btn wlt-btn-send" onclick="UI.openSend('${_escapeHTML(asset.symbol)}')">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                             Send
                          </button>
-                         <button class="wlt-btn wlt-btn-recv" onclick="UI.openReceive('${asset.symbol}', '${asset.address || ""}')">
+                         <button class="wlt-btn wlt-btn-recv" onclick="UI.openReceive('${_escapeHTML(asset.symbol)}', '${_escapeHTML(asset.address || "")}')">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
                             Receive
                          </button>
@@ -1873,10 +1885,10 @@ const UI = {
         html += allPeers.map(p => `
             <div class="node-card">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div class="node-address" style="color:var(--accent);">${p.id}</div>
-                    <div style="font-size:0.8rem; color:${p.latency < 50 ? '#10b981' : '#f59e0b'}">${p.latency || '??'}ms</div>
+                    <div class="node-address" style="color:var(--accent);">${_escapeHTML(p.id)}</div>
+                    <div style="font-size:0.8rem; color:${p.latency < 50 ? '#10b981' : '#f59e0b'}">${_escapeHTML(String(p.latency || '??'))}ms</div>
                 </div>
-                <div class="node-meta">${p.type} Node • Verified</div>
+                <div class="node-meta">${_escapeHTML(p.type)} Node • Verified</div>
                 ${p.type === 'BLE' ? '<div style="margin-top:5px; font-size:0.75rem; color:#10b981;">via Bluetooth Mesh</div>' : ''}
                 <div style="margin-top:10px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
                     <div style="width: ${Math.random() * 100}%; height:100%; background:${p.type === 'BLE' ? '#10b981' : 'var(--text-muted)'};"></div>
@@ -1896,8 +1908,8 @@ const UI = {
             <div class="file-card" style="display:flex; align-items:center; gap:15px;">
                 <i data-lucide="file-lock" style="color:var(--text-muted);"></i>
                 <div style="flex:1;">
-                    <div style="color:var(--text-primary); font-family:monospace; font-weight:500;">${f.name}</div>
-                    <div style="font-size:0.8rem; color:var(--text-muted);">${f.size}</div>
+                    <div style="color:var(--text-primary); font-family:monospace; font-weight:500;">${_escapeHTML(f.name)}</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted);">${_escapeHTML(f.size)}</div>
                 </div>
                 <button style="background:none; border:none; color:var(--accent); cursor:pointer;"><i data-lucide="download"></i></button>
             </div>
@@ -2038,7 +2050,7 @@ const UI = {
         modal.innerHTML = `
             <div class="modal-card" style="padding:10px; background: transparent; border: none; text-align:center; max-width:95vw; max-height:95vh;">
                 <button class="modal-close" style="position:absolute; right:15px; top:15px; z-index:100; background:rgba(0,0,0,0.6); padding:5px 12px; border-radius:50%; font-size:1.5rem; border:1px solid #444;" onclick="this.closest('.modal-overlay').remove()">×</button>
-                <img src="${src}" style="max-width:100%; max-height:85vh; border-radius:12px; object-fit:contain; box-shadow: 0 10px 40px rgba(0,0,0,0.8); pointer-events:none;">
+                <img src="${_escapeHTML(src)}" style="max-width:100%; max-height:85vh; border-radius:12px; object-fit:contain; box-shadow: 0 10px 40px rgba(0,0,0,0.8); pointer-events:none;">
             </div>
         `;
         document.body.appendChild(modal);
@@ -2071,8 +2083,8 @@ const UI = {
         if (fileId) {
             msg.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
-                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${fileName.replace(/</g, '&lt;')}</div>
-                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${fileId}', '${encKeyStr}').then(() => this.textContent='Decrypted & Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
+                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${_escapeHTML(fileName)}</div>
+                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${_escapeHTML(fileId)}', '${_escapeHTML(encKeyStr)}').then(() => this.textContent='Decrypted &amp; Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
                         Secure Download
                     </button>
                 </div>
@@ -2101,7 +2113,7 @@ const UI = {
 
     updateMessageStatus: (msgId, status) => {
         if (!msgId) return;
-        const msgEl = document.querySelector(`.message.me[data-id="${msgId}"]`);
+        const msgEl = document.querySelector(`.message.me[data-id="${_escapeSelector(msgId)}"]`);
         if (!msgEl) return;
         const statusEl = msgEl.querySelector('.msg-status');
         if (!statusEl) return;
@@ -3591,7 +3603,7 @@ function renderHome() {
     main.innerHTML = `
         <canvas id="mesh" style="width:100%;height:100%;display:block;"></canvas>
         <div class="mesh-overlay" style="position:absolute;top:20px;right:20px;">
-          <div class="stat-item"><span class="label">Peers</span> <span class="value">${window.AppState?.peers?.length || 0}</span></div>
+          <div class="stat-item"><span class="label">Peers</span> <span class="value">${parseInt(window.AppState?.peers?.length, 10) || 0}</span></div>
           <div class="stat-item"><span class="label">Status</span> <span class="value" style="color:#00ff9d;">Active</span></div>
         </div>
     `;

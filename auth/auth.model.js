@@ -16,6 +16,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -48,7 +49,7 @@ function _persist() {
 }
 
 function generateId() {
-    return 'auth_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    return 'auth_' + crypto.randomUUID();
 }
 
 // ---------------------------------------------------------------------------
@@ -142,9 +143,12 @@ export function findById(id) {
  * @param {{ email: string, password_hash: string }} data
  * @returns {object} The created user (without password_hash).
  */
-export function createUser({ email, password_hash }) {
-    // Generate 6-digit verification code
-    const verifyCode = String(Math.floor(100000 + Math.random() * 900000));
+export async function createUser({ email, password_hash }) {
+    // Generate 6-digit verification code using CSPRNG
+    const verifyCode = crypto.randomInt(100000, 999999).toString();
+
+    // Hash the verification code before storing (like passwords)
+    const verifyCodeHash = await bcrypt.hash(verifyCode, 10);
 
     // Generate unique GhostCode short code
     const shortCode = generateUniqueShortCode();
@@ -155,7 +159,7 @@ export function createUser({ email, password_hash }) {
         password_hash,
         shortCode,
         verified: false,
-        verify_code: verifyCode,
+        verify_code: verifyCodeHash,
         verify_code_expires: new Date(Date.now() + 10 * 60 * 1000).toISOString(), // 10 min
         created_at: new Date().toISOString(),
     };
@@ -165,7 +169,7 @@ export function createUser({ email, password_hash }) {
 
     // Return a safe copy without sensitive fields
     const { password_hash: _, verify_code: __, verify_code_expires: ___, ...safeUser } = user;
-    return { ...safeUser, verifyCode }; // Include code so route can send it via email
+    return { ...safeUser, verifyCode }; // Include plaintext code so route can send it via email
 }
 
 /**
@@ -199,7 +203,7 @@ export function updateUserFields(userId, fields) {
  * @param {string} code - The 6-digit verification code
  * @returns {{ success: boolean, error?: string, user?: object }}
  */
-export function verifyEmail(email, code) {
+export async function verifyEmail(email, code) {
     const normalised = email.trim().toLowerCase();
     const user = authUsers.find(u => u.email === normalised);
     if (!user) return { success: false, error: 'User not found.' };
@@ -208,12 +212,21 @@ export function verifyEmail(email, code) {
         return { success: true, user: sanitise(user), alreadyVerified: true };
     }
 
-    if (!user.verify_code || user.verify_code !== code) {
-        return { success: false, error: 'Invalid verification code.' };
+    // Check TTL first — clear expired codes
+    if (!user.verify_code || !user.verify_code_expires || new Date(user.verify_code_expires) < new Date()) {
+        // Clear expired code
+        if (user.verify_code) {
+            delete user.verify_code;
+            delete user.verify_code_expires;
+            _persist();
+        }
+        return { success: false, error: 'Verification code has expired. Please request a new one.' };
     }
 
-    if (new Date(user.verify_code_expires) < new Date()) {
-        return { success: false, error: 'Verification code has expired. Please request a new one.' };
+    // Compare submitted code against bcrypt hash (timing-safe)
+    const match = await bcrypt.compare(code, user.verify_code);
+    if (!match) {
+        return { success: false, error: 'Invalid verification code.' };
     }
 
     // Mark verified and clear code
@@ -230,15 +243,15 @@ export function verifyEmail(email, code) {
  * @param {string} email
  * @returns {{ code: string, user: object }|null}
  */
-export function resendVerifyCode(email) {
+export async function resendVerifyCode(email) {
     const normalised = email.trim().toLowerCase();
     const user = authUsers.find(u => u.email === normalised);
     if (!user) return null;
 
     if (user.verified) return { code: null, user: sanitise(user), alreadyVerified: true };
 
-    const code = String(Math.floor(100000 + Math.random() * 900000));
-    user.verify_code = code;
+    const code = crypto.randomInt(100000, 999999).toString();
+    user.verify_code = await bcrypt.hash(code, 10);
     user.verify_code_expires = new Date(Date.now() + 10 * 60 * 1000).toISOString();
     _persist();
 
@@ -251,13 +264,13 @@ export function resendVerifyCode(email) {
  * @param {string} email
  * @returns {{ code: string, user: object }|null}
  */
-export function setResetToken(email) {
+export async function setResetToken(email) {
     const normalised = email.trim().toLowerCase();
     const user = authUsers.find(u => u.email === normalised);
     if (!user) return null;
 
-    const code = String(Math.floor(100000 + Math.random() * 900000)); // 6-digit
-    user.reset_token = code;
+    const code = crypto.randomInt(100000, 999999).toString();
+    user.reset_token = await bcrypt.hash(code, 10);
     user.reset_token_expires = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 min
     _persist();
 
@@ -271,21 +284,25 @@ export function setResetToken(email) {
  * @param {string} newPasswordHash - The bcrypt hash of the new password
  * @returns {{ success: boolean, error?: string }}
  */
-export function resetPassword(email, token, newPasswordHash) {
+export async function resetPassword(email, token, newPasswordHash) {
     const normalised = email.trim().toLowerCase();
     const user = authUsers.find(u => u.email === normalised);
     if (!user) return { success: false, error: 'User not found.' };
 
-    if (!user.reset_token || user.reset_token !== token) {
-        return { success: false, error: 'Invalid reset code.' };
+    // Check TTL first — clear expired tokens
+    if (!user.reset_token || !user.reset_token_expires || new Date(user.reset_token_expires) < new Date()) {
+        if (user.reset_token) {
+            delete user.reset_token;
+            delete user.reset_token_expires;
+            _persist();
+        }
+        return { success: false, error: 'Reset code has expired. Please request a new one.' };
     }
 
-    if (new Date(user.reset_token_expires) < new Date()) {
-        // Expired — clear it
-        delete user.reset_token;
-        delete user.reset_token_expires;
-        _persist();
-        return { success: false, error: 'Reset code has expired. Please request a new one.' };
+    // Compare submitted token against bcrypt hash (timing-safe)
+    const match = await bcrypt.compare(token, user.reset_token);
+    if (!match) {
+        return { success: false, error: 'Invalid reset code.' };
     }
 
     // Update password and clear token

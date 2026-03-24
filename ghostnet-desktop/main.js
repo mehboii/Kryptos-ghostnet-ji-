@@ -44,6 +44,7 @@ function createWindow() {
     });
 
     // Inject native platform detection so the app knows it's on desktop
+    // TODO: Move this executeJavaScript call to a preload script for better security isolation
     mainWindow.webContents.on('did-finish-load', () => {
         mainWindow.webContents.executeJavaScript(`
             window.__GHOSTNET_DESKTOP__ = true;
@@ -75,7 +76,9 @@ app.on('activate', () => {
 // Security: prevent navigation to unknown origins
 app.on('web-contents-created', (event, contents) => {
     contents.on('will-navigate', (event, url) => {
-        if (!url.startsWith(GHOSTNET_URL) && !url.startsWith('https://ghostnet-ji')) {
+        const allowed = ['ghostnet-ji.vercel.app', 'ghostnet-ji-production.up.railway.app', 'localhost'];
+        const parsed = new URL(url);
+        if (!allowed.includes(parsed.hostname)) {
             event.preventDefault();
         }
     });

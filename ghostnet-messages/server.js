@@ -7,9 +7,36 @@ import { requireAuth } from '../auth/auth.middleware.js';
 const app = express();
 const PORT = 8090;
 
+// Rate limiting — simple in-memory counter
+const _rateLimitStore = new Map();
+const RATE_LIMIT_WINDOW = 60000;
+const RATE_LIMIT_MAX = 100;
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of _rateLimitStore) {
+        if (now - entry.start > RATE_LIMIT_WINDOW * 2) _rateLimitStore.delete(ip);
+    }
+}, RATE_LIMIT_WINDOW).unref();
+
+function rateLimiter(req, res, next) {
+    const ip = req.ip || 'unknown';
+    const now = Date.now();
+    const entry = _rateLimitStore.get(ip);
+    if (!entry || now - entry.start > RATE_LIMIT_WINDOW) {
+        _rateLimitStore.set(ip, { count: 1, start: now });
+        return next();
+    }
+    entry.count++;
+    if (entry.count > RATE_LIMIT_MAX) {
+        return res.status(429).json({ error: 'Too many requests' });
+    }
+    next();
+}
+
 // Middleware
 app.use(express.json());
-app.use(cors());
+app.use(rateLimiter);
+app.use(cors({ origin: (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000').split(',') }));
 
 let db;
 
@@ -88,11 +115,16 @@ app.get('/history', requireAuth, async (req, res) => {
             userId
         );
 
-        // Parse content JSON
-        const history = rows.map(r => ({
-            ...r,
-            content: JSON.parse(r.content)
-        }));
+        // Parse content JSON safely
+        const history = rows.map(r => {
+            let content;
+            try {
+                content = JSON.parse(r.content);
+            } catch {
+                content = r.content;
+            }
+            return { ...r, content };
+        });
 
         res.json(history);
     } catch (e) {
@@ -111,8 +143,8 @@ app.get('/users', requireAuth, async (req, res) => {
     }
 });
 
-// 4. Cleanup
-app.delete('/cleanup', async (req, res) => {
+// 4. Cleanup (authenticated)
+app.delete('/cleanup', requireAuth, async (req, res) => {
     const { ttl } = req.query; // Time to live in ms
     if (!ttl) return res.status(400).json({ error: "Missing ttl (ms)" });
 

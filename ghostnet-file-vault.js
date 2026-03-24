@@ -351,9 +351,6 @@
                 this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
                 if (this.key) {
                     markVaultUnlocked();
-                    try {
-                        window.__vaultKey = this.key;
-                    } catch { }
                     return this.key;
                 }
             }
@@ -364,14 +361,15 @@
                 const localKeyData = localStorage.getItem('ghostnet_vault_local_key');
                 if (localKeyData) {
                     const jwk = JSON.parse(localKeyData);
-                    this.key = await crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']);
+                    this.key = await crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
                 } else {
                     // Generate new local key so uploads don't break
-                    this.key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
-                    const exported = await crypto.subtle.exportKey('jwk', this.key);
+                    // Generate as extractable only to export for storage, then re-import as non-extractable
+                    const tempKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
+                    const exported = await crypto.subtle.exportKey('jwk', tempKey);
                     localStorage.setItem('ghostnet_vault_local_key', JSON.stringify(exported));
+                    this.key = await crypto.subtle.importKey('jwk', exported, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
                 }
-                try { window.__vaultKey = this.key; } catch {}
                 return this.key;
             } catch (fallbackErr) {
                 console.error('[Vault] Fallback failed:', fallbackErr);
@@ -408,9 +406,6 @@
             );
 
             this.key = key;
-            try {
-                window.__vaultKey = key;
-            } catch { }
             return key;
         },
 
@@ -447,9 +442,6 @@
                 });
             }
             this.key = newKey;
-            try {
-                window.__vaultKey = newKey;
-            } catch { }
             return newKey;
         }
     };
@@ -893,9 +885,8 @@
         // 3. Clear session vault keys & unlock flag
         lockVault();
 
-        // 4. Reset the VaultKeyManager in-memory key
+        // 4. Reset the VaultKeyManager in-memory key (closure-scoped, not on window)
         VaultKeyManager.key = null;
-        try { delete window.__vaultKey; } catch { }
     }
 
     // ─── Login: re-fetch vault files for the authenticated user ────────────────

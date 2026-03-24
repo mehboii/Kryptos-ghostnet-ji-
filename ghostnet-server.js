@@ -160,9 +160,9 @@ function saveMeta() {
 const vaultUpload = multer({
     storage: multer.diskStorage({
         destination: (req, file, cb) => cb(null, VAULT_DIR),
-        filename: (req, file, cb) => cb(null, `tmp_${Date.now()}_${Math.random().toString(36).substring(7)}`)
+        filename: (req, file, cb) => cb(null, `tmp_${crypto.randomBytes(16).toString('hex')}`)
     }),
-    limits: { fileSize: 3 * 1024 * 1024 * 1024 } // 3GB max
+    limits: { fileSize: 100 * 1024 * 1024 } // 100MB max
 });
 
 // ─── Validators ──────────────────────────────────────────────────────────────
@@ -199,7 +199,9 @@ function assertLoopbackUrl(rawUrl, envVarName) {
     return parsed.origin; // scheme + host + port only; no path
 }
 
-const VAULT_ORIGIN = process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL || null;
+const VAULT_ORIGIN = (process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL)
+    ? assertLoopbackUrl(process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL, 'GHOSTNET_VAULT_URL')
+    : null;
 const BRIDGE_ORIGIN = assertLoopbackUrl(
     process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001',
     'GHOSTNET_BRIDGE_URL'
@@ -270,7 +272,9 @@ function loadJson(filePath, fallback) {
         if (fs.existsSync(filePath)) {
             return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
         }
-        fs.writeFileSync(filePath, JSON.stringify(fallback, null, 2));
+        fs.writeFile(filePath, JSON.stringify(fallback, null, 2), (err) => {
+            if (err) console.error(`[DB] Init write error (${path.basename(filePath)}):`, err.message);
+        });
     } catch (e) {
         console.error(`[DB] Load error (${path.basename(filePath)}):`, e.message); // [32] server-side only
     }
@@ -330,10 +334,25 @@ function secureId(prefix = '') {
 // ─── App setup ───────────────────────────────────────────────────────────────
 
 const app = express();
-app.set('trust proxy', 1); // Required for express-rate-limit behind Railway/reverse proxy
+app.set('trust proxy', 'loopback'); // Required for express-rate-limit behind Railway/reverse proxy
 
 // [33] Security headers
-app.use(helmet());
+app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://unpkg.com", "https://cdn.ethers.io"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
+            imgSrc: ["'self'", "data:", "blob:"],
+            connectSrc: ["'self'", "wss:", "ws:"],
+            frameSrc: ["'none'"],
+            objectSrc: ["'none'"],
+        }
+    },
+    frameguard: { action: 'deny' },
+    hsts: { maxAge: 31536000, includeSubDomains: true },
+}));
 
 // [20] Strict CORS — only listed origins with credentials
 app.use(cors({
@@ -499,10 +518,10 @@ app.get('/user/shortcode', requireAuth, (req, res) => {
         // Associate nodeId and displayName if provided
         const updates = {};
         if (req.query.nodeId && !user.nodeId) {
-            updates.nodeId = req.query.nodeId;
+            updates.nodeId = validateNodeId(req.query.nodeId);
         }
         if (req.query.displayName && !user.displayName) {
-            updates.displayName = req.query.displayName;
+            updates.displayName = validateDisplayName(req.query.displayName);
         }
 
         // If user has no shortCode yet, generate one
@@ -1120,6 +1139,7 @@ app.get('/health/bridge', requireAuth, async (_req, res) => { // [09]
 // ─── VAULT (DIRECT IN MAIN SERVER) ─────────────────────────────────────────────
 
 // [10] Allowed Content-Type values for vault upload
+// TODO: Add file magic byte validation server-side to prevent MIME type spoofing
 const VAULT_UPLOAD_MIME_ALLOW = new Set(['multipart/form-data', 'application/octet-stream']);
 
 app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, res) => { // [10]

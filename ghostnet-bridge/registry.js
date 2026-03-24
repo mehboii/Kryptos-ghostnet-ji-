@@ -115,6 +115,12 @@ const NODES = (process.env.REGISTRY_NODES || 'ws://localhost:8080,ws://localhost
     .map(s => s.trim())
     .filter(Boolean);
 
+// Production requires explicit node configuration — never use defaults
+if (!process.env.REGISTRY_NODES && process.env.NODE_ENV === 'production') {
+    console.error('[Registry] FATAL: REGISTRY_NODES must be explicitly configured in production');
+    process.exit(1);
+}
+
 // [FIX B] Bearer token for /nodes endpoint. MUST be set in production.
 const REGISTRY_TOKEN = process.env.REGISTRY_TOKEN || '';
 if (!REGISTRY_TOKEN) {

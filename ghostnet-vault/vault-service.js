@@ -27,6 +27,7 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.GHOSTNET_VAULT_PORT || 4001;
 const CHAIN_URL = process.env.GHOSTNET_CHAIN_URL || 'http://127.0.0.1:4000';
+const JWT_SECRET = process.env.AUTH_JWT_SECRET;
+
+if (!JWT_SECRET) {
+    console.error('FATAL: AUTH_JWT_SECRET not set in environment. Refusing to start.');
+    process.exit(1);
+}
+
+// ─── Auth Middleware ────────────────────────────────────────
+function requireAuth(req, res, next) {
+    const authHeader = req.headers.authorization || '';
+    const xAuthToken = req.headers['x-auth-token'] || req.headers['X-Auth-Token'] || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (xAuthToken || null);
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch (_) {
+        res.status(401).json({ error: 'Invalid or expired token' });
+    }
+}
+
+// ─── Owner Hashing (SHA-256) ────────────────────────────────
+function hashOwner(owner) {
+    return crypto.createHash('sha256').update(String(owner)).digest('hex');
+}
 
 // ─── Storage Directories ────────────────────────────────────
 const VAULT_DIR = path.join(__dirname, 'vault-data');
@@ -107,14 +133,15 @@ app.post('/vault/upload', upload.single('file'), async (req, res) => {
         const filePath = path.join(VAULT_DIR, `${fileId}.enc`);
         fs.renameSync(tmpPath, filePath);
 
-        // Build metadata record
+        // Build metadata record — store owner as SHA-256 hash
+        const ownerHash = hashOwner(owner);
         const record = {
             fileId,
             fileName: fileName || req.file.originalname || 'encrypted_file',
             fileSize: fileSize,
             originalSize: parseInt(originalSize) || fileSize,
             fileHash,
-            owner,
+            owner: ownerHash,
             iv: iv || null,
             authTag: authTag || null,
             uploadedAt: Date.now(),
@@ -166,8 +193,14 @@ app.post('/vault/upload', upload.single('file'), async (req, res) => {
 });
 
 // ─── API: List Files for Owner ──────────────────────────────
-app.get('/vault/files/:owner', (req, res) => {
-    const ownerFiles = fileMeta.filter(f => f.owner === req.params.owner && !f.deleted);
+app.get('/vault/files/:owner', requireAuth, (req, res) => {
+    // Verify authenticated user matches the requested owner
+    const authenticatedId = req.user.id || req.user.sub;
+    if (String(authenticatedId) !== String(req.params.owner)) {
+        return res.status(403).json({ error: 'Access denied: you can only list your own files' });
+    }
+    const ownerHash = hashOwner(req.params.owner);
+    const ownerFiles = fileMeta.filter(f => f.owner === ownerHash && !f.deleted);
     res.json({
         files: ownerFiles.map(f => ({
             fileId: f.fileId,
@@ -183,7 +216,7 @@ app.get('/vault/files/:owner', (req, res) => {
 });
 
 // ─── API: Download Encrypted File ───────────────────────────
-app.get('/vault/download/:fileId', (req, res) => {
+app.get('/vault/download/:fileId', requireAuth, (req, res) => {
     const record = fileMeta.find(f => f.fileId === req.params.fileId && !f.deleted);
     if (!record) return res.status(404).json({ error: 'File not found' });
 
@@ -205,13 +238,14 @@ app.get('/vault/download/:fileId', (req, res) => {
 });
 
 // ─── API: Delete File (User Command Only) ───────────────────
-app.delete('/vault/file/:fileId', async (req, res) => {
-    const { owner } = req.body;
-    if (!owner) return res.status(400).json({ error: 'owner is required' });
+app.delete('/vault/file/:fileId', requireAuth, async (req, res) => {
+    // Use the authenticated user's identity, not the request body
+    const authenticatedId = req.user.id || req.user.sub;
+    const ownerHash = hashOwner(authenticatedId);
 
     const record = fileMeta.find(f => f.fileId === req.params.fileId);
     if (!record) return res.status(404).json({ error: 'File not found' });
-    if (record.owner !== owner) return res.status(403).json({ error: 'Unauthorized' });
+    if (record.owner !== ownerHash) return res.status(403).json({ error: 'Unauthorized' });
 
     // Delete the encrypted file from disk
     const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
@@ -223,7 +257,7 @@ app.delete('/vault/file/:fileId', async (req, res) => {
     saveMeta();
 
     // Anchor deletion on chain
-    await chainAPI('DELETE', `/chain/file/${record.fileId}`, { owner });
+    await chainAPI('DELETE', `/chain/file/${record.fileId}`, { owner: ownerHash });
 
     console.log(`🗑️  Vault: File deleted — ${record.fileName} (${record.fileId})`);
     res.json({ success: true, deleted: record.fileId });
@@ -281,7 +315,7 @@ function formatBytes(bytes) {
 }
 
 // ─── Start ──────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, process.env.VAULT_HOST || '127.0.0.1', () => {
     console.log(`\n🔒 GhostNet Vault Service running on port ${PORT}`);
     console.log(`   Chain API:  ${CHAIN_URL}`);
     console.log(`   Vault Dir:  ${VAULT_DIR}`);
