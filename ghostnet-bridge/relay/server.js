@@ -141,7 +141,13 @@ wss.on('connection', (ws, req) => {
 
                 // 4. Routing Logic
                 if (layer.next !== null) {
-                    // Forwarding
+                    // Forwarding — validate target to prevent SSRF
+                    const parsedNext = new URL(layer.next);
+                    const blockedHosts = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'];
+                    if (blockedHosts.includes(parsedNext.hostname) || parsedNext.hostname.startsWith('10.') || parsedNext.hostname.startsWith('192.168.') || parsedNext.hostname.startsWith('172.')) {
+                        ws.close(4003, 'Invalid relay target');
+                        return;
+                    }
                     console.log(`[Relay:${port}] Forwarding to ${layer.next}`);
                     const forward = new WebSocket(layer.next);
 

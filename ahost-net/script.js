@@ -233,7 +233,7 @@ const ContactManager = {
         } else if (msg.mode === 'DELETE' && type === 'me') {
             // Add Delete Button for sender
             // We'll overlay it or append it
-            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${msg.id}', '${msg.to}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone">🗑️</span>`;
+            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${sanitizeHTML(msg.id)}', '${sanitizeHTML(msg.to)}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone">🗑️</span>`;
         }
 
         el.style.cssText = style;

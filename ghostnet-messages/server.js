@@ -158,9 +158,7 @@ app.delete('/cleanup', requireAuth, async (req, res) => {
     }
 });
 
-const BIND_HOST = process.env.NODE_ENV === 'production'
-    ? '0.0.0.0'
-    : '127.0.0.1';
+const BIND_HOST = process.env.GHOSTNET_MESSAGES_HOST || '127.0.0.1';
 
 app.listen(PORT, BIND_HOST, () => {
     console.log(`🗄️ Message Service running on ${BIND_HOST}:${PORT}`);

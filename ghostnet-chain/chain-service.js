@@ -183,12 +183,9 @@ const HOST = process.env.GHOSTNET_CHAIN_HOST || '127.0.0.1';
 
 // [FIX B] Service-to-service bearer token. MUST be set in production.
 const CHAIN_TOKEN = process.env.GHOSTNET_CHAIN_TOKEN || '';
-if (!CHAIN_TOKEN && process.env.NODE_ENV === 'production') {
-    console.error('[ChainService] FATAL: GHOSTNET_CHAIN_TOKEN must be set in production');
-    process.exit(1);
-}
 if (!CHAIN_TOKEN) {
-    console.warn('[ChainService] WARNING: GHOSTNET_CHAIN_TOKEN is not set — all endpoints are unprotected.');
+    console.error('[ChainService] FATAL: GHOSTNET_CHAIN_TOKEN must be set');
+    process.exit(1);
 }
 
 // [FIX A] CORS origin allowlist.

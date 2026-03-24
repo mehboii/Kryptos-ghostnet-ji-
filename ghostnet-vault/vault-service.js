@@ -83,7 +83,7 @@ function saveMeta() {
 const upload = multer({
     storage: multer.diskStorage({
         destination: (req, file, cb) => cb(null, VAULT_DIR),
-        filename: (req, file, cb) => cb(null, `tmp_${Date.now()}_${Math.random().toString(36).substring(7)}`)
+        filename: (req, file, cb) => cb(null, `tmp_${Date.now()}_${crypto.randomBytes(16).toString('hex')}`)
     }),
     limits: { fileSize: 3 * 1024 * 1024 * 1024 } // 3GB max
 });
@@ -109,11 +109,11 @@ async function chainAPI(method, endpoint, body = null) {
 }
 
 // ─── API: Upload Encrypted File ─────────────────────────────
-app.post('/vault/upload', upload.single('file'), async (req, res) => {
+app.post('/vault/upload', requireAuth, upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    const { owner, fileName, iv, authTag, originalSize } = req.body;
-    if (!owner) return res.status(400).json({ error: 'owner is required' });
+    const { fileName, iv, authTag, originalSize } = req.body;
+    const owner = req.user.id;
 
     try {
         const fileId = crypto.randomUUID();
@@ -264,7 +264,7 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => {
 });
 
 // ─── API: Verify File Against Blockchain ────────────────────
-app.get('/vault/verify/:fileId', async (req, res) => {
+app.get('/vault/verify/:fileId', requireAuth, async (req, res) => {
     const record = fileMeta.find(f => f.fileId === req.params.fileId && !f.deleted);
     if (!record) return res.status(404).json({ error: 'File not found' });
 
