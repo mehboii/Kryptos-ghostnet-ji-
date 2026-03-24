@@ -234,11 +234,17 @@ let registeredNodes = Object.create(null);
 const activeConnections = new Map(); // nodeId → ws
 const messageQueue = new Map(); // nodeId → [pending messages]
 
+const MAX_QUEUE_PER_RECIPIENT = 500;
+
 function queueMessage(recipientId, message) {
     if (!messageQueue.has(recipientId)) {
         messageQueue.set(recipientId, []);
     }
-    messageQueue.get(recipientId).push({
+    const queue = messageQueue.get(recipientId);
+    if (queue.length >= MAX_QUEUE_PER_RECIPIENT) {
+        queue.shift(); // drop oldest to stay within limit
+    }
+    queue.push({
         ...message,
         queuedAt: Date.now()
     });
@@ -1427,8 +1433,14 @@ wss.on('connection', (ws) => {
                     meshPeers.set(clientId, peerEntry);
                     activeConnections.set(clientId, ws); // Fixed tracking
 
-                    // Auto-register
+                    // Auto-register (with per-user limit)
                     if (!registeredNodes[clientId]) {
+                        const MAX_NODES_PER_USER = 20;
+                        const userNodeCount = Object.values(registeredNodes).filter(n => n.ownerId === ws._user.id).length;
+                        if (userNodeCount >= MAX_NODES_PER_USER) {
+                            safeSend(ws, { type: 'ERROR', error: 'Max node registration limit reached' });
+                            return;
+                        }
                         registeredNodes[clientId] = {
                             nodeId: clientId,
                             displayName: clientId.slice(0, 10),

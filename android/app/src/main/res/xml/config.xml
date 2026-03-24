@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<widget version="1.0.0" xmlns="http://www.w3.org/ns/widgets" xmlns:cdv="http://cordova.apache.org/ns/1.0">
+  <access origin="https://ghostnet-ji-production.up.railway.app" />
+  <access origin="https://ghostnet-ji.vercel.app" />
+  <access origin="https://localhost" />
+  <allow-navigation href="https://ghostnet-ji-production.up.railway.app/*" />
+  <allow-navigation href="https://ghostnet-ji.vercel.app/*" />
+  <allow-navigation href="https://localhost/*" />
+  
+  
+</widget>
