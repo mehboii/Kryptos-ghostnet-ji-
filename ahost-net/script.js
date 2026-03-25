@@ -26,6 +26,11 @@ function sanitizeHTML(str) {
     div.textContent = str;
     return div.innerHTML;
 }
+/** Escape for JS string literals inside HTML onclick attributes */
+function _escapeJSString(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
+}
 
 // --- 1. MANAGERS & LOGIC ---
 
@@ -233,7 +238,7 @@ const ContactManager = {
         } else if (msg.mode === 'DELETE' && type === 'me') {
             // Add Delete Button for sender
             // We'll overlay it or append it
-            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${sanitizeHTML(msg.id)}', '${sanitizeHTML(msg.to)}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone">🗑️</span>`;
+            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${_escapeJSString(msg.id)}', '${_escapeJSString(msg.to)}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone">🗑️</span>`;
         }
 
         el.style.cssText = style;

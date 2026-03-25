@@ -199,9 +199,13 @@ function assertLoopbackUrl(rawUrl, envVarName) {
     return parsed.origin; // scheme + host + port only; no path
 }
 
-const VAULT_ORIGIN = (process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL)
-    ? assertLoopbackUrl(process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL, 'GHOSTNET_VAULT_URL')
-    : null;
+// VAULT_URL is operator-configured (docker-compose / env), not user input — skip loopback assertion
+const _rawVault = process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL || '';
+let VAULT_ORIGIN = null;
+if (_rawVault) {
+    try { VAULT_ORIGIN = new URL(_rawVault).origin; }
+    catch (_) { throw new Error('GHOSTNET_VAULT_URL is not a valid URL'); }
+}
 // BRIDGE_URL is operator-configured (docker-compose / env), not user input — skip loopback assertion
 const _rawBridge = process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001';
 let BRIDGE_ORIGIN;
@@ -654,7 +658,11 @@ function requireAuth(req, res, next) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (xAuthToken || null);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
     try {
-        req.user = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
+        // Normalize: email-auth uses `userId`, node-auth uses `id`
+        decoded.id = decoded.id || decoded.userId;
+        if (!decoded.id) return res.status(401).json({ error: 'Invalid token: missing user identifier' });
+        req.user = decoded;
         next();
     } catch (_) {
         res.status(401).json({ error: 'Invalid or expired token' });

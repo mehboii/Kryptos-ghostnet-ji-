@@ -20,6 +20,13 @@ function _escapeHTML(str) {
     return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+/** Escape for embedding inside a JS string literal within an HTML onclick attribute.
+ *  Must escape at JS level (backslash) so HTML entity decoding cannot break out. */
+function _escapeJSString(str) {
+    if (typeof str !== 'string') return '';
+    return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
+}
+
 /** Escape user-controlled strings before inserting into CSS.querySelector() calls. */
 function _escapeSelector(str) {
     if (typeof str !== 'string') return '';
@@ -1123,7 +1130,7 @@ const UI = {
                     <input type="number" id="send-amount" class="modal-input" placeholder="0.00">
                 </div>
 
-                <button class="btn-primary" onclick="UI.submitSend('${_escapeHTML(symbol)}')">CONFIRM TRANSACTION</button>
+                <button class="btn-primary" onclick="UI.submitSend('${_escapeJSString(symbol)}')">CONFIRM TRANSACTION</button>
             </div>
         `;
         document.body.appendChild(modal);
@@ -1812,11 +1819,11 @@ const UI = {
 
                     <!-- Bottom: Actions -->
                     <div class="wlt-card-actions">
-                         <button class="wlt-btn wlt-btn-send" onclick="UI.openSend('${_escapeHTML(asset.symbol)}')">
+                         <button class="wlt-btn wlt-btn-send" onclick="UI.openSend('${_escapeJSString(asset.symbol)}')">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                             Send
                          </button>
-                         <button class="wlt-btn wlt-btn-recv" onclick="UI.openReceive('${_escapeHTML(asset.symbol)}', '${_escapeHTML(asset.address || "")}')">
+                         <button class="wlt-btn wlt-btn-recv" onclick="UI.openReceive('${_escapeJSString(asset.symbol)}', '${_escapeJSString(asset.address || "")}')">
                             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
                             Receive
                          </button>
@@ -2070,7 +2077,7 @@ const UI = {
             if (parts.length >= 4) {
                 fileId = parts[0];
                 mimeType = parts[1];
-                encKeyStr = parts[1] || '';
+                encKeyStr = parts[2] || '';
                 fileName = parts.slice(3).join(':');
             } else if (parts.length === 3) {
                 fileId = parts[0];
@@ -2084,7 +2091,7 @@ const UI = {
             msg.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
                     <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${_escapeHTML(fileName)}</div>
-                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${_escapeHTML(fileId)}', '${_escapeHTML(encKeyStr)}').then(() => this.textContent='Decrypted &amp; Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
+                    <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${_escapeJSString(fileId)}', '${_escapeJSString(encKeyStr)}').then(() => this.textContent='Decrypted &amp; Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
                         Secure Download
                     </button>
                 </div>
