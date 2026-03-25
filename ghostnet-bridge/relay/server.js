@@ -165,26 +165,12 @@ wss.on('connection', (ws, req) => {
 
                     // Block loopback (all representations), private, and reserved ranges
                     const h = parsedNext.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
-                    // Block internal hostnames (Docker service names), loopback, private, reserved
-                    const BLOCKED_HOSTNAMES = new Set([
-                        'localhost', '0.0.0.0',
-                        'ghostnet-server', 'ghostnet-bridge', 'ghostnet-client',
-                        'ghostnet-messages', 'ghostnet-relay-1', 'ghostnet-relay-2',
-                        'ghostnet-relay-3', 'ghostnet-registry', 'ghostnet-chain', 'ghostnet-vault'
-                    ]);
-                    const isBlocked =
-                        BLOCKED_HOSTNAMES.has(h) ||
-                        /^127\.\d+\.\d+\.\d+$/.test(h) ||           // 127.0.0.0/8
-                        /^10\.\d+\.\d+\.\d+$/.test(h) ||            // 10.0.0.0/8
-                        /^192\.168\.\d+\.\d+$/.test(h) ||           // 192.168.0.0/16
-                        /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(h) || // 172.16-31.0.0/12
-                        /^169\.254\.\d+\.\d+$/.test(h) ||           // link-local
-                        /^0\./.test(h) ||                            // 0.0.0.0/8
-                        h === '::1' || h === '::' ||                 // IPv6 loopback
-                        h.startsWith('::ffff:127.') ||               // IPv4-mapped loopback
-                        h.startsWith('fe80:') ||                     // IPv6 link-local
-                        /^\d+$/.test(h) ||                           // integer IP notation
-                        /^ghostnet-/.test(h);                        // any ghostnet-* Docker service
+                    // SSRF defense: only allow relay targets from an explicit allowlist.
+                    // Checking hostnames alone is insufficient — an attacker-controlled
+                    // domain can resolve to 127.0.0.1, bypassing string-based blocklists.
+                    const ALLOWED_RELAY_HOSTS = (process.env.ALLOWED_RELAY_HOSTS || '').split(',').map(s => s.trim()).filter(Boolean);
+                    const isAllowed = ALLOWED_RELAY_HOSTS.length > 0 && ALLOWED_RELAY_HOSTS.includes(h);
+                    const isBlocked = !isAllowed;
                     if (isBlocked) {
                         ws.close(4003, 'Invalid relay target');
                         return;

@@ -1038,7 +1038,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     scheduleWrite(CONVOS_FILE, conversations); // [12]
 
     const msg = {
-        id: req.body.id || secureId('msg_'),
+        id: secureId('msg_'), // Always server-generated — never trust client-supplied IDs
         convoId: convo.id,
         senderId,
         receiverId,
@@ -1047,6 +1047,11 @@ app.post('/message', requireAuth, (req, res) => { // [02]
         delivered: false,
     };
 
+    // Cap messages array to prevent unbounded memory growth
+    const MAX_MESSAGES = 100000;
+    if (messages.length >= MAX_MESSAGES) {
+        messages.splice(0, messages.length - MAX_MESSAGES + 1000); // trim oldest 1000
+    }
     messages.push(msg);
     scheduleWrite(MESSAGES_FILE, messages); // [12]
 
@@ -1228,6 +1233,13 @@ app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, r
             deleted: false
         };
 
+        // Cap fileMeta to prevent unbounded growth
+        const MAX_FILE_META = 50000;
+        if (fileMeta.length >= MAX_FILE_META) {
+            const delIdx = fileMeta.findIndex(f => f.deleted);
+            if (delIdx !== -1) fileMeta.splice(delIdx, 1);
+            else fileMeta.shift();
+        }
         fileMeta.push(record);
         saveMeta();
 
@@ -1588,16 +1600,27 @@ wss.on('connection', (ws) => {
                     const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Date.now();
                     let wsDelivered = false;
 
+                    // Build a sanitized message — never forward raw attacker-controlled fields
+                    const msgId = secureId('msg_');
+                    const safeMsg = {
+                        type: msg.type,
+                        id: msgId,
+                        from: senderId,
+                        to: safeTarget,
+                        content,
+                        timestamp,
+                    };
+
                     const targetWs = activeConnections.get(safeTarget);
                     if (targetWs && targetWs.readyState === 1) {
-                        targetWs.send(JSON.stringify(msg));
+                        targetWs.send(JSON.stringify(safeMsg));
                         wsDelivered = true;
                         // Send delivery receipt to sender
-                        ws.send(JSON.stringify({ type: 'receipt', status: 'delivered', msgId: msg.id || msg.timestamp }));
+                        ws.send(JSON.stringify({ type: 'receipt', status: 'delivered', msgId }));
                     } else {
-                        queueMessage(safeTarget, msg);
+                        queueMessage(safeTarget, safeMsg);
                         // Send storage receipt to sender
-                        ws.send(JSON.stringify({ type: 'receipt', status: 'queued', msgId: msg.id || msg.timestamp }));
+                        ws.send(JSON.stringify({ type: 'receipt', status: 'queued', msgId }));
                     }
                     
                     // Legacy persist for internal tracking
