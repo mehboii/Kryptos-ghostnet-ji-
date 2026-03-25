@@ -698,8 +698,14 @@ app.post('/register-node', requireAuth, (req, res) => { // [01]
     // Basic policy: node owner is the authenticated user
     const address = typeof req.body.address === 'string' ? req.body.address.slice(0, 64) : null;
     const publicKey = typeof req.body.publicKey === 'string' ? req.body.publicKey.slice(0, 512) : null;
-    // Avatar is a base64 string, usually < 200KB. Let's clip to 512KB.
-    const avatar = typeof req.body.avatar === 'string' ? req.body.avatar.slice(0, 512 * 1024) : null;
+    // Avatar must be a valid base64 data URI image, clipped to 512KB
+    let avatar = null;
+    if (typeof req.body.avatar === 'string' && req.body.avatar.length > 0) {
+        if (!/^data:image\/(png|jpeg|webp|gif);base64,/.test(req.body.avatar)) {
+            return res.status(400).json({ error: 'Invalid avatar format' });
+        }
+        avatar = req.body.avatar.slice(0, 512 * 1024);
+    }
 
     registeredNodes[nodeId] = {
         nodeId,
@@ -1216,6 +1222,9 @@ app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
     const record = fileMeta.find(f => f.fileId === fileId && !f.deleted);
     if (!record) return res.status(404).json({ error: 'File not found' });
 
+    // Verify authenticated user owns this file
+    if (record.owner !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
     const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File data missing' });
 
@@ -1242,7 +1251,9 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
 
     try {
-        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/verify/${encodeURIComponent(fileId)}`);
+        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/verify/${encodeURIComponent(fileId)}`, {
+            headers: { 'Authorization': req.headers.authorization || '', 'X-Auth-Token': req.headers['x-auth-token'] || '' }
+        });
         res.status(proxyRes.status).json(await proxyRes.json());
     } catch (_) {
         res.status(502).json({ error: 'Vault service unavailable' }); // [32]
@@ -1280,7 +1291,7 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]
         // [19] Do NOT forward req.body — vault authenticates deletion via its own mechanism
         const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/file/${encodeURIComponent(fileId)}`, {
             method: 'DELETE',
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': 'application/json', 'Authorization': req.headers.authorization || '', 'X-Auth-Token': req.headers['x-auth-token'] || '' },
         });
         res.status(proxyRes.status).json(await proxyRes.json());
     } catch (_) {
