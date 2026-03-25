@@ -178,7 +178,7 @@ wss.on('connection', (ws, req) => {
                     if (layer.payload.startsWith && layer.payload.startsWith("__DUMMY__")) {
                         console.log(`[Relay:${port}] Dummy packet dropped`);
                     } else {
-                        console.log(`[Relay:${port}] Final Payload:`, layer.payload);
+                        console.log(`[Relay:${port}] Final payload delivered (${typeof layer.payload === 'string' ? layer.payload.length : 0} bytes)`);
                     }
                 }
             }

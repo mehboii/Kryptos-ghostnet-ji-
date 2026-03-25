@@ -49,7 +49,11 @@ function requireAuth(req, res, next) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (xAuthToken || null);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
     try {
-        req.user = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET);
+        // Normalize JWT field: email-auth uses `userId`, node-auth uses `id`
+        decoded.id = decoded.id || decoded.userId;
+        if (!decoded.id) return res.status(401).json({ error: 'Invalid token: missing user identifier' });
+        req.user = decoded;
         next();
     } catch (_) {
         res.status(401).json({ error: 'Invalid or expired token' });
