@@ -142,9 +142,25 @@ wss.on('connection', (ws, req) => {
                 // 4. Routing Logic
                 if (layer.next !== null) {
                     // Forwarding — validate target to prevent SSRF
-                    const parsedNext = new URL(layer.next);
-                    const blockedHosts = ['127.0.0.1', 'localhost', '::1', '0.0.0.0'];
-                    if (blockedHosts.includes(parsedNext.hostname) || parsedNext.hostname.startsWith('10.') || parsedNext.hostname.startsWith('192.168.') || parsedNext.hostname.startsWith('172.')) {
+                    let parsedNext;
+                    try { parsedNext = new URL(layer.next); }
+                    catch (_) { ws.close(4003, 'Invalid relay target'); return; }
+
+                    // Block loopback (all representations), private, and reserved ranges
+                    const h = parsedNext.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+                    const isBlocked =
+                        h === 'localhost' || h === '0.0.0.0' ||
+                        /^127\.\d+\.\d+\.\d+$/.test(h) ||           // 127.0.0.0/8
+                        /^10\.\d+\.\d+\.\d+$/.test(h) ||            // 10.0.0.0/8
+                        /^192\.168\.\d+\.\d+$/.test(h) ||           // 192.168.0.0/16
+                        /^172\.(1[6-9]|2\d|3[01])\.\d+\.\d+$/.test(h) || // 172.16-31.0.0/12
+                        /^169\.254\.\d+\.\d+$/.test(h) ||           // link-local
+                        /^0\./.test(h) ||                            // 0.0.0.0/8
+                        h === '::1' || h === '::' ||                 // IPv6 loopback
+                        h.startsWith('::ffff:127.') ||               // IPv4-mapped loopback
+                        h.startsWith('fe80:') ||                     // IPv6 link-local
+                        /^\d+$/.test(h);                             // integer IP notation
+                    if (isBlocked) {
                         ws.close(4003, 'Invalid relay target');
                         return;
                     }

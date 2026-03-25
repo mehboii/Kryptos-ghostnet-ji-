@@ -220,6 +220,10 @@ app.get('/vault/download/:fileId', requireAuth, (req, res) => {
     const record = fileMeta.find(f => f.fileId === req.params.fileId && !f.deleted);
     if (!record) return res.status(404).json({ error: 'File not found' });
 
+    // Verify authenticated user owns this file
+    const ownerHash = hashOwner(req.user.id || req.user.sub);
+    if (record.owner !== ownerHash) return res.status(403).json({ error: 'Access denied' });
+
     const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File data missing' });
 
@@ -267,6 +271,10 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => {
 app.get('/vault/verify/:fileId', requireAuth, async (req, res) => {
     const record = fileMeta.find(f => f.fileId === req.params.fileId && !f.deleted);
     if (!record) return res.status(404).json({ error: 'File not found' });
+
+    // Verify authenticated user owns this file
+    const ownerHash = hashOwner(req.user.id || req.user.sub);
+    if (record.owner !== ownerHash) return res.status(403).json({ error: 'Access denied' });
 
     // Verify hash on disk matches what we stored
     const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);

@@ -1607,7 +1607,7 @@ const UI = {
         // Load History
         if (convoId && convoId !== 'new') {
             try {
-                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`, {
+                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${encodeURIComponent(convoId)}`, {
                     headers: getAuthHeaders()
                 });
                 if (res.ok) {
