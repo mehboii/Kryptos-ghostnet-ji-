@@ -2,6 +2,7 @@ import express from 'express';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import cors from 'cors';
+import crypto from 'crypto';
 import { requireAuth } from '../auth/auth.middleware.js';
 
 const app = express();
@@ -88,7 +89,7 @@ app.post('/message', requireAuth, async (req, res) => {
             userId, Date.now()
         );
 
-        const msgId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+        const msgId = Date.now().toString(36) + crypto.randomBytes(8).toString('hex');
         const timestamp = Date.now();
 
         await db.run(
@@ -148,7 +149,11 @@ app.delete('/cleanup', requireAuth, async (req, res) => {
     const { ttl } = req.query; // Time to live in ms
     if (!ttl) return res.status(400).json({ error: "Missing ttl (ms)" });
 
-    const cutoff = Date.now() - parseInt(ttl);
+    const parsed = parseInt(ttl, 10);
+    if (!Number.isFinite(parsed) || parsed < 0 || parsed > 31536000000) {
+        return res.status(400).json({ error: "ttl must be 0-31536000000 (1 year max)" });
+    }
+    const cutoff = Date.now() - parsed;
 
     try {
         const result = await db.run('DELETE FROM messages WHERE timestamp < ?', cutoff);

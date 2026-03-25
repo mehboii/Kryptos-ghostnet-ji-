@@ -23,7 +23,7 @@
         script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com https://cdn.ethers.io;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com;
         font-src 'self' https://fonts.gstatic.com data:;
-        img-src 'self' data: blob: https:;
+        img-src 'self' data: blob: https://api.qrserver.com https://ghostnet-ji-production.up.railway.app;
         connect-src 'self' wss: ws: https:;
         worker-src 'self' blob:;
         object-src 'none';
@@ -52,6 +52,7 @@
     <!-- ethers.js from cdnjs (already in CSP allowlist, no SRI mismatch) -->
     <script
         src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.7.0/ethers.umd.min.js"
+        integrity="sha384-u0NcfwGT0MUYq60cVWPN34m99JhiJTCRG+0JOgmAQ++pTQ4w6AKkwhA9Wj/VjNRi"
         crossorigin="anonymous"></script>
     <script>
         // Local fallback for ethers.js if CDN is blocked on mobile
@@ -62,9 +63,9 @@
             document.head.appendChild(script);
         }
     </script>
-    <!-- TODO: Add exact SRI integrity hash for lucide (generate with: curl -s https://unpkg.com/lucide@0.344.0 | openssl dgst -sha384 -binary | openssl base64 -A) -->
     <script
         src="https://unpkg.com/lucide@0.344.0"
+        integrity="sha384-tTkFttkBclaU1cloKwOi9xk3pbao3VZxTjLNBt8iFABWDBQibbAbWpVmO28zMuxq"
         crossorigin="anonymous"></script>
 
     <!-- Logic Scripts -->
@@ -1445,10 +1446,17 @@
                     let _pendingIdentity = null; // holds mnemonic + keys during onboarding
                     let _confirmPositions = [];  // 3 random seed word positions to verify
 
-                    // PIN brute-force rate limiting
-                    let _pinFailedAttempts = 0;
-                    let _pinLockoutUntil = 0;
+                    // PIN brute-force rate limiting — persisted in sessionStorage to survive reloads
+                    let _pinFailedAttempts = (() => {
+                        try { const v = parseInt(sessionStorage.getItem('_pinFails'), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; }
+                    })();
+                    let _pinLockoutUntil = (() => {
+                        try { const v = parseInt(sessionStorage.getItem('_pinLockout'), 10); return Number.isFinite(v) ? v : 0; } catch { return 0; }
+                    })();
                     let _pinLockoutTimer = null;
+                    function _persistPinState() {
+                        try { sessionStorage.setItem('_pinFails', String(_pinFailedAttempts)); sessionStorage.setItem('_pinLockout', String(_pinLockoutUntil)); } catch {}
+                    }
 
                     // Session token with expiry (1 hour)
                     const TOKEN_EXPIRY_MS = 3600000; // 1 hour
@@ -1857,6 +1865,7 @@
                             // Reset rate limiter on success
                             _pinFailedAttempts = 0;
                             _pinLockoutUntil = 0;
+                            _persistPinState();
                             if (_pinLockoutTimer) { clearInterval(_pinLockoutTimer); _pinLockoutTimer = null; }
 
                             // Set global identity state
@@ -1931,11 +1940,13 @@
                             if (GhostIdentity.isLocked()) {
                                 showScreen('locked');
                             } else {
-                                // Rate limiting: track failed PIN attempts
+                                // Rate limiting: track failed PIN attempts (persisted across reloads)
                                 _pinFailedAttempts++;
+                                _persistPinState();
                                 if (_pinFailedAttempts >= 5) {
                                     _pinLockoutUntil = Date.now() + 30000; // 30 second lockout
                                     _pinFailedAttempts = 0;
+                                    _persistPinState();
                                     let secsLeft = 30;
                                     err.textContent = `Too many failed attempts. Locked for ${secsLeft}s.`;
                                     _pinLockoutTimer = setInterval(() => {

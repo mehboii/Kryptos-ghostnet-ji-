@@ -202,10 +202,11 @@ function assertLoopbackUrl(rawUrl, envVarName) {
 const VAULT_ORIGIN = (process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL)
     ? assertLoopbackUrl(process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL, 'GHOSTNET_VAULT_URL')
     : null;
-const BRIDGE_ORIGIN = assertLoopbackUrl(
-    process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001',
-    'GHOSTNET_BRIDGE_URL'
-);
+// BRIDGE_URL is operator-configured (docker-compose / env), not user input — skip loopback assertion
+const _rawBridge = process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001';
+let BRIDGE_ORIGIN;
+try { BRIDGE_ORIGIN = new URL(_rawBridge).origin; }
+catch (_) { throw new Error('GHOSTNET_BRIDGE_URL is not a valid URL'); }
 
 // ─── Async debounced file writer ─────────────────────────────────────────────
 // [12] Non-blocking writes; last-write-wins within a tick to coalesce rapid saves
