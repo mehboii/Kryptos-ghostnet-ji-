@@ -689,14 +689,19 @@ function requireAuth(req, res, next) {
 
 // ─── DECENTRALIZED NODE AUTH ──────────────────────────────────────────────────
 
-app.post('/auth/node', (req, res) => {
+app.post('/auth/node', requireAuth, (req, res) => {
     let nodeId;
     try { nodeId = validateNodeId(req.body?.nodeId); }
     catch (e) { return res.status(400).json({ error: e.message }); }
 
-    // Issue a JWT representing the node itself (replaces centralized email auth)
-    // Using expiresIn 7d, same as the frontend session
-    const token = jwt.sign({ id: nodeId, isNode: true }, JWT_SECRET, { expiresIn: '7d' });
+    // Verify the authenticated user owns this node (or it's unowned)
+    const existing = registeredNodes[nodeId];
+    if (existing && existing.ownerId && existing.ownerId !== req.user.id) {
+        return res.status(403).json({ error: 'Not authorized to claim this node' });
+    }
+
+    // Issue a JWT representing the node itself, bound to authenticated user
+    const token = jwt.sign({ id: nodeId, isNode: true, ownerId: req.user.id }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ success: true, token });
 });
 
@@ -1008,7 +1013,14 @@ app.post('/message', requireAuth, (req, res) => { // [02]
         c?.participants?.includes(senderId) && c.participants.includes(receiverId)
     );
 
+    const MAX_CONVERSATIONS = 50000;
     if (!convo) {
+        // Cap total conversations to prevent memory exhaustion
+        if (conversations.length >= MAX_CONVERSATIONS) {
+            // Evict oldest conversation
+            conversations.sort((a, b) => (a.updated || 0) - (b.updated || 0));
+            conversations.shift();
+        }
         convo = {
             id: secureId('convo_'), // [14][25]
             participants: [senderId, receiverId],
@@ -1633,12 +1645,13 @@ wss.on('connection', (ws) => {
 
     ws.on('close', () => {
         // [Bridge Fix] Remove from active connections
+        const staleIds = [];
         for (const [nodeId, conn] of activeConnections.entries()) {
-            if (conn === ws) {
-                activeConnections.delete(nodeId);
-                console.log(`[Bridge] Node disconnected: ${nodeId}`);
-                break;
-            }
+            if (conn === ws) staleIds.push(nodeId);
+        }
+        for (const id of staleIds) {
+            activeConnections.delete(id);
+            console.log(`[Bridge] Node disconnected: ${id}`);
         }
 
         // [27] Collect IDs first, then delete after iteration

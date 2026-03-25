@@ -18,6 +18,7 @@ const RELAY_TOKEN = process.env.RELAY_TOKEN || '';
 // --- LEVEL 10: REPLAY PROTECTION ---
 const seen = new Map(); // id -> timestamp
 const MAX_AGE = 30; // seconds
+const MAX_SEEN_ENTRIES = 50000; // cap to prevent memory exhaustion under flood
 
 // Cleanup interval (Every 5s)
 setInterval(() => {
@@ -38,11 +39,16 @@ function sendDecoy(ws) {
 }
 
 wss.on('connection', (ws, req) => {
-    // Basic token authentication
+    // Token authentication — constant-time comparison to prevent timing attacks
     if (RELAY_TOKEN) {
         const url = new URL(req.url, `http://localhost:${port}`);
         const token = url.searchParams.get('token') || '';
-        if (token !== RELAY_TOKEN) {
+        const a = Buffer.from(token.padEnd(RELAY_TOKEN.length));
+        const b = Buffer.from(RELAY_TOKEN.padEnd(token.length));
+        const maxLen = Math.max(a.length, b.length);
+        const aBuf = Buffer.alloc(maxLen); a.copy(aBuf);
+        const bBuf = Buffer.alloc(maxLen); b.copy(bBuf);
+        if (!crypto.timingSafeEqual(aBuf, bBuf) || token.length !== RELAY_TOKEN.length) {
             console.log(`[Relay:${port}] Unauthorized connection rejected`);
             ws.close(4001, 'Unauthorized');
             return;
@@ -70,7 +76,13 @@ wss.on('connection', (ws, req) => {
             }
 
             // Handle Client Public Key -> Derive Session Key (Level 9)
+            // Only allow ONE key exchange per connection to prevent re-keying attacks
             if (msg.type === "client_pub") {
+                if (connSessionKey) {
+                    console.log(`[Relay:${port}] Re-keying rejected — session already established`);
+                    ws.close(4004, 'Session already established');
+                    return;
+                }
                 const clientPub = Buffer.from(msg.pub, "hex");
                 const shared = crypto.diffieHellman({
                     privateKey: relayKeyPair.privateKey,
@@ -137,6 +149,11 @@ wss.on('connection', (ws, req) => {
                     sendDecoy(ws);
                     return;
                 }
+                // Cap seen Map to prevent memory exhaustion
+                if (seen.size >= MAX_SEEN_ENTRIES) {
+                    const oldest = seen.keys().next().value;
+                    seen.delete(oldest);
+                }
                 seen.set(layer.id, layer.ts);
 
                 // 4. Routing Logic
@@ -148,8 +165,15 @@ wss.on('connection', (ws, req) => {
 
                     // Block loopback (all representations), private, and reserved ranges
                     const h = parsedNext.hostname.replace(/^\[|\]$/g, ''); // strip IPv6 brackets
+                    // Block internal hostnames (Docker service names), loopback, private, reserved
+                    const BLOCKED_HOSTNAMES = new Set([
+                        'localhost', '0.0.0.0',
+                        'ghostnet-server', 'ghostnet-bridge', 'ghostnet-client',
+                        'ghostnet-messages', 'ghostnet-relay-1', 'ghostnet-relay-2',
+                        'ghostnet-relay-3', 'ghostnet-registry', 'ghostnet-chain', 'ghostnet-vault'
+                    ]);
                     const isBlocked =
-                        h === 'localhost' || h === '0.0.0.0' ||
+                        BLOCKED_HOSTNAMES.has(h) ||
                         /^127\.\d+\.\d+\.\d+$/.test(h) ||           // 127.0.0.0/8
                         /^10\.\d+\.\d+\.\d+$/.test(h) ||            // 10.0.0.0/8
                         /^192\.168\.\d+\.\d+$/.test(h) ||           // 192.168.0.0/16
@@ -159,7 +183,8 @@ wss.on('connection', (ws, req) => {
                         h === '::1' || h === '::' ||                 // IPv6 loopback
                         h.startsWith('::ffff:127.') ||               // IPv4-mapped loopback
                         h.startsWith('fe80:') ||                     // IPv6 link-local
-                        /^\d+$/.test(h);                             // integer IP notation
+                        /^\d+$/.test(h) ||                           // integer IP notation
+                        /^ghostnet-/.test(h);                        // any ghostnet-* Docker service
                     if (isBlocked) {
                         ws.close(4003, 'Invalid relay target');
                         return;
