@@ -242,9 +242,26 @@ const activeConnections = new Map(); // nodeId → ws
 const messageQueue = new Map(); // nodeId → [pending messages]
 
 const MAX_QUEUE_PER_RECIPIENT = 500;
+const MAX_QUEUED_RECIPIENTS = 5000;   // cap total recipient slots to prevent memory exhaustion
+const QUEUE_TTL_MS = 3600000;         // 1 hour — evict stale queues
+
+// Periodic cleanup of stale queued recipients
+setInterval(() => {
+    const now = Date.now();
+    for (const [rid, queue] of messageQueue) {
+        if (!queue.length) { messageQueue.delete(rid); continue; }
+        const newest = queue[queue.length - 1].queuedAt || 0;
+        if (now - newest > QUEUE_TTL_MS) messageQueue.delete(rid);
+    }
+}, 60000).unref();
 
 function queueMessage(recipientId, message) {
     if (!messageQueue.has(recipientId)) {
+        // Enforce max recipients — evict oldest entry if at capacity
+        if (messageQueue.size >= MAX_QUEUED_RECIPIENTS) {
+            const oldest = messageQueue.keys().next().value;
+            messageQueue.delete(oldest);
+        }
         messageQueue.set(recipientId, []);
     }
     const queue = messageQueue.get(recipientId);
