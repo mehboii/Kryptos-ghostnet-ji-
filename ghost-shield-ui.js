@@ -427,14 +427,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderThreats() {
             const container = document.getElementById('threat-list-container');
             if(!container) return;
-            
+
             if (!window.SignalIntelligence) return;
-            // mock some signals if empty for demo purposes
-            if (window.SignalIntelligence.signals.size === 0) {
-                 window.SignalIntelligence.processSignal({ mac: '00:1A:2B:3C:4D:5E', rssi: -45, name: '', channels: [1,6,11] }); // Surveillance
-                 window.SignalIntelligence.processSignal({ mac: 'A2:B3:C4:D5:E6:F7', rssi: -75, name: 'iPhone', hasWiFi: true, hasBLE:true }); // Safe
-                 window.SignalIntelligence.processSignal({ mac: '0xa752f...', rssi: -50, isGhostNode: true }); // GhostNode
-            }
 
             const signals = window.SignalIntelligence.getSignalReport();
             
@@ -477,12 +471,23 @@ document.addEventListener('DOMContentLoaded', () => {
             this.updateView();
             // register listeners for live updates
             window.addEventListener('ghostShield:statsUpdated', () => this.updateStats());
-            
-            // Render threats periodically
+
+            // Listen for real scan completions from SignalIntelService
+            window.addEventListener('signalIntel:scanComplete', () => {
+                this.renderThreats();
+                this.updateStats();
+            });
+
+            // Render threats periodically (fallback if no scan events)
             this.scanInterval = setInterval(() => {
                 this.renderThreats();
                 this.updateStats();
             }, 3000);
+
+            // Auto-start Signal Intelligence service if available
+            if (window.SignalIntelService && !window.SignalIntelService.isActive()) {
+                window.SignalIntelService.start();
+            }
         }
     };
 

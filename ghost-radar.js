@@ -142,9 +142,6 @@ class GhostRadarEngine {
     this.scanning = false;
     this.onUpdate?.(this.results);
     
-    // 7. Empty state — if zero signals...
-    this._renderUI();
-
     return this.results;
   }
 
@@ -207,13 +204,5 @@ class GhostRadarEngine {
 
 window.GhostRadar = new GhostRadarEngine();
 
-// Safe UI monkeypatch honoring "Do NOT generate or show any fake data" constraint if GhostShieldUI runs automatically
-document.addEventListener('DOMContentLoaded', () => {
-    setTimeout(() => {
-        if (window.GhostShieldUI) {
-            window.GhostShieldUI.renderThreats = function() {
-                // Halted in favor of radar real engine.
-            };
-        }
-    }, 100);
-});
+// GhostRadar results are now fed through SignalIntelService → SignalIntelligence
+// and rendered by ghost-shield-ui.js via the signalIntel:scanComplete event.
