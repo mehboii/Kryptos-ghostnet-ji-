@@ -171,6 +171,14 @@ app.post('/vault/upload', requireAuth, upload.single('file'), async (req, res) =
             record.blockNumber = chainResult.record.blockNumber;
         }
 
+        // Cap fileMeta to prevent unbounded memory growth
+        const MAX_FILE_META = 50000;
+        if (fileMeta.length >= MAX_FILE_META) {
+            // Evict oldest deleted records first, then oldest overall
+            const delIdx = fileMeta.findIndex(f => f.deleted);
+            if (delIdx !== -1) fileMeta.splice(delIdx, 1);
+            else fileMeta.shift();
+        }
         fileMeta.push(record);
         saveMeta();
 
