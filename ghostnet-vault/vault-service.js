@@ -92,8 +92,56 @@ const upload = multer({
     limits: { fileSize: 3 * 1024 * 1024 * 1024 } // 3GB max
 });
 
-app.use(cors());
-app.use(express.json());
+// ─── Security Headers (inline helmet equivalent) ────────────
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '0');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
+
+// ─── CORS — explicit allowlist, NOT wildcard ─────────────────
+const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,http://localhost:8080,http://127.0.0.1:8080')
+    .split(',').map(o => o.trim()).filter(Boolean);
+
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+        cb(new Error('CORS: origin not allowed'));
+    },
+    credentials: true,
+}));
+
+// ─── Rate Limiting ───────────────────────────────────────────
+const _rl = new Map();
+const RL_WINDOW = 60000;
+const RL_MAX = 60;
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, e] of _rl) {
+        if (now - e.start > RL_WINDOW * 2) _rl.delete(ip);
+    }
+}, RL_WINDOW).unref();
+
+app.use((req, res, next) => {
+    const ip = req.ip || req.socket?.remoteAddress || 'unknown';
+    const now = Date.now();
+    const entry = _rl.get(ip);
+    if (!entry || now - entry.start > RL_WINDOW) {
+        _rl.set(ip, { count: 1, start: now });
+        return next();
+    }
+    entry.count++;
+    if (entry.count > RL_MAX) {
+        return res.status(429).json({ error: 'Too many requests' });
+    }
+    next();
+});
+
+app.use(express.json({ limit: '1mb' }));
 
 // ─── Helper: Call Chain Service ─────────────────────────────
 async function chainAPI(method, endpoint, body = null) {
@@ -199,8 +247,8 @@ app.post('/vault/upload', requireAuth, upload.single('file'), async (req, res) =
         });
 
     } catch (err) {
-        console.error('Upload error:', err);
-        res.status(500).json({ error: 'Upload failed: ' + err.message });
+        console.error('Upload error:', err.message);
+        res.status(500).json({ error: 'Upload failed' });
     }
 });
 
@@ -292,8 +340,14 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => {
     const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
     let diskHash = null;
     if (fs.existsSync(filePath)) {
-        const buf = fs.readFileSync(filePath);
-        diskHash = crypto.createHash('sha256').update(buf).digest('hex');
+        // Stream-based hashing to avoid loading 3GB files into memory
+        diskHash = await new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const stream = fs.createReadStream(filePath);
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('end', () => resolve(hash.digest('hex')));
+            stream.on('error', reject);
+        });
     }
 
     const integrity = diskHash === record.fileHash;
