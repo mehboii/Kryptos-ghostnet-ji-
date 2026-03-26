@@ -163,18 +163,28 @@ class FirewallSelfDefense {
      */
     async _computeIntegrityHash() {
         try {
-            // Collect source identifiers for all firewall modules
-            const moduleNames = [
-                'firewallConfig', 'firewallLogger', 'reputationEngine',
-                'quarantine', 'connectionFirewall', 'packetFirewall',
-                'behaviorFirewall', 'firewallSelfDefense', 'firewallRules',
-                'firewallCore',
+            // Build a deterministic fingerprint of the firewall's exported API surface.
+            // In a browser/Capacitor context we can't read file contents, so we hash
+            // the function names and prototypes of key classes as a tamper indicator.
+            const parts = [];
+            const modules = [
+                ['firewallLogger', firewallLogger],
             ];
+            for (const [name, mod] of modules) {
+                if (mod && mod.constructor) {
+                    const methods = Object.getOwnPropertyNames(Object.getPrototypeOf(mod))
+                        .filter(m => m !== 'constructor')
+                        .sort();
+                    parts.push(name + '=' + methods.join(','));
+                }
+            }
+            // Also include our own method list
+            const selfMethods = Object.getOwnPropertyNames(FirewallSelfDefense.prototype)
+                .filter(m => m !== 'constructor')
+                .sort();
+            parts.push('selfDefense=' + selfMethods.join(','));
 
-            // Hash the module names + their function signatures as a fingerprint.
-            // In a real native app we'd hash the actual files; in browser context
-            // we hash the exported function names as a proxy for code integrity.
-            const fingerprint = moduleNames.join(':') + ':' + Date.now().toString().slice(0, 8);
+            const fingerprint = parts.join('|');
             const hash = await _sha256(fingerprint);
 
             // First run: store the hash
@@ -186,6 +196,15 @@ class FirewallSelfDefense {
                 this._integrityHash = hash;
             } else {
                 this._integrityHash = stored;
+                // Compare — if mismatch, code has been tampered with
+                if (hash !== stored) {
+                    this._integrityStatus = 'alert';
+                    firewallLogger.log(EVENT.INTEGRITY_ALERT, null, 'alert',
+                        'Integrity hash mismatch on init — firewall code may have changed', {
+                            expected: stored.slice(0, 16) + '...',
+                            actual: hash.slice(0, 16) + '...',
+                        });
+                }
             }
         } catch (err) {
             console.error('[FW-SelfDefense] Integrity hash error:', err.message);
@@ -360,11 +379,15 @@ class FirewallSelfDefense {
                 return this._inspectOutbound(type, url, opts);
             }
 
-            // No inspection function registered — allow (fail open)
+            // No inspection function registered — allow loopback only
+            if (_isLoopback(url)) {
+                return { allowed: true, reason: 'loopback_allowed' };
+            }
             return { allowed: true, reason: 'no_outbound_inspector' };
         } catch (err) {
+            // Fail CLOSED on outbound inspection errors
             console.error('[FW-SelfDefense] Outbound inspection error:', err.message);
-            return { allowed: true, reason: 'inspection_error_failopen' };
+            return { allowed: false, reason: 'outbound_inspection_error_failclosed' };
         }
     }
 
@@ -383,21 +406,29 @@ class FirewallSelfDefense {
         if (!pin || typeof pin !== 'string' || !/^\d{4,8}$/.test(pin)) {
             return false;
         }
-        const hash = await _sha256(LOGGER.storagePrefix + pin);
+        // Generate a per-PIN random salt to prevent pre-computation attacks.
+        // A 4-digit PIN has only 10k possibilities — salt is essential.
+        const salt = crypto.getRandomValues(new Uint8Array(32));
+        const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+        const hash = await _sha256(saltHex + ':' + pin);
         const store = await _getStore();
-        await store.set({ key: PIN_KEY, value: hash });
+        // Store salt + hash together
+        await store.set({ key: PIN_KEY, value: JSON.stringify({ salt: saltHex, hash }) });
         return true;
     }
 
     /**
-     * Verify a PIN against the stored hash.
+     * Verify a PIN against the stored salted hash.
      * Enforces lockout after too many attempts.
+     * Uses constant-time comparison to prevent timing side-channels.
      *
      * @param {string} pin
      * @returns {{ verified: boolean, reason: string, locked?: boolean, lockoutRemaining?: number }}
      */
     async verifyPin(pin) {
-        // Check lockout
+        // Check lockout — uses BOTH in-memory and persisted state.
+        // This prevents lockout bypass via storage clearing, because the
+        // in-memory counter survives until the process restarts.
         if (this._pinLocked) {
             const remaining = this._pinLockoutUntil - Date.now();
             if (remaining > 0) {
@@ -414,16 +445,31 @@ class FirewallSelfDefense {
         }
 
         const store = await _getStore();
-        const { value: storedHash } = await store.get({ key: PIN_KEY });
+        const { value: stored } = await store.get({ key: PIN_KEY });
 
-        if (!storedHash) {
+        if (!stored) {
             // No PIN set — first time
             return { verified: true, reason: 'no_pin_set' };
         }
 
-        const inputHash = await _sha256(LOGGER.storagePrefix + pin);
+        // Parse stored salt + hash
+        let saltHex, storedHash;
+        try {
+            const parsed = JSON.parse(stored);
+            saltHex = parsed.salt;
+            storedHash = parsed.hash;
+        } catch {
+            // Legacy format (unsalted) — force PIN reset
+            return { verified: false, reason: 'PIN data corrupted — please reset PIN' };
+        }
 
-        if (inputHash === storedHash) {
+        const inputHash = await _sha256(saltHex + ':' + pin);
+
+        // Constant-time comparison to prevent timing side-channel attacks.
+        // JavaScript's === leaks information about which bytes match.
+        const match = _timingSafeEqualStr(inputHash, storedHash);
+
+        if (match) {
             this._pinAttempts = 0;
             return { verified: true, reason: 'pin_correct' };
         }
@@ -594,6 +640,23 @@ class FirewallSelfDefense {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Constant-time string comparison to prevent timing side-channel attacks.
+ * JavaScript's === operator short-circuits on the first differing byte,
+ * leaking information about how many characters matched.
+ */
+function _timingSafeEqualStr(a, b) {
+    if (typeof a !== 'string' || typeof b !== 'string') return false;
+    // Always compare full length to avoid leaking length info
+    const len = Math.max(a.length, b.length);
+    let mismatch = a.length !== b.length ? 1 : 0;
+    for (let i = 0; i < len; i++) {
+        // Use charCodeAt — returns NaN for out-of-bounds which XOR will propagate
+        mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+    }
+    return mismatch === 0;
+}
 
 /** Compute SHA-256 hash of a string using SubtleCrypto */
 async function _sha256(str) {

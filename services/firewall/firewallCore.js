@@ -237,8 +237,11 @@ export function inspectInbound({ nodeId, packet, packetType = 'message', meta = 
         return { allowed: true, reason: 'all_layers_passed' };
 
     } catch (err) {
+        // Fail CLOSED — errors must not become bypass vectors
         console.error('[FW-Core] inspectInbound error:', err.message);
-        return { allowed: true, reason: 'inspection_error_failopen' };
+        firewallLogger.log(EVENT.SELF_DEFENSE_ALERT, null, 'block',
+            'Core inspection error — failing closed', { error: err.message });
+        return { allowed: false, reason: 'inspection_error_failclosed' };
     }
 }
 

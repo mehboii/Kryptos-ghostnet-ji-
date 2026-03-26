@@ -67,7 +67,7 @@ export const INJECTION_PATTERNS = Object.freeze([
     { name: 'sql_drop',        regex: /\bDROP\s+(TABLE|DATABASE|INDEX)\b/i,         severity: 'critical' },
     { name: 'sql_insert',      regex: /\bINSERT\s+INTO\b/i,                        severity: 'high' },
     { name: 'sql_delete',      regex: /\bDELETE\s+FROM\b/i,                        severity: 'high' },
-    { name: 'sql_comment',     regex: /--\s|\/\*[\s\S]*?\*\//,                     severity: 'medium' },
+    { name: 'sql_comment',     regex: /--\s|\/\*[^*]{0,500}\*\//,                   severity: 'medium' },
     { name: 'sql_semicolon',   regex: /;\s*(DROP|DELETE|UPDATE|INSERT|ALTER)\b/i,   severity: 'critical' },
     // XSS
     { name: 'xss_script',      regex: /<\s*script[\s>]/i,                          severity: 'critical' },
@@ -79,7 +79,7 @@ export const INJECTION_PATTERNS = Object.freeze([
     // Command injection
     { name: 'cmd_pipe',        regex: /\|\s*\w/,                                   severity: 'medium' },
     { name: 'cmd_chain',       regex: /&&\s*\w/,                                   severity: 'medium' },
-    { name: 'cmd_subshell',    regex: /\$\(.*\)/,                                  severity: 'high' },
+    { name: 'cmd_subshell',    regex: /\$\([^)]{0,500}\)/,                          severity: 'high' },
     { name: 'cmd_backtick',    regex: /`[^`]+`/,                                   severity: 'high' },
     // Path traversal
     { name: 'path_traversal',  regex: /(\.\.[\/\\]){2,}/,                          severity: 'critical' },

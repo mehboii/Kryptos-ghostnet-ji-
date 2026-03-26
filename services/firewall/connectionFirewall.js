@@ -196,9 +196,11 @@ class ConnectionFirewall {
                 nonce: pending.nonce,
             };
         } catch (err) {
-            // Fail open — log the error but don't crash the app
+            // Fail CLOSED — errors must not become bypass vectors
             console.error('[FW-L1] evaluate error:', err.message);
-            return { allowed: true, reason: 'firewall_error_failopen' };
+            firewallLogger.log(EVENT.SELF_DEFENSE_ALERT, nodeId, 'block',
+                'L1 evaluation error — failing closed', { error: err.message });
+            return { allowed: false, reason: 'firewall_error_failclosed' };
         }
     }
 
@@ -421,6 +423,7 @@ class ConnectionFirewall {
     /** Periodic cleanup of stale data */
     _cleanup() {
         const now = Date.now();
+        const MAX_TRACKED_NODES = 10000;
 
         // Purge expired blacklist entries
         for (const [nodeId, data] of this._blacklist) {
@@ -441,6 +444,25 @@ class ConnectionFirewall {
                 record.timestamps[record.timestamps.length - 1] < staleThreshold) {
                 this._perNode.delete(nodeId);
                 this._burstTracker.delete(nodeId);
+            }
+        }
+
+        // Hard cap on Map sizes to prevent memory exhaustion from sustained attacks
+        if (this._perNode.size > MAX_TRACKED_NODES) {
+            const excess = this._perNode.size - MAX_TRACKED_NODES;
+            const iter = this._perNode.keys();
+            for (let i = 0; i < excess; i++) {
+                const key = iter.next().value;
+                this._perNode.delete(key);
+                this._burstTracker.delete(key);
+            }
+        }
+        if (this._blacklist.size > MAX_TRACKED_NODES) {
+            // Evict oldest entries (first inserted = first in Map iteration order)
+            let toRemove = this._blacklist.size - MAX_TRACKED_NODES;
+            for (const key of this._blacklist.keys()) {
+                if (toRemove-- <= 0) break;
+                this._blacklist.delete(key);
             }
         }
 

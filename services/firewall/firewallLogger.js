@@ -52,12 +52,28 @@ export const EVENT = Object.freeze({
  */
 async function _deriveKey(passphrase) {
     const enc = new TextEncoder();
-    const salt = enc.encode(LOGGER.storagePrefix + 'salt_v1');
+    // Generate a per-installation random salt, persisted to storage.
+    // This prevents rainbow-table attacks across installations.
+    let saltBytes;
+    try {
+        const store = await _getStore();
+        const { value: storedSalt } = await store.get({ key: LOGGER.storagePrefix + 'kdf_salt' });
+        if (storedSalt) {
+            saltBytes = _base64ToBuf(storedSalt);
+        } else {
+            // First init: generate random 32-byte salt and persist it
+            saltBytes = crypto.getRandomValues(new Uint8Array(32));
+            await store.set({ key: LOGGER.storagePrefix + 'kdf_salt', value: _bufToBase64(saltBytes) });
+        }
+    } catch {
+        // Fallback: deterministic salt if storage is unavailable
+        saltBytes = enc.encode(LOGGER.storagePrefix + 'salt_fallback_v2');
+    }
     const keyMaterial = await crypto.subtle.importKey(
         'raw', enc.encode(passphrase), 'PBKDF2', false, ['deriveKey']
     );
     return crypto.subtle.deriveKey(
-        { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
+        { name: 'PBKDF2', salt: saltBytes, iterations: 100000, hash: 'SHA-256' },
         keyMaterial,
         { name: 'AES-GCM', length: 256 },
         false,
@@ -155,8 +171,26 @@ class FirewallLogger {
      */
     async init(sessionKey) {
         try {
-            // Use a stable fallback if no session key yet (pre-auth firewall start)
-            const passphrase = sessionKey || 'ghostnet_fw_default_key_v1';
+            // Generate a per-device fallback key if no session key is provided.
+            // Never use a hardcoded default — that's equivalent to no encryption.
+            let passphrase = sessionKey;
+            if (!passphrase) {
+                try {
+                    const store = await _getStore();
+                    const { value: deviceKey } = await store.get({ key: LOGGER.storagePrefix + 'device_key' });
+                    if (deviceKey) {
+                        passphrase = deviceKey;
+                    } else {
+                        // First boot: generate a random device-bound key
+                        const rnd = crypto.getRandomValues(new Uint8Array(32));
+                        passphrase = Array.from(rnd).map(b => b.toString(16).padStart(2, '0')).join('');
+                        await store.set({ key: LOGGER.storagePrefix + 'device_key', value: passphrase });
+                    }
+                } catch {
+                    // Last resort: still better than a static string
+                    passphrase = 'gn_' + Date.now().toString(36) + '_' + Math.random().toString(36);
+                }
+            }
             this._key = await _deriveKey(passphrase);
             await this._loadFromStorage();
             this._ready = true;
