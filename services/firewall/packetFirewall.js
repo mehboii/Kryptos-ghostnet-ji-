@@ -121,7 +121,7 @@ class PacketFirewall {
                 this._stats.rejected++;
                 this._stats.replayBlocks++;
                 firewallLogger.log(EVENT.REPLAY_DETECTED, sourceNodeId, 'block',
-                    replayResult.reason, { nonce: packet.nonce });
+                    replayResult.reason);
                 return replayResult;
             }
 
@@ -149,10 +149,10 @@ class PacketFirewall {
             return { allowed: true, reason: 'packet_clean' };
 
         } catch (err) {
-            // Fail open — don't crash the app on inspection error
+            // Fail CLOSED — errors must not become bypass vectors
             console.error('[FW-L2] inspect error:', err.message);
-            this._stats.passed++;
-            return { allowed: true, reason: 'inspection_error_failopen' };
+            this._stats.rejected++;
+            return { allowed: false, reason: 'inspection_error_failclosed' };
         }
     }
 
@@ -289,8 +289,10 @@ class PacketFirewall {
         const textContent = _extractTextContent(packet, 5);
 
         for (const text of textContent) {
+            // Cap text length to prevent ReDoS on extremely long strings
+            const capped = text.length > 10000 ? text.slice(0, 10000) : text;
             for (const pattern of this._injectionPatterns) {
-                if (pattern.compiled.test(text)) {
+                if (pattern.compiled.test(capped)) {
                     // Match found
                     reputationEngine.recordAttackPattern(sourceNodeId, pattern.name);
 
@@ -298,7 +300,7 @@ class PacketFirewall {
                         `Injection pattern detected: ${pattern.name}`, {
                             severity: pattern.severity,
                             pattern: pattern.name,
-                            matchedText: text.slice(0, 100), // truncate for log
+                            // Do NOT log matched text — it leaks attacker payloads into the audit trail
                         });
 
                     if (pattern.severity === 'critical' || pattern.severity === 'high') {

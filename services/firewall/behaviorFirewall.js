@@ -145,8 +145,9 @@ class BehaviorFirewall {
             return { allowed: true, reason: 'behavior_clean' };
 
         } catch (err) {
+            // Fail CLOSED — errors must not become bypass vectors
             console.error('[FW-L3] analyze error:', err.message);
-            return { allowed: true, reason: 'behavior_error_failopen' };
+            return { allowed: false, reason: 'behavior_error_failclosed' };
         }
     }
 
@@ -466,7 +467,7 @@ class BehaviorFirewall {
             return { allowed: true, reason: 'routing_change_ok' };
         } catch (err) {
             console.error('[FW-L3] checkRoutingChange error:', err.message);
-            return { allowed: true, reason: 'routing_check_error_failopen' };
+            return { allowed: false, reason: 'routing_check_error_failclosed' };
         }
     }
 
@@ -515,6 +516,7 @@ class BehaviorFirewall {
     _cleanup() {
         const now = Date.now();
         const staleThreshold = now - this._config.baselineWindow;
+        const MAX_TRACKED_NODES = 10000;
 
         // Purge traffic profiles with no recent activity
         for (const [nodeId, profile] of this._trafficProfiles) {
@@ -531,10 +533,25 @@ class BehaviorFirewall {
             }
         }
 
+        // Hard cap on Map sizes to prevent memory exhaustion
+        for (const map of [this._trafficProfiles, this._timingProfiles, this._sessions]) {
+            if (map.size > MAX_TRACKED_NODES) {
+                let toRemove = map.size - MAX_TRACKED_NODES;
+                for (const key of map.keys()) {
+                    if (toRemove-- <= 0) break;
+                    map.delete(key);
+                }
+            }
+        }
+
         // Trim global connection timestamps
         this._connectionTimestamps = this._connectionTimestamps.filter(
             t => t > now - this._config.baselineWindow
         );
+        // Cap global timestamps array length
+        if (this._connectionTimestamps.length > 100000) {
+            this._connectionTimestamps = this._connectionTimestamps.slice(-50000);
+        }
 
         // Purge expired routing change records
         const poisonWindowStart = now - this._config.meshPoisonWindow;

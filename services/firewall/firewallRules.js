@@ -134,8 +134,31 @@ class FirewallRules {
             const { value } = await store.get({ key: STORAGE_KEY });
             if (value) {
                 const loaded = JSON.parse(value);
-                // Merge loaded rules on top of defaults (handles new fields in upgrades)
-                this._rules = { ..._defaultRules(), ...loaded };
+                if (typeof loaded !== 'object' || loaded === null || Array.isArray(loaded)) {
+                    console.warn('[FW-Rules] Corrupted rules in storage — using defaults');
+                } else {
+                    // Sanitize: strip prototype pollution keys and validate types
+                    const defaults = _defaultRules();
+                    const safe = { ...defaults };
+                    for (const key of Object.keys(loaded)) {
+                        // Block prototype pollution vectors
+                        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+                        // Only accept keys that exist in the default schema
+                        if (!(key in defaults)) continue;
+                        // Validate type matches the default
+                        if (!_validateRuleValue(key, loaded[key])) continue;
+                        safe[key] = loaded[key];
+                    }
+                    // Critical rules from storage can never override to disabled
+                    // without explicit user action (prevents storage poisoning)
+                    // If storage says enabled=false but no PIN was verified, force true
+                    if (safe.enabled === false || safe.selfDefenseEnabled === false) {
+                        console.warn('[FW-Rules] Critical rules were disabled in storage — forcing enabled');
+                        safe.enabled = true;
+                        safe.selfDefenseEnabled = true;
+                    }
+                    this._rules = safe;
+                }
             }
         } catch (err) {
             console.warn('[FW-Rules] Failed to load rules:', err.message);
@@ -314,14 +337,25 @@ class FirewallRules {
                 return { success: false, reason: 'Invalid rules format' };
             }
 
-            // Check for critical changes
-            const hasCritical = CRITICAL_RULES.has('enabled') && imported.enabled === false;
+            // Check for ANY critical rule being changed to a disabling value
+            const hasCritical = [...CRITICAL_RULES].some(key =>
+                key in imported && imported[key] === false
+            );
             if (hasCritical && !pinVerified) {
                 return { success: false, reason: 'Import contains critical changes — PIN required' };
             }
 
-            // Merge imported on top of defaults (handles missing fields)
-            this._rules = { ..._defaultRules(), ...imported, lastModified: Date.now() };
+            // Sanitize imported data — strip prototype pollution, validate types
+            const defaults = _defaultRules();
+            const safe = { ...defaults };
+            for (const key of Object.keys(imported)) {
+                if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+                if (!(key in defaults)) continue;
+                if (!_validateRuleValue(key, imported[key])) continue;
+                safe[key] = imported[key];
+            }
+            safe.lastModified = Date.now();
+            this._rules = safe;
             await this._persist();
 
             firewallLogger.log(EVENT.RULE_CHANGED, null, 'allow',
