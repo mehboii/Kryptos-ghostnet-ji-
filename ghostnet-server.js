@@ -384,6 +384,8 @@ app.use(cors({
         cb(new Error(`CORS: origin not allowed: ${origin}`));
     },
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Auth-Token'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
 
 // [Bridge Fix] Added health endpoint
