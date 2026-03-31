@@ -205,14 +205,27 @@ class GhostMesh {
     // ── [F1] Auth token retrieval ─────────────────────────────────────────────
 
     getAuthToken() {
-        try {
-            const legacyJwt = localStorage.getItem('ghostnet_jwt');
-            if (legacyJwt) {
-                sessionStorage.setItem('ghostnet_jwt', legacyJwt);
-                localStorage.removeItem('ghostnet_jwt');
-            }
-        } catch (_) { }
-        return sessionStorage.getItem('ghostnet_jwt') || null;
+        // Check all known token storage keys
+        const sources = [
+            sessionStorage.getItem('ghostnet_token'),
+            localStorage.getItem('ghostnet_token'),
+            sessionStorage.getItem('ghostnet_jwt'),
+            localStorage.getItem('ghostnet_jwt'),
+        ];
+        for (const raw of sources) {
+            if (!raw) continue;
+            // Unwrap JSON envelope {token, expiresAt} written by _setAuthToken
+            try {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.token === 'string') {
+                    if (parsed.expiresAt && Date.now() > parsed.expiresAt) continue;
+                    return parsed.token;
+                }
+            } catch (_) {}
+            // Raw JWT string
+            if (raw.length > 10) return raw;
+        }
+        return null;
     }
 
     // ── [F2] WS URL builder ───────────────────────────────────────────────────
