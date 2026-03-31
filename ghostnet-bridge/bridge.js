@@ -76,7 +76,7 @@ const { getBtcBalance, getNewAddress, btcRpc } = require('./btc-rpc');
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 // [21] Port from env
-const PORT = parseInt(process.env.GHOSTNET_BRIDGE_PORT || '3001', 10);
+const PORT = parseInt(process.env.GHOSTNET_BRIDGE_PORT, 10) || parseInt(process.env.PORT, 10) || 3001;
 
 // [04] Validate ETH_RPC_URL at startup — loopback only
 const _RAW_ETH_RPC = process.env.ETH_RPC_URL || '';
