@@ -710,19 +710,27 @@ function requireAuth(req, res, next) {
 
 // ─── DECENTRALIZED NODE AUTH ──────────────────────────────────────────────────
 
-app.post('/auth/node', requireAuth, (req, res) => {
+app.post('/auth/node', (req, res) => {
     let nodeId;
     try { nodeId = validateNodeId(req.body?.nodeId); }
     catch (e) { return res.status(400).json({ error: e.message }); }
 
-    // Verify the authenticated user owns this node (or it's unowned)
-    const existing = registeredNodes[nodeId];
-    if (existing && existing.ownerId && existing.ownerId !== req.user.id) {
-        return res.status(403).json({ error: 'Not authorized to claim this node' });
+    // If caller provided a valid JWT, enforce ownership check
+    let ownerId = nodeId; // default: self-owned
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        try {
+            const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+            ownerId = decoded.id || nodeId;
+            const existing = registeredNodes[nodeId];
+            if (existing && existing.ownerId && existing.ownerId !== decoded.id) {
+                return res.status(403).json({ error: 'Not authorized to claim this node' });
+            }
+        } catch (_) { /* token invalid/expired — treat as unauthenticated node auth */ }
     }
 
-    // Issue a JWT representing the node itself, bound to authenticated user
-    const token = jwt.sign({ id: nodeId, isNode: true, ownerId: req.user.id }, JWT_SECRET, { expiresIn: '7d' });
+    // Issue a JWT representing the node itself
+    const token = jwt.sign({ id: nodeId, isNode: true, ownerId }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ success: true, token });
 });
 
