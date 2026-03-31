@@ -79,21 +79,22 @@ const { getBtcBalance, getNewAddress, btcRpc } = require('./btc-rpc');
 const PORT = parseInt(process.env.GHOSTNET_BRIDGE_PORT || '3001', 10);
 
 // [04] Validate ETH_RPC_URL at startup — loopback only
-const _RAW_ETH_RPC = process.env.ETH_RPC_URL || 'http://127.0.0.1:8545';
+const _RAW_ETH_RPC = process.env.ETH_RPC_URL || '';
+if (!_RAW_ETH_RPC) {
+    console.warn('⚠️  ETH_RPC_URL not set — falling back to public Sepolia RPC (https://rpc.sepolia.org).');
+    console.warn('   Set ETH_RPC_URL in your environment for a production-grade RPC endpoint.');
+}
+const ETH_RPC_URL = _RAW_ETH_RPC || 'https://rpc.sepolia.org';
 (function validateEthRpcUrl(raw) {
     let u;
     try { u = new URL(raw); } catch (_) { throw new Error(`Invalid ETH_RPC_URL: ${raw}`); }
     if (!['127.0.0.1', 'localhost', '::1'].includes(u.hostname)) {
-        throw new Error(
-            `ETH_RPC_URL must point to loopback for security. Got: ${u.hostname}. ` +
-            'If you need a remote RPC, add explicit auth and TLS to a reverse proxy first.'
-        );
+        console.log(`ℹ️  ETH_RPC_URL points to external host: ${u.hostname} — ensure TLS and auth are configured.`);
     }
-})(_RAW_ETH_RPC);
-const ETH_RPC_URL = _RAW_ETH_RPC;
+})(ETH_RPC_URL);
 
 // [02] CORS allowlist
-const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
+const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://ghostnet-ji.vercel.app')
     .split(',').map(o => o.trim()).filter(Boolean);
 
 // [07] Simple shared-secret bearer token (replace with JWT in production)

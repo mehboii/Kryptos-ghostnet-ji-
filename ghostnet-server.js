@@ -110,7 +110,7 @@ const __dirname = path.dirname(__filename);
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const PORT = parseInt(process.env.GHOSTNET_SERVER_PORT || process.env.PORT || '8080', 10);
-const GHOSTNET_MODE = process.env.GHOSTNET_MODE || 'development';
+const GHOSTNET_MODE = process.env.GHOSTNET_MODE || (process.env.NODE_ENV === 'production' ? 'production' : 'development');
 const JWT_SECRET = process.env.AUTH_JWT_SECRET;
 const startTime = Date.now();
 
