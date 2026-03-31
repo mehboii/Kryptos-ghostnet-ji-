@@ -70,12 +70,37 @@ let _authRedirectFired = false;
  * Read the JWT token. Returns the raw token string or '' if none.
  * Checks BOTH storages because index.html writes to sessionStorage
  * while the long-lived "remember me" path may write to localStorage.
+ *
+ * IMPORTANT: index.html's _setAuthToken() wraps tokens as JSON:
+ *   { token: "<jwt>", expiresAt: <timestamp> }
+ * This function unwraps that envelope and also enforces expiry.
  */
 function _readToken() {
-    return sessionStorage.getItem('ghostnet_token')
-        || localStorage.getItem('ghostnet_token')
-        || localStorage.getItem('ghostnet_jwt')
-        || '';
+    const sources = [
+        sessionStorage.getItem('ghostnet_token'),
+        localStorage.getItem('ghostnet_token'),
+        localStorage.getItem('ghostnet_jwt'),
+    ];
+    for (const raw of sources) {
+        if (!raw) continue;
+        // Try to parse the JSON envelope written by _setAuthToken()
+        try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed.token === 'string') {
+                // Check expiry
+                if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
+                    // Expired — clear it and try next source
+                    continue;
+                }
+                return parsed.token;
+            }
+        } catch (_) {
+            // Not JSON — treat as a raw JWT string (legacy format)
+        }
+        // If it looks like a JWT (starts with eyJ), use it directly
+        if (typeof raw === 'string' && raw.length > 10) return raw;
+    }
+    return '';
 }
 
 /**
@@ -715,6 +740,7 @@ const UI = {
             overlay.style.zIndex = '99999';
             overlay.style.background = '#000';
             overlay.style.opacity = '1';
+            overlay.style.pointerEvents = 'none';
             document.body.appendChild(overlay);
         };
 

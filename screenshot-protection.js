@@ -6,7 +6,7 @@
   const style = document.createElement('style')
   style.innerHTML = `
     .ghost-protected { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-    .ghost-blur-overlay { position: fixed; inset: 0; backdrop-filter: blur(20px); z-index: 9999; display: none; }
+    .ghost-blur-overlay { position: fixed; inset: 0; backdrop-filter: blur(20px); z-index: 9999; display: none; pointer-events: none; }
     .ghost-blur-overlay.active { display: block; }
   `
   document.head.appendChild(style)
