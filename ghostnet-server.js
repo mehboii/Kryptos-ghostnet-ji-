@@ -117,9 +117,12 @@ const startTime = Date.now();
 const MAX_CONTENT_LENGTH = 64 * 1024; // [16] 64 KB message body cap
 const MAX_BODY_SIZE = '1mb';    // Increased to 1MB to support avatars (up to 512KB clip limit)
 
-// [20] Explicit CORS allowlist
-const ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000,https://ghostnet-ji.vercel.app')
+// [20] Explicit CORS allowlist — always include the Vercel frontend
+const _HARDCODED_ORIGINS = ['https://ghostnet-ji.vercel.app'];
+const _ENV_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
+const ALLOWED_ORIGINS = [...new Set([..._ENV_ORIGINS, ..._HARDCODED_ORIGINS])];
+console.log('[CORS] Allowed origins:', ALLOWED_ORIGINS);
 
 // [17][18][19] File ID allowlist — hex UUID-like strings only
 const FILE_ID_RE = /^[a-zA-Z0-9_\-]{1,128}$/;
@@ -356,9 +359,9 @@ function secureId(prefix = '') {
 // ─── App setup ───────────────────────────────────────────────────────────────
 
 const app = express();
-app.set('trust proxy', 'loopback'); // Required for express-rate-limit behind Railway/reverse proxy
+app.set('trust proxy', true); // Railway runs behind a reverse proxy — must be true, not 'loopback'
 
-// [33] Security headers
+// [33] Security headers — cross-origin policies disabled for API use
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -372,6 +375,9 @@ app.use(helmet({
             objectSrc: ["'none'"],
         }
     },
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginOpenerPolicy: false,
+    crossOriginEmbedderPolicy: false,
     frameguard: { action: 'deny' },
     hsts: { maxAge: 31536000, includeSubDomains: true },
 }));
@@ -380,8 +386,21 @@ app.use(helmet({
 app.use(cors({
     origin: (origin, cb) => {
         // Allow server-to-server (no origin) and allowlisted browsers
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
-        cb(new Error(`CORS: origin not allowed: ${origin}`));
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, origin);
+        console.warn(`[CORS] Blocked origin: ${origin}`);
+        // Return false instead of Error to avoid Express error handler swallowing CORS headers
+        cb(null, false);
+    },
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Auth-Token'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+}));
+
+// Explicit OPTIONS preflight handler — belt and suspenders
+app.options('*', cors({
+    origin: (origin, cb) => {
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, origin);
+        cb(null, false);
     },
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Auth-Token'],
