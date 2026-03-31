@@ -34,7 +34,17 @@
 // ─────────────────────────────────────────────
 
 function getAuthToken() {
-    return sessionStorage.getItem('ghostnet_token') || '';
+    const raw = sessionStorage.getItem('ghostnet_token')
+        || localStorage.getItem('ghostnet_token') || '';
+    if (!raw) return '';
+    try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed.token === 'string') {
+            if (parsed.expiresAt && Date.now() > parsed.expiresAt) return '';
+            return parsed.token;
+        }
+    } catch (_) {}
+    return raw;
 }
 
 function secureHeaders(extra = {}) {
@@ -199,8 +209,10 @@ window.addEventListener('DOMContentLoaded', async () => {
             });
         } else if (window.app.mesh && !window.app.mesh.wsReady) {
             // Mesh was deferred because no auth token was present at startup — retry now.
-            const token = sessionStorage.getItem('ghostnet_token') || '';
+            let token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+            // Unwrap JSON envelope {token, expiresAt} written by _setAuthToken
             if (token) {
+                try { const p = JSON.parse(token); if (p && p.token) token = p.token; } catch (_) {}
                 window.app.mesh.setAuthToken(token);
             }
         }
