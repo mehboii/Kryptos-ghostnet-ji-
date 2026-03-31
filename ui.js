@@ -141,8 +141,12 @@ async function _waitForToken(maxWait = 5000) {
     const start = Date.now();
     while (Date.now() - start < maxWait) {
         // Check both storages for maximum resilience
-        const token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
-        if (token) return token;
+        const raw = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+        if (raw) {
+            // Unwrap JSON envelope {token, expiresAt} if present
+            try { const p = JSON.parse(raw); if (p && p.token) return p.token; } catch (_) {}
+            if (raw.length > 10) return raw;
+        }
         await new Promise(r => setTimeout(r, 200));
     }
     return null;

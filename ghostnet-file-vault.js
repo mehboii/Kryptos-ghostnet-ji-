@@ -214,9 +214,13 @@
             const h = window.getAuthHeaders();
             if (h.Authorization) return { ...h, ...extra };
         }
-        const token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+        // Fallback: read from storage and unwrap JSON envelope if needed
+        let raw = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+        if (raw) {
+            try { const p = JSON.parse(raw); if (p && p.token) raw = p.token; } catch (_) {}
+        }
         return {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': `Bearer ${raw}`,
             'Content-Type': 'application/json',
             ...extra,
         };
