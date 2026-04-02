@@ -105,6 +105,7 @@ body {
 .nav-btn:hover {
     color: var(--accent);
     background: rgba(255, 255, 255, 0.03);
+    transform: perspective(600px) translateX(3px) rotateY(-1.5deg);
 }
 
 .nav-btn.active {
@@ -269,10 +270,12 @@ body {
     display: flex;
     align-items: center;
     gap: 14px;
-    transition: all 0.25s ease;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.25s ease;
     position: relative;
     overflow: hidden;
     animation: wltCardIn 0.5s ease-out both;
+    transform-style: preserve-3d;
+    will-change: transform;
 }
 
 .home-stat-card:nth-child(2) {
@@ -284,8 +287,8 @@ body {
 }
 
 .home-stat-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transform: perspective(800px) rotateX(2deg) rotateY(-2deg) translateY(-3px);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
     border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
 }
 
@@ -420,6 +423,12 @@ canvas#mesh {
     gap: 8px;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
     min-width: 140px;
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.mesh-overlay:hover {
+    transform: perspective(600px) rotateX(2deg) rotateY(-1.5deg) translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
 .mesh-overlay-title {
@@ -486,14 +495,16 @@ canvas#mesh {
     border: 1px solid var(--border);
     padding: 20px;
     border-radius: 16px;
-    transition: transform 0.2s, box-shadow 0.2s;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
     cursor: default;
     box-shadow: var(--glow);
+    will-change: transform;
 }
 
-.node-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+.node-card:hover,
+.file-card:hover {
+    transform: perspective(800px) rotateX(1.5deg) rotateY(-1.5deg) translateY(-3px);
+    box-shadow: 0 12px 20px -3px rgba(0, 0, 0, 0.12), 0 6px 8px -2px rgba(0, 0, 0, 0.06);
     border-color: var(--accent);
 }
 
@@ -697,6 +708,7 @@ canvas#mesh {
     box-shadow:
         0 8px 32px var(--cd, rgba(59, 130, 246, 0.25)),
         0 4px 16px rgba(0, 0, 0, 0.1);
+    transform: perspective(800px) rotateX(1.5deg) rotateY(-1deg) translateY(-2px);
 }
 
 /* --- Inner Card --- */
@@ -3438,4 +3450,70 @@ canvas#mesh {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════════
+   3D HOVER EFFECTS — Subtle, GPU-accelerated
+   ═══════════════════════════════════════════════════ */
+
+/* Text 3D lift on hover */
+.home-title,
+.glow-text,
+.logo-glow {
+    transition: transform 0.25s ease, text-shadow 0.25s ease;
+}
+
+.home-title:hover,
+.glow-text:hover {
+    transform: perspective(500px) translateZ(6px) translateY(-1px);
+    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.logo-glow:hover {
+    transform: perspective(500px) translateZ(4px) scale(1.02);
+    text-shadow: 0 3px 10px rgba(79, 128, 255, 0.2);
+}
+
+/* Stat value number lift */
+.home-stat-value {
+    transition: transform 0.2s ease;
+}
+
+.home-stat-card:hover .home-stat-value {
+    transform: translateZ(4px) translateY(-1px);
+}
+
+/* Badge 3D pop */
+.home-badge {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.home-badge:hover {
+    transform: perspective(600px) translateZ(4px) translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Canvas wrap subtle 3D */
+.home-canvas-wrap {
+    transition: background 0.35s ease, box-shadow 0.35s ease, transform 0.3s ease;
+}
+
+.home-canvas-wrap:hover {
+    transform: perspective(1000px) rotateX(0.5deg) rotateY(-0.5deg);
+}
+
+/* Portfolio banner 3D */
+.wlt-portfolio-banner {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.wlt-portfolio-banner:hover {
+    transform: perspective(800px) rotateX(1deg) rotateY(-1deg) translateY(-2px);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Mouse-tracked 3D tilt class (applied via JS) */
+.tilt-3d {
+    transform-style: preserve-3d;
+    will-change: transform;
 }

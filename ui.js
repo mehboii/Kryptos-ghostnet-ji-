@@ -3656,4 +3656,44 @@ window.UI = UI; // Expose to global scope for onclick handlers
 window.addEventListener("DOMContentLoaded", () => {
     UI.init();
     renderHome();
+    initTilt3D();
 });
+
+/* ── Subtle 3D Mouse-Tracking Tilt ─────────────────────────────────────── */
+function initTilt3D() {
+    const MAX_TILT = 4; // degrees — keep it subtle
+    const RESET_MS = 300;
+
+    function applyTilt(el) {
+        el.addEventListener('mousemove', (e) => {
+            const rect = el.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width;  // 0-1
+            const y = (e.clientY - rect.top) / rect.height;   // 0-1
+            const rotateY = (x - 0.5) * MAX_TILT * 2;
+            const rotateX = (0.5 - y) * MAX_TILT * 2;
+            el.style.transform = `perspective(800px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) translateY(-2px)`;
+        });
+        el.addEventListener('mouseleave', () => {
+            el.style.transition = `transform ${RESET_MS}ms ease`;
+            el.style.transform = '';
+            setTimeout(() => { el.style.transition = ''; }, RESET_MS);
+        });
+    }
+
+    // Apply to stat cards and wallet card outers
+    document.querySelectorAll('.home-stat-card, .wlt-card-outer, .node-card, .file-card').forEach(applyTilt);
+
+    // Observe for dynamically added cards
+    const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            for (const node of m.addedNodes) {
+                if (node.nodeType !== 1) continue;
+                if (node.matches?.('.home-stat-card, .wlt-card-outer, .node-card, .file-card')) {
+                    applyTilt(node);
+                }
+                node.querySelectorAll?.('.home-stat-card, .wlt-card-outer, .node-card, .file-card').forEach(applyTilt);
+            }
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+}
