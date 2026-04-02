@@ -270,26 +270,40 @@ body {
     display: flex;
     align-items: center;
     gap: 14px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.25s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.25s ease;
     position: relative;
     overflow: hidden;
-    animation: wltCardIn 0.5s ease-out both;
     transform-style: preserve-3d;
     will-change: transform;
+    /* Persistent 3D float */
+    transform: perspective(800px) rotateX(1deg) rotateY(-1deg);
+    box-shadow:
+        0 6px 16px rgba(0, 0, 0, 0.15),
+        0 2px 4px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    animation: float3d 4s ease-in-out infinite;
+}
+
+.home-stat-card:nth-child(1) {
+    animation-delay: 0s;
 }
 
 .home-stat-card:nth-child(2) {
-    animation-delay: 0.08s;
+    animation-delay: 1.3s;
 }
 
 .home-stat-card:nth-child(3) {
-    animation-delay: 0.16s;
+    animation-delay: 2.6s;
 }
 
 .home-stat-card:hover {
-    transform: perspective(800px) rotateX(2deg) rotateY(-2deg) translateY(-3px);
-    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12), 0 4px 8px rgba(0, 0, 0, 0.06);
-    border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+    transform: perspective(800px) rotateX(3deg) rotateY(-3deg) translateY(-6px);
+    box-shadow:
+        0 16px 36px rgba(0, 0, 0, 0.2),
+        0 6px 12px rgba(0, 0, 0, 0.1),
+        inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    animation-play-state: paused;
 }
 
 .home-stat-card::after {
@@ -495,17 +509,24 @@ canvas#mesh {
     border: 1px solid var(--border);
     padding: 20px;
     border-radius: 16px;
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.2s ease;
     cursor: default;
-    box-shadow: var(--glow);
-    will-change: transform;
+    transform-style: preserve-3d;
+    box-shadow:
+        0 6px 16px rgba(0, 0, 0, 0.12),
+        0 2px 4px rgba(0, 0, 0, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .node-card:hover,
 .file-card:hover {
-    transform: perspective(800px) rotateX(1.5deg) rotateY(-1.5deg) translateY(-3px);
-    box-shadow: 0 12px 20px -3px rgba(0, 0, 0, 0.12), 0 6px 8px -2px rgba(0, 0, 0, 0.06);
+    transform: perspective(800px) rotateX(2.5deg) rotateY(-2.5deg) translateY(-6px);
+    box-shadow:
+        0 16px 32px rgba(0, 0, 0, 0.18),
+        0 6px 12px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
     border-color: var(--accent);
+    animation-play-state: paused;
 }
 
 .node-address {
@@ -3453,67 +3474,182 @@ canvas#mesh {
 }
 
 /* ═══════════════════════════════════════════════════
-   3D HOVER EFFECTS — Subtle, GPU-accelerated
+   3D EFFECTS — Persistent float + interactive hover
    ═══════════════════════════════════════════════════ */
 
-/* Text 3D lift on hover */
+/* Floating animation keyframes */
+@keyframes float3d {
+    0%, 100% {
+        transform: perspective(800px) rotateX(1deg) rotateY(-1deg) translateY(0px);
+    }
+    50% {
+        transform: perspective(800px) rotateX(-0.5deg) rotateY(0.5deg) translateY(-4px);
+    }
+}
+
+@keyframes float3d-text {
+    0%, 100% {
+        transform: translateY(0px);
+        text-shadow: 0 2px 8px rgba(79, 128, 255, 0.15);
+    }
+    50% {
+        transform: translateY(-2px);
+        text-shadow: 0 6px 16px rgba(79, 128, 255, 0.25);
+    }
+}
+
+@keyframes float3d-badge {
+    0%, 100% {
+        transform: translateY(0px);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    50% {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+    }
+}
+
+/* Text persistent 3D float */
 .home-title,
-.glow-text,
+.glow-text {
+    animation: float3d-text 5s ease-in-out infinite;
+    will-change: transform, text-shadow;
+}
+
 .logo-glow {
-    transition: transform 0.25s ease, text-shadow 0.25s ease;
+    animation: float3d-text 6s ease-in-out infinite;
+    will-change: transform, text-shadow;
+    transition: transform 0.25s ease;
+}
+
+.logo-glow:hover {
+    animation-play-state: paused;
+    transform: scale(1.04);
+    text-shadow: 0 6px 20px rgba(79, 128, 255, 0.35);
 }
 
 .home-title:hover,
 .glow-text:hover {
-    transform: perspective(500px) translateZ(6px) translateY(-1px);
-    text-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    animation-play-state: paused;
+    transform: translateY(-3px);
+    text-shadow: 0 8px 20px rgba(79, 128, 255, 0.3);
 }
 
-.logo-glow:hover {
-    transform: perspective(500px) translateZ(4px) scale(1.02);
-    text-shadow: 0 3px 10px rgba(79, 128, 255, 0.2);
-}
-
-/* Stat value number lift */
+/* Stat value — lifts on card hover */
 .home-stat-value {
-    transition: transform 0.2s ease;
+    transition: transform 0.25s ease, text-shadow 0.25s ease;
 }
 
 .home-stat-card:hover .home-stat-value {
-    transform: translateZ(4px) translateY(-1px);
+    transform: translateY(-2px) scale(1.02);
+    text-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* Badge 3D pop */
+/* Badge persistent float */
 .home-badge {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    animation: float3d-badge 4.5s ease-in-out infinite;
+    will-change: transform, box-shadow;
+}
+
+.home-badge:nth-child(2) {
+    animation-delay: 0.8s;
 }
 
 .home-badge:hover {
-    transform: perspective(600px) translateZ(4px) translateY(-1px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    animation-play-state: paused;
+    transform: translateY(-3px) scale(1.05);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
 }
 
-/* Canvas wrap subtle 3D */
+/* Canvas wrap persistent 3D */
 .home-canvas-wrap {
     transition: background 0.35s ease, box-shadow 0.35s ease, transform 0.3s ease;
+    animation: float3d 6s ease-in-out infinite 0.5s;
+    will-change: transform;
 }
 
 .home-canvas-wrap:hover {
-    transform: perspective(1000px) rotateX(0.5deg) rotateY(-0.5deg);
+    animation-play-state: paused;
+    transform: perspective(800px) rotateX(1.5deg) rotateY(-1.5deg) translateY(-4px);
+    box-shadow: 0 12px 32px var(--accent-dim);
+}
+
+/* Mesh overlay float */
+.mesh-overlay {
+    animation: float3d-badge 5s ease-in-out infinite 1s;
+}
+
+.mesh-overlay:hover {
+    animation-play-state: paused;
 }
 
 /* Portfolio banner 3D */
 .wlt-portfolio-banner {
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    animation: float3d 5s ease-in-out infinite 0.3s;
+    will-change: transform;
 }
 
 .wlt-portfolio-banner:hover {
-    transform: perspective(800px) rotateX(1deg) rotateY(-1deg) translateY(-2px);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    animation-play-state: paused;
+    transform: perspective(800px) rotateX(2deg) rotateY(-2deg) translateY(-5px);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.15);
 }
 
-/* Mouse-tracked 3D tilt class (applied via JS) */
-.tilt-3d {
-    transform-style: preserve-3d;
+/* Wallet card outer 3D float */
+.wlt-card-outer {
+    animation: float3d 5s ease-in-out infinite;
     will-change: transform;
+}
+
+.wlt-card-outer:nth-child(2) { animation-delay: 0.8s; }
+.wlt-card-outer:nth-child(3) { animation-delay: 1.6s; }
+.wlt-card-outer:nth-child(4) { animation-delay: 2.4s; }
+
+.wlt-card-outer:hover {
+    animation-play-state: paused;
+}
+
+/* Node/file cards 3D float */
+.node-card,
+.file-card {
+    animation: float3d 5s ease-in-out infinite;
+    will-change: transform;
+}
+
+.node-card:nth-child(2), .file-card:nth-child(2) { animation-delay: 0.6s; }
+.node-card:nth-child(3), .file-card:nth-child(3) { animation-delay: 1.2s; }
+.node-card:nth-child(4), .file-card:nth-child(4) { animation-delay: 1.8s; }
+
+.node-card:hover,
+.file-card:hover {
+    animation-play-state: paused;
+}
+
+/* Nav button 3D depth */
+.nav-btn {
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.nav-btn.active {
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+    transform: perspective(600px) translateX(2px);
+}
+
+/* Reduce motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+    .home-stat-card,
+    .home-title,
+    .glow-text,
+    .logo-glow,
+    .home-badge,
+    .home-canvas-wrap,
+    .mesh-overlay,
+    .wlt-portfolio-banner,
+    .wlt-card-outer,
+    .node-card,
+    .file-card {
+        animation: none !important;
+    }
 }
