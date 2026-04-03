@@ -3417,6 +3417,33 @@ const UI = {
             btnContainer.appendChild(shareBtn);
             btnContainer.appendChild(closeBtn);
             modal.appendChild(btnContainer);
+
+            // Ephemeral countdown — card self-destructs after expiry
+            const countdownEl = document.createElement('div');
+            countdownEl.style.cssText = 'margin-top:16px;font-family:monospace;font-size:13px;color:#f59e0b;text-align:center;opacity:0;animation:fadeSlideUp 0.4s 0.5s ease both;';
+            modal.appendChild(countdownEl);
+
+            const countdownInterval = setInterval(() => {
+                const remaining = Math.max(0, expTS - Date.now());
+                if (remaining <= 0) {
+                    clearInterval(countdownInterval);
+                    countdownEl.textContent = 'EXPIRED — generate a new card';
+                    countdownEl.style.color = '#ef4444';
+                    // Auto-close after a beat
+                    setTimeout(triggerClose, 1500);
+                    return;
+                }
+                const min = Math.floor(remaining / 60000);
+                const sec = Math.floor((remaining % 60000) / 1000);
+                countdownEl.textContent = `Expires in ${min}:${String(sec).padStart(2,'0')} — single use only`;
+                if (remaining < 60000) countdownEl.style.color = '#ef4444';
+            }, 1000);
+
+            // Clean up interval on close
+            const _cleanup = () => { clearInterval(countdownInterval); };
+            modal.addEventListener('click', (e) => { if (e.target === modal) _cleanup(); });
+            closeBtn.addEventListener('click', _cleanup);
+
             document.body.appendChild(modal);
         };
 
@@ -3430,8 +3457,10 @@ const UI = {
         function drawQRAndBuild() {
             try {
                 const tempDiv = document.createElement('div');
-                const expTS = Date.now() + (7 * 24 * 60 * 60 * 1000);
-                const qrData = JSON.stringify({"v":1,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS});
+                // Ephemeral: 5-minute expiry + single-use nonce
+                const expTS = Date.now() + (5 * 60 * 1000);
+                const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2,'0')).join('');
+                const qrData = JSON.stringify({"v":2,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS,"nonce":nonce});
                 new QRCode(tempDiv, {
                     text: qrData,
                     width: 180,
@@ -3609,6 +3638,7 @@ const UI = {
         };
 
         const handleSuccess = (data) => {
+            // 1. Check expiry
             if (data.exp && Date.now() > data.exp) {
                 const toast = document.createElement('div');
                 toast.textContent = 'This Ghost Card has expired — ask them to generate a new one';
@@ -3619,8 +3649,28 @@ const UI = {
                 return;
             }
 
+            // 2. Single-use: check if nonce was already redeemed
+            if (data.nonce) {
+                let usedNonces = [];
+                try { usedNonces = JSON.parse(localStorage.getItem('ghostcard_used_nonces') || '[]'); } catch(_) {}
+                if (usedNonces.includes(data.nonce)) {
+                    const toast = document.createElement('div');
+                    toast.textContent = 'This Ghost Card was already used — ask for a new one';
+                    toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 4000);
+                    cleanup();
+                    return;
+                }
+                // Burn the nonce
+                usedNonces.push(data.nonce);
+                // Prune nonces older than 10 minutes to avoid unbounded growth
+                if (usedNonces.length > 200) usedNonces = usedNonces.slice(-100);
+                try { localStorage.setItem('ghostcard_used_nonces', JSON.stringify(usedNonces)); } catch(_) {}
+            }
+
             const toast = document.createElement('div');
-            toast.textContent = '✓ Ghost Card scanned — tap Add to connect';
+            toast.textContent = 'Ghost Card scanned — tap Add to connect';
             toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#10b981;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
