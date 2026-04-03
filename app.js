@@ -200,6 +200,18 @@ window.addEventListener('DOMContentLoaded', async () => {
         };
         log.info('Identity updated.');
 
+        // Refresh ECDH callback on the chat instance with the new private key.
+        if (window.app.chat && window.GhostIdentity?.getSessionPrivateKey && window.ethers?.SigningKey) {
+            GhostIdentity.getSessionPrivateKey().then(pk => {
+                if (pk) {
+                    const sk = new ethers.SigningKey(pk);
+                    window.app.chat._ecdhDerive = (peerPub) => sk.computeSharedSecret(peerPub);
+                    window.app.chat.sessions.clear(); // Invalidate cached sessions — new key material
+                    log.info('ECDH callback refreshed after identity update.');
+                }
+            }).catch(() => {});
+        }
+
         if (window.app.mesh?.ws && window.app.mesh.wsReady) {
             _safeSendWS(window.app.mesh.ws, {
                 type: 'register',
@@ -555,7 +567,31 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
             };
 
-            const chat = new GhostChat(window.app.identity, transportSender);
+            // ── [FIX B] True secp256k1 ECDH ──────────────────────────────────
+            // Retrieve the session private key and build an ECDH callback.
+            // The callback performs elliptic-curve scalar multiplication via
+            // ethers.SigningKey.computeSharedSecret(). The private key stays
+            // inside this closure — GhostChat never sees it.
+            let ecdhDerive = null;
+            if (window.GhostIdentity?.getSessionPrivateKey && window.ethers?.SigningKey) {
+                try {
+                    const sessionPrivKey = await GhostIdentity.getSessionPrivateKey();
+                    if (sessionPrivKey) {
+                        const signingKey = new ethers.SigningKey(sessionPrivKey);
+                        ecdhDerive = (peerPublicKeyHex) => {
+                            // computeSharedSecret returns 0x + 64-char hex (32 bytes x-coord)
+                            return signingKey.computeSharedSecret(peerPublicKeyHex);
+                        };
+                        log.info('ECDH callback ready — true secp256k1 key exchange enabled.');
+                    } else {
+                        log.warn('No session private key — ECDH unavailable, using legacy derivation.');
+                    }
+                } catch (e) {
+                    log.warn('ECDH setup failed (will use legacy fallback):', e.message);
+                }
+            }
+
+            const chat = new GhostChat(window.app.identity, transportSender, ecdhDerive);
             window.app.chat = chat;
 
             chat.onMessage = (msg) => {

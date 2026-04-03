@@ -18,12 +18,13 @@
  *     observer who knows two peers' public keys can compute their exact
  *     "session key" and decrypt every message exchanged. This is not
  *     encryption — it is obfuscation with a publicly derivable key.
- *     Fixed: _deriveSharedSecret() now uses HKDF-SHA-256 with domain
- *     separation and a per-session salt. NOTE: This is still symmetric
- *     derivation from public keys and therefore still NOT true ECDH.
- *     A production deployment MUST replace this with a real ECDH key
- *     exchange (X25519 or secp256k1 ECDH) using actual private key material.
- *     The comment in the code marks the exact integration point.
+ *     Fixed: _deriveSharedSecret() now performs true secp256k1 ECDH via
+ *     an ecdhDerive callback (wrapping ethers.SigningKey.computeSharedSecret).
+ *     The shared secret is the x-coordinate of the ECDH shared point,
+ *     fed into HKDF-SHA-256 with domain separation and a per-session salt.
+ *     The private key never enters GhostChat — only the callback closure
+ *     holds it. A fallback to sorted public keys is kept for backward
+ *     compatibility but logs a warning.
  *
  * [C] CRITICAL — Decrypted message history stored in plaintext in localStorage.
  *     `_persist()` serialized message objects including the decrypted `body`
@@ -132,31 +133,44 @@
     // ─── Crypto helpers ───────────────────────────────────────────────────────
 
     /**
-     * [FIX B] Derive a session key using HKDF-SHA-256 with domain separation.
+     * [FIX B] Derive a session key using true secp256k1 ECDH + HKDF-SHA-256.
      *
-     * ⚠ ARCHITECTURAL NOTE: This derivation is still symmetric and based on
-     * public key material. It prevents trivial SHA-256(sort(pub+pub)) attacks
-     * but is NOT a substitute for a real ECDH key exchange. A production
-     * deployment must replace _deriveSharedSecret() with a proper X25519 or
-     * secp256k1 ECDH using the peer's public key and our private key material,
-     * exchanged out-of-band (e.g. via a signed DH handshake packet). The
-     * integration point is marked below.
+     * The ecdhDerive callback performs the actual elliptic-curve scalar
+     * multiplication: ecdhDerive(peerPublicKey) → 32-byte shared secret.
+     * The callback is provided by the caller (app.js) and wraps
+     * ethers.SigningKey.computeSharedSecret(). The private key never
+     * enters GhostChat — it stays inside the callback's closure.
+     *
+     * If no ecdhDerive callback is provided (backward compatibility),
+     * falls back to sorted public key derivation with a console warning.
      */
-    async function _deriveSharedSecret(myPub, peerPub, sessionSalt) {
+    async function _deriveSharedSecret(myPub, peerPub, sessionSalt, ecdhDerive) {
         const enc = new TextEncoder();
 
-        // ── REPLACE THIS BLOCK with real ECDH ────────────────────────────────
-        // In a real deployment:
-        //   const sharedPoint = ecdhDerive(myPrivateKey, peerPublicKey);
-        //   const ikm = sharedPoint; // 32 bytes
-        // For now, we use a sorted, length-prefixed canonical representation
-        // so that at minimum myPub + peerPub ≠ peerPub + myPub:
-        const [a, b] = [myPub, peerPub].sort();
-        const ikmStr = `${a.length}:${a}|${b.length}:${b}`;
+        let ikmBytes;
+
+        if (typeof ecdhDerive === 'function') {
+            // ── TRUE ECDH: compute shared point via private key ──────────────
+            // ecdhDerive(peerPub) returns a hex string of the shared secret
+            // (x-coordinate of the ECDH shared point, 32 bytes).
+            const sharedHex = ecdhDerive(peerPub);
+            if (!sharedHex || typeof sharedHex !== 'string' || sharedHex.length < 64) {
+                throw new Error('ECDH derivation returned invalid shared secret');
+            }
+            // Convert hex → Uint8Array (strip 0x prefix if present)
+            const cleanHex = sharedHex.startsWith('0x') ? sharedHex.slice(2) : sharedHex;
+            ikmBytes = new Uint8Array(cleanHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+        } else {
+            // ── FALLBACK: sorted public keys (NOT secure — for backward compat) ──
+            console.warn('[GhostChat] ⚠ No ECDH callback provided — using legacy sorted-key derivation. This is NOT secure for production.');
+            const [a, b] = [myPub, peerPub].sort();
+            const ikmStr = `${a.length}:${a}|${b.length}:${b}`;
+            ikmBytes = enc.encode(ikmStr);
+        }
+
         const ikmKey = await crypto.subtle.importKey(
-            'raw', enc.encode(ikmStr), 'HKDF', false, ['deriveKey']
+            'raw', ikmBytes, 'HKDF', false, ['deriveKey']
         );
-        // ── END REPLACE BLOCK ─────────────────────────────────────────────────
 
         // HKDF: info provides domain separation; salt prevents related-key attacks.
         const sessionKey = await crypto.subtle.deriveKey(
@@ -278,12 +292,22 @@
     // ─────────────────────────────────────────────────────────────────────────
 
     class GhostChat {
-        constructor(myIdentity, transportSender) {
+        /**
+         * @param {Object} myIdentity  - { pub, nodeId } — private key is NOT stored.
+         * @param {Function} transportSender - async (payloadStr) => void
+         * @param {Function} [ecdhDerive] - (peerPublicKeyHex) => sharedSecretHex
+         *   Callback that performs secp256k1 ECDH using the caller's private key.
+         *   Typically: (peerPub) => new ethers.SigningKey(privateKey).computeSharedSecret(peerPub).slice(2, 66)
+         *   If omitted, falls back to insecure sorted-key derivation (legacy).
+         */
+        constructor(myIdentity, transportSender, ecdhDerive) {
             // [FIX F] Strip private key — transport layer must never hold it.
             const { pub, nodeId } = myIdentity || {};
             this.myIdentity = { pub, nodeId };
 
             this.sendToNetwork = transportSender;
+            // [FIX B] ECDH callback — private key stays in the caller's closure.
+            this._ecdhDerive = typeof ecdhDerive === 'function' ? ecdhDerive : null;
 
             // PeerPubKey -> { sessionKey, hmacKey }
             this.sessions = new Map();
@@ -308,7 +332,7 @@
                 ? new Uint8Array(salt)
                 : crypto.getRandomValues(new Uint8Array(16));
 
-            const session = await _deriveSharedSecret(this.myIdentity.pub, peerPubKey, saltBytes);
+            const session = await _deriveSharedSecret(this.myIdentity.pub, peerPubKey, saltBytes, this._ecdhDerive);
             this.sessions.set(cacheKey, { ...session, salt: Array.from(saltBytes) });
             return this.sessions.get(cacheKey);
         }
