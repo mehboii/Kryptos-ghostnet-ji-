@@ -3157,6 +3157,8 @@ const UI = {
         const nodeId = AppState.identity.nodeId;
         const rawDisplayName = AppState.identity.displayName || 'Ghost User';
         const displayName = String(rawDisplayName).slice(0, 32);
+        // Ephemeral: 5-minute expiry — shared so countdown timer can access it
+        const expTS = Date.now() + (5 * 60 * 1000);
 
         const buildCard = (qrCanvasOrFallbackStr) => {
             const c = document.createElement('canvas');
@@ -3457,8 +3459,7 @@ const UI = {
         function drawQRAndBuild() {
             try {
                 const tempDiv = document.createElement('div');
-                // Ephemeral: 5-minute expiry + single-use nonce
-                const expTS = Date.now() + (5 * 60 * 1000);
+                // Single-use nonce for burn-after-scan
                 const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2,'0')).join('');
                 const qrData = JSON.stringify({"v":2,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS,"nonce":nonce});
                 new QRCode(tempDiv, {
