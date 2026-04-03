@@ -424,6 +424,16 @@ document.addEventListener('DOMContentLoaded', () => {
             document.getElementById('stat-up').textContent = this.formatUptime(status.stats.uptime);
         },
 
+        _esc(str) {
+            const d = document.createElement('div');
+            d.textContent = String(str);
+            return d.innerHTML;
+        },
+
+        _escAttr(str) {
+            return String(str).replace(/[&"'<>\\]/g, c => ({'&':'&amp;','"':'&quot;',"'":'&#39;','<':'&lt;','>':'&gt;','\\':'&#92;'}[c]));
+        },
+
         renderThreats() {
             const container = document.getElementById('threat-list-container');
             if(!container) return;
@@ -431,7 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!window.SignalIntelligence) return;
 
             const signals = window.SignalIntelligence.getSignalReport();
-            
+
             if (signals.length === 0) {
                 container.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--text-muted); font-size: 0.85rem;">No devices detected.</div>`;
                 return;
@@ -443,24 +453,27 @@ document.addEventListener('DOMContentLoaded', () => {
                 let cls = 'safe';
                 if (sig.threatLevel === 'THREAT') cls = 'danger';
                 else if (sig.threatLevel === 'MONITOR') cls = 'monitor';
-                
+
                 if (isBlocked) cls = 'blocked';
 
-                const flags = (sig.interferenceFlags || []).join(', ') || 'Normal behavior';
+                const flags = this._esc((sig.interferenceFlags || []).join(', ') || 'Normal behavior');
                 const scoreClass = sig.threatScore > 60 ? 'high' : '';
+                const safeMac = this._escAttr(sig.mac);
+                const safeName = this._esc(sig.type || sig.name || 'Unknown Device');
+                const safeScore = String(Number(sig.threatScore) || 0).padStart(2, ' ');
 
                 html += `
                     <div class="threat-item ${cls}" onclick="GhostShieldUI.toggleBlockView(this)">
                         <div class="threat-item-top">
-                            <strong style="font-size:0.9rem; color:var(--text-primary);"><span class="threat-score ${scoreClass}">[${String(sig.threatScore).padStart(2,' ')}]</span> ${sig.type || sig.name || 'Unknown Device'}</strong>
+                            <strong style="font-size:0.9rem; color:var(--text-primary);"><span class="threat-score ${scoreClass}">[${safeScore}]</span> ${safeName}</strong>
                         </div>
                         <div class="threat-item-bot">
-                            <span>MAC: ${sig.isRandomizedMac ? 'Randomized' : sig.mac}</span>
+                            <span>MAC: ${sig.isRandomizedMac ? 'Randomized' : this._esc(sig.mac)}</span>
                             <span>·</span>
                             <span>${flags}</span>
                         </div>
-                        ${!isBlocked && sig.threatLevel === 'THREAT' ? `<button class="btn-block-device" onclick="GhostShieldUI.blockMac('${sig.mac}', event)">Block This Device</button>` : ''}
-                        ${isBlocked ? `<div class="blocked-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>BLOCKED — APP INVISIBLE TO THIS DEVICE <br><a href="#" style="color:var(--text-muted); font-weight:normal; text-decoration:underline; font-size:10px;" onclick="GhostShieldUI.unblockMac('${sig.mac}', event)">Unblock</a></div>` : ''}
+                        ${!isBlocked && sig.threatLevel === 'THREAT' ? `<button class="btn-block-device" onclick="GhostShieldUI.blockMac('${safeMac}', event)">Block This Device</button>` : ''}
+                        ${isBlocked ? `<div class="blocked-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>BLOCKED — APP INVISIBLE TO THIS DEVICE <br><a href="#" style="color:var(--text-muted); font-weight:normal; text-decoration:underline; font-size:10px;" onclick="GhostShieldUI.unblockMac('${safeMac}', event)">Unblock</a></div>` : ''}
                     </div>
                 `;
             }

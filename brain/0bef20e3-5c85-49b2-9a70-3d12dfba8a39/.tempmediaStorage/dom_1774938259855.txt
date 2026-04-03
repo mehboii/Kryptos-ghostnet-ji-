@@ -1,0 +1,29 @@
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+123 characters
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+0
+Words
+0
+Sentences
+0
+Issues
+87
+Readability
+Tone
+Casual
+Polarity
+0.105
+Subjectivity
+0.723
+Readability
+87
+Very Easy — easily understood by 11-year-olds
+Grade Level
+2.6
+Issues
+0
+No issues found yet.
+Start typing to check your writing.

@@ -1,0 +1,66 @@
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+115 characters
+have went to the store yesterday. Their was
+alot
+of peoples there.
+your very
+good at writing.
+This are
+bad
+grammer
+.
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+21
+Words
+4
+Sentences
+5
+Issues
+88.7
+Readability
+Tone
+Casual
+Polarity
+0.105
+Subjectivity
+0.723
+Readability
+88.7
+Very Easy — easily understood by 11-year-olds
+Grade Level
+2.2
+Issues
+5
+[2] (780,632)<div class='issues-list' id='issues-list' scrollable='true' />
+	[3] (777,538)<div  />
+		[4] (637,508)<div >spelling />
+		[5] (777,524)<div >Possible spelling error: "alot" />
+		[6] (777,545)<div >esterday. Their was alot of peoples there. y />
+		[7] (777,568)<div  />
+			[8] (628,568)<button class='fix-btn'>clot />
+			[9] (684,568)<button class='fix-btn'>lot />
+			[10] (740,568)<button class='fix-btn'>plot />
+			[11] (799,568)<button class='fix-btn'>blot />
+	[12] (777,640)<div  />
+		[13] (640,609)<div >grammar />
+		[14] (777,625)<div >Did you mean "you're" (you are)? />
+		[15] (777,646)<div >t of peoples there. your very good at writing. Th />
+		[16] (777,670)<div  />
+			[17] (635,670)<button class='fix-btn'>you're />
+	[18] (777,741)<div  />
+		[19] (628,710)<div >style />
+		[20] (777,726)<div >Consider a stronger word />
+		[21] (777,747)<div >peoples there. your very good at writing. This ar />
+		[22] (777,771)<div  />
+			[23] (647,771)<button class='fix-btn'>excellent />
+	grammar
+	Subject-verb agreement: use "this is"
+	ry good at writing. This are bad grammer.
+	this is
+	spelling
+	Possible spelling error: "grammer"
+	iting. This are bad grammer.
+	grammar

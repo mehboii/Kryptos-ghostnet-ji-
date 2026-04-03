@@ -1,0 +1,29 @@
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+0 characters
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+0
+Words
+0
+Sentences
+0
+Issues
+—
+Readability
+Tone
+Neutral
+Polarity
+0
+Subjectivity
+0
+Readability
+—
+Type something to see your score
+Grade Level
+—
+Issues
+0
+No issues found yet.
+Start typing to check your writing.

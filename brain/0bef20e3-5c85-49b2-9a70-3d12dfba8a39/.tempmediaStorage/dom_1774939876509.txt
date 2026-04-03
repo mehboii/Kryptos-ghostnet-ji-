@@ -1,0 +1,69 @@
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+751 characters
+Artificial intelligence is fundamentally transforming the landscape of modern technology. Furthermore, it is essential to acknowledge that these developments have significant
+implications
+for various industries. Additionally, the implementation of machine learning algorithms has demonstrated substantial improvements in efficiency. Moreover, it is important to note that organizations should prioritize the utilization of these technologies. Consequently, the establishment of robust
+frameworks
+is necessary to facilitate the adoption of AI solutions. Nevertheless, it is crucial to examine the potential challenges that may arise. In conclusion, the future of artificial intelligence holds tremendous promise for individuals and organizations alike.
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+[2] (780,521)<aside class='sidebar' id='sidebar' scrollable='true' />
+	Polarity
+	0.009
+	Subjectivity
+	0.758
+	Readability
+	0
+	Very Difficult — best understood by professionals
+	Grade Level
+	16.9
+	Issues
+	2
+	[3] (777,326)<div  />
+		[4] (637,295)<div >spelling />
+		[5] (777,311)<div >Possible spelling error: "implications" />
+		[6] (777,332)<div >ts have significant implications for various industr />
+		[7] (777,356)<div  />
+			[8] (654,356)<button class='fix-btn'>implication />
+	[9] (777,427)<div  />
+		[10] (637,396)<div >spelling />
+		[11] (777,412)<div >Possible spelling error: "frameworks" />
+		[12] (777,434)<div >blishment of robust frameworks is necessary to fac />
+		[13] (777,457)<div  />
+			[14] (647,457)<button class='fix-btn'>framework />
+	AI Humanizer
+	NEW
+	AI Detection Score
+	Mixed — Some AI Signals
+	Human
+	58.3%
+	AI
+	Sentence lengths are very uniform (AI pattern)
+	No contractions used — AI typically avoids them
+	High density of transition words
+	Higher average word length than typical human writing
+	[15] (777,698)<button class='humanize-btn' id='btn-humanize'>Humanize Text />
+	Humanized Preview
+	58.3%
+	20%
+	[16] (777,822)<div class='result-text' id='result-text' scrollable='true'>Artificial intelligence is fundamentally transforming the landscape of modern technology. If you ask me, these developments have big implications for various industries. Which shouldn't be surprising, the setup of machine learning algorithms has demonstrated major improvements in efficiency. And organizations should focus on the use of these technologies, why should you care. You know what? What's more, the establishment of robust frameworks is (which is a big deal) necessary to help the adoption of AI solutions. Still, it's major to look at the potential challenges that may arise. What's more, the future of artificial intelligence — at least in my view — holds tremendous promise for people and organizations alike. />
+	[17] (777,935)<div class='result-changes' id='result-changes' scrollable='true'>Removed AI-typical filler phrases
+Applied natural contractions throughout
+Removed overused academic transitions
+Replaced formal vocabulary with casual words
+Broke repetitive sentence patterns
+Added conversational sentence openers
+Inserted natural parenthetical asides
+Added rhetorical question for engagement />
+		Removed AI-typical filler phrases
+		Applied natural contractions throughout
+		Removed overused academic transitions
+		Replaced formal vocabulary with casual words
+		Broke repetitive sentence patterns
+		Added conversational sentence openers
+		Inserted natural parenthetical asides
+		Added rhetorical question for engagement
+	[18] (686,997)<button class='accept-btn' id='btn-accept'>Accept />
+	[19] (867,997)<button class='reject-btn' id='btn-reject'>Reject />

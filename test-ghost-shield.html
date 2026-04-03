@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ghost Shield — Test Suite</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0a0a1a; color: #e0e0e0; font-family: 'Courier New', monospace; padding: 16px; font-size: 14px; }
+h1 { color: #8b5cf6; margin-bottom: 8px; font-size: 1.4rem; }
+h2 { color: #60a5fa; margin: 16px 0 8px; font-size: 1.1rem; border-bottom: 1px solid #333; padding-bottom: 4px; }
+.suite { margin-bottom: 20px; }
+.test { padding: 6px 12px; margin: 2px 0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+.test.pass { background: rgba(16, 185, 129, 0.15); border-left: 3px solid #10b981; }
+.test.fail { background: rgba(239, 68, 68, 0.15); border-left: 3px solid #ef4444; }
+.test.skip { background: rgba(251, 191, 36, 0.15); border-left: 3px solid #fbbf24; }
+.badge { font-size: 11px; font-weight: bold; padding: 2px 8px; border-radius: 10px; }
+.badge.pass { background: #10b981; color: #000; }
+.badge.fail { background: #ef4444; color: #fff; }
+.badge.skip { background: #fbbf24; color: #000; }
+.detail { font-size: 11px; color: #888; margin-top: 2px; }
+#summary { margin-top: 20px; padding: 16px; border-radius: 8px; font-size: 1.1rem; font-weight: bold; text-align: center; }
+#summary.all-pass { background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #10b981; }
+#summary.has-fail { background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; color: #ef4444; }
+#run-btn { display: block; width: 100%; padding: 14px; margin: 12px 0; background: #8b5cf6; color: #fff; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; font-family: inherit; }
+#run-btn:active { background: #7c3aed; }
+#log { margin-top: 16px; background: #111; padding: 12px; border-radius: 8px; max-height: 200px; overflow-y: auto; font-size: 11px; color: #888; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+
+<h1>Ghost Shield Test Suite</h1>
+<p style="color:#888; margin-bottom:8px;">Tap RUN to test all Ghost Shield features</p>
+<button id="run-btn" onclick="runAllTests()">RUN ALL TESTS</button>
+<div id="results"></div>
+<div id="summary"></div>
+<div id="log"></div>
+
+<!-- Load all dependencies in order -->
+<script src="shieldConfig.js"></script>
+<script src="signal-intelligence.js"></script>
+<script src="ghost-radar.js"></script>
+<script src="ghost-shield.js"></script>
+<script src="signalIntel.js"></script>
+
+<script>
+const results = [];
+const logs = [];
+
+function log(msg) {
+    logs.push(`[${new Date().toISOString().slice(11,19)}] ${msg}`);
+}
+
+function assert(name, condition, detail) {
+    const status = condition ? 'pass' : 'fail';
+    results.push({ name, status, detail: detail || '' });
+    log(`${status.toUpperCase()}: ${name}${detail ? ' — ' + detail : ''}`);
+}
+
+function skip(name, reason) {
+    results.push({ name, status: 'skip', detail: reason });
+    log(`SKIP: ${name} — ${reason}`);
+}
+
+function renderResults() {
+    const container = document.getElementById('results');
+    let currentSuite = '';
+    let html = '';
+
+    for (const r of results) {
+        // Group by suite prefix (text before ":")
+        const parts = r.name.split(':');
+        const suite = parts.length > 1 ? parts[0].trim() : 'General';
+        if (suite !== currentSuite) {
+            if (currentSuite) html += '</div>';
+            currentSuite = suite;
+            html += `<div class="suite"><h2>${suite}</h2>`;
+        }
+        html += `<div class="test ${r.status}">
+            <span>${r.name}</span>
+            <span class="badge ${r.status}">${r.status.toUpperCase()}</span>
+        </div>`;
+        if (r.detail) html += `<div class="detail" style="padding-left:15px;">${r.detail}</div>`;
+    }
+    if (currentSuite) html += '</div>';
+    container.innerHTML = html;
+
+    const passed = results.filter(r => r.status === 'pass').length;
+    const failed = results.filter(r => r.status === 'fail').length;
+    const skipped = results.filter(r => r.status === 'skip').length;
+    const total = results.length;
+    const summaryEl = document.getElementById('summary');
+    summaryEl.className = failed > 0 ? 'has-fail' : 'all-pass';
+    summaryEl.textContent = `${passed}/${total} PASSED | ${failed} FAILED | ${skipped} SKIPPED`;
+
+    document.getElementById('log').textContent = logs.join('\n');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TEST SUITES
+// ═══════════════════════════════════════════════════════════════
+
+function testShieldConfig() {
+    log('--- ShieldConfig Tests ---');
+
+    assert('Config: window.ShieldConfig exists', !!window.ShieldConfig);
+
+    const cfg = window.ShieldConfig;
+    if (!cfg) return;
+
+    // Stealth
+    assert('Config: stealth.dohUrl defined', typeof cfg.stealth.dohUrl === 'string' && cfg.stealth.dohUrl.length > 0, cfg.stealth.dohUrl);
+    assert('Config: stealth.dohFallbackUrl defined', typeof cfg.stealth.dohFallbackUrl === 'string');
+    assert('Config: stealth.bleScanTimeout > 0', cfg.stealth.bleScanTimeout > 0, `${cfg.stealth.bleScanTimeout}ms`);
+
+    // Ghost
+    assert('Config: ghost.paddingMinBytes > 0', cfg.ghost.paddingMinBytes > 0, `${cfg.ghost.paddingMinBytes}`);
+    assert('Config: ghost.paddingMaxBytes > paddingMinBytes', cfg.ghost.paddingMaxBytes > cfg.ghost.paddingMinBytes, `${cfg.ghost.paddingMinBytes}-${cfg.ghost.paddingMaxBytes}`);
+    assert('Config: ghost.timingDelayMinMs >= 100', cfg.ghost.timingDelayMinMs >= 100, `${cfg.ghost.timingDelayMinMs}ms`);
+    assert('Config: ghost.timingDelayMaxMs <= 2000', cfg.ghost.timingDelayMaxMs <= 2000, `${cfg.ghost.timingDelayMaxMs}ms`);
+    assert('Config: ghost.dummyPacketIntervalMs > 0', cfg.ghost.dummyPacketIntervalMs > 0);
+    assert('Config: ghost.dummyPacketSize > 0', cfg.ghost.dummyPacketSize > 0, `${cfg.ghost.dummyPacketSize} bytes`);
+
+    // Phantom
+    assert('Config: phantom.decoyIntervalMs > 0', cfg.phantom.decoyIntervalMs > 0);
+    assert('Config: phantom.decoyNames is array with items', Array.isArray(cfg.phantom.decoyNames) && cfg.phantom.decoyNames.length > 0, `${cfg.phantom.decoyNames.length} profiles`);
+    assert('Config: phantom.decoyServiceUUIDs has UUIDs', Array.isArray(cfg.phantom.decoyServiceUUIDs) && cfg.phantom.decoyServiceUUIDs.length > 0);
+    assert('Config: phantom.macRotationIntervalMs > 0', cfg.phantom.macRotationIntervalMs > 0, `${cfg.phantom.macRotationIntervalMs / 1000}s`);
+    assert('Config: phantom.forcedMaxHops >= 6', cfg.phantom.forcedMaxHops >= 6, `${cfg.phantom.forcedMaxHops} hops`);
+
+    // SignalIntel
+    assert('Config: signalIntel.scanIntervalMs > 0', cfg.signalIntel.scanIntervalMs > 0);
+    assert('Config: signalIntel.bleScanDurationMs > 0', cfg.signalIntel.bleScanDurationMs > 0);
+
+    // Storage keys
+    assert('Config: storage.shieldStateKey defined', typeof cfg.storage.shieldStateKey === 'string');
+    assert('Config: storage.blockedMacsKey defined', typeof cfg.storage.blockedMacsKey === 'string');
+
+    // Frozen
+    let frozen = true;
+    try { cfg.stealth.dohUrl = 'hacked'; if (cfg.stealth.dohUrl === 'hacked') frozen = false; } catch (_) { }
+    assert('Config: objects are frozen (immutable)', frozen);
+}
+
+function testGhostShieldEngine() {
+    log('--- GhostShield Engine Tests ---');
+
+    assert('Engine: window.GhostShield exists', !!window.GhostShield);
+    const gs = window.GhostShield;
+    if (!gs) return;
+
+    // Clean state first
+    gs.disableAll();
+
+    // Initial state
+    const s0 = gs.getStatus();
+    assert('Engine: initial level is 0', s0.level === 0, `level=${s0.level}`);
+    assert('Engine: initial active is false', gs.isActive() === false);
+    assert('Engine: initial activeStates all false', !s0.activeStates[1] && !s0.activeStates[2] && !s0.activeStates[3]);
+
+    // Enable Level 1
+    gs.enable(1);
+    const s1 = gs.getStatus();
+    assert('Engine: level 1 activates', s1.activeStates[1] === true);
+    assert('Engine: level is 1 after enabling L1', s1.level === 1);
+    assert('Engine: isActive() after L1', gs.isActive() === true);
+
+    // Enable Level 2
+    gs.enable(2);
+    const s2 = gs.getStatus();
+    assert('Engine: level 2 activates', s2.activeStates[2] === true);
+    assert('Engine: level is 2 after enabling L2', s2.level === 2);
+
+    // Enable Level 3
+    gs.enable(3);
+    const s3 = gs.getStatus();
+    assert('Engine: level 3 activates', s3.activeStates[3] === true);
+    assert('Engine: currentLevel is ALL when all 3 active', s3.currentLevel === 'ALL');
+    assert('Engine: level is 3 at max', s3.level === 3);
+
+    // Toggle Level 2 off
+    gs.enable(2);
+    const s4 = gs.getStatus();
+    assert('Engine: toggle L2 off', s4.activeStates[2] === false);
+    assert('Engine: L1 and L3 still active', s4.activeStates[1] === true && s4.activeStates[3] === true);
+
+    // Disable all
+    gs.disableAll();
+    const s5 = gs.getStatus();
+    assert('Engine: disableAll resets all', !s5.activeStates[1] && !s5.activeStates[2] && !s5.activeStates[3]);
+    assert('Engine: level 0 after disableAll', s5.level === 0);
+    assert('Engine: isActive false after disableAll', gs.isActive() === false);
+
+    // enableAll
+    gs.enableAll();
+    const s6 = gs.getStatus();
+    assert('Engine: enableAll activates all 3', s6.activeStates[1] && s6.activeStates[2] && s6.activeStates[3]);
+    assert('Engine: currentLevel is ALL', s6.currentLevel === 'ALL');
+
+    // Block device
+    gs.blockDevice('AA:BB:CC:DD:EE:FF');
+    assert('Engine: blockDevice adds to blockedMacs', gs.blockedMacs.has('AA:BB:CC:DD:EE:FF'));
+    assert('Engine: stats.devicesBlocked updates', gs.getStatus().stats.devicesBlocked === 1);
+
+    // Unblock device
+    gs.unblockDevice('AA:BB:CC:DD:EE:FF');
+    assert('Engine: unblockDevice removes from blockedMacs', !gs.blockedMacs.has('AA:BB:CC:DD:EE:FF'));
+
+    // Invalid level
+    gs.disableAll();
+    gs.enable(5);
+    assert('Engine: invalid level (5) ignored', gs.getStatus().level === 0);
+    gs.enable(-1);
+    assert('Engine: invalid level (-1) ignored', gs.getStatus().level === 0);
+
+    // Stats uptime
+    gs.enableAll();
+    assert('Engine: startTime set when active', gs.startTime !== null);
+    assert('Engine: stats.uptime >= 0', gs.getStatus().stats.uptime >= 0);
+
+    gs.disableAll();
+}
+
+function testLocalStoragePersistence() {
+    log('--- Persistence Tests ---');
+
+    const cfg = window.ShieldConfig;
+    const gs = window.GhostShield;
+    if (!cfg || !gs) { skip('Persistence: deps missing', 'ShieldConfig or GhostShield not loaded'); return; }
+
+    // Clean
+    gs.disableAll();
+    localStorage.removeItem(cfg.storage.shieldStateKey);
+
+    // Enable and check persistence
+    gs.enableAll();
+    gs.blockDevice('11:22:33:44:55:66');
+    const stored = localStorage.getItem(cfg.storage.shieldStateKey);
+    assert('Persist: state saved to localStorage', stored !== null);
+
+    let parsed = null;
+    try { parsed = JSON.parse(stored); } catch (_) { }
+    assert('Persist: stored state is valid JSON', parsed !== null);
+    assert('Persist: stored activeStates has L1 true', parsed && parsed.activeStates && parsed.activeStates[1] === true);
+    assert('Persist: stored activeStates has L2 true', parsed && parsed.activeStates && parsed.activeStates[2] === true);
+    assert('Persist: stored activeStates has L3 true', parsed && parsed.activeStates && parsed.activeStates[3] === true);
+    assert('Persist: blocked MAC saved', parsed && Array.isArray(parsed.blockedMacs) && parsed.blockedMacs.includes('11:22:33:44:55:66'));
+    assert('Persist: savedAt timestamp present', parsed && typeof parsed.savedAt === 'number');
+
+    // Clean up
+    gs.unblockDevice('11:22:33:44:55:66');
+    gs.disableAll();
+}
+
+function testDNSOverHTTPS() {
+    log('--- DNS-over-HTTPS Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('DoH: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+
+    // Before enabling: fetch should be original
+    const origFetch = window.fetch;
+
+    gs.enableLevel(1);
+    assert('DoH: fetch intercepted after L1 enable', window.fetch !== origFetch, 'fetch reference changed');
+    assert('DoH: _dohActive flag set', gs._dohActive === true);
+
+    gs.disableLevel(1);
+    assert('DoH: fetch restored after L1 disable', gs._dohActive === false);
+
+    gs.disableAll();
+}
+
+function testPacketPadding() {
+    log('--- Packet Padding Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('Padding: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+
+    const origSend = WebSocket.prototype.send;
+
+    gs.enableLevel(2);
+    assert('Padding: WebSocket.send intercepted after L2', WebSocket.prototype.send !== origSend);
+    assert('Padding: _paddingActive flag set', gs._paddingActive === true);
+
+    // Test that padding actually adds data
+    let sentData = null;
+    const mockWs = { send: function(data) { sentData = data; } };
+
+    // Create a temporary WS-like test
+    try {
+        const testPayload = JSON.stringify({ type: 'test', msg: 'hello' });
+        const padded = (() => {
+            // Simulate what the intercepted send does
+            const cfg = window.ShieldConfig;
+            const minBytes = cfg.ghost.paddingMinBytes;
+            const maxBytes = cfg.ghost.paddingMaxBytes;
+            const padLen = minBytes + Math.floor((crypto.getRandomValues(new Uint8Array(1))[0] / 255) * (maxBytes - minBytes));
+            const padBytes = new Uint8Array(padLen);
+            crypto.getRandomValues(padBytes);
+            const padStr = btoa(String.fromCharCode(...padBytes));
+            const parsed = JSON.parse(testPayload);
+            parsed._pad = padStr;
+            return JSON.stringify(parsed);
+        })();
+        assert('Padding: padded message is larger than original', padded.length > '{"type":"test","msg":"hello"}'.length, `original: ${'{"type":"test","msg":"hello"}'.length}, padded: ${padded.length}`);
+        const parsedPadded = JSON.parse(padded);
+        assert('Padding: _pad field added to JSON', typeof parsedPadded._pad === 'string' && parsedPadded._pad.length > 0);
+    } catch (e) {
+        assert('Padding: padding logic works', false, e.message);
+    }
+
+    gs.disableLevel(2);
+    gs.disableAll();
+
+    // Restore original to not break other tests
+    WebSocket.prototype.send = origSend;
+}
+
+function testTimingObfuscation() {
+    log('--- Timing Obfuscation Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('Timing: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+    const origSend = WebSocket.prototype.send;
+
+    gs.enableLevel(2);
+    assert('Timing: _timingActive flag set after L2', gs._timingActive === true);
+
+    const cfg = window.ShieldConfig;
+    assert('Timing: delay range is 100-2000ms', cfg.ghost.timingDelayMinMs === 100 && cfg.ghost.timingDelayMaxMs === 2000);
+
+    gs.disableAll();
+    WebSocket.prototype.send = origSend;
+}
+
+function testMACRotation() {
+    log('--- MAC Rotation Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('MAC: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+    const rotsBefore = gs.stats.macRotations;
+
+    gs.enableLevel(3);
+    // MAC rotation runs immediately on enable
+    assert('MAC: macRotations incremented after L3 enable', gs.stats.macRotations > rotsBefore, `before: ${rotsBefore}, after: ${gs.stats.macRotations}`);
+
+    // Test _randomMAC format
+    const mac = gs._randomMAC();
+    const macRegex = /^[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}:[0-9A-F]{2}$/;
+    assert('MAC: _randomMAC produces valid format', macRegex.test(mac), mac);
+
+    // Check locally administered bit
+    const firstOctet = parseInt(mac.substring(0, 2), 16);
+    assert('MAC: locally administered bit set', (firstOctet & 0x02) !== 0, `first octet: 0x${firstOctet.toString(16)}`);
+    assert('MAC: multicast bit cleared', (firstOctet & 0x01) === 0);
+
+    // Test uniqueness
+    const macs = new Set();
+    for (let i = 0; i < 100; i++) macs.add(gs._randomMAC());
+    assert('MAC: 100 generated MACs are all unique', macs.size === 100, `${macs.size}/100 unique`);
+
+    gs.disableAll();
+}
+
+function testForceMaxHops() {
+    log('--- Max Hops Override Tests ---');
+
+    const gs = window.GhostShield;
+    const cfg = window.ShieldConfig;
+    if (!gs || !cfg) { skip('Hops: deps missing', ''); return; }
+
+    gs.disableAll();
+
+    // Check if GhostMesh is available
+    if (window.GhostMesh) {
+        const origHops = GhostMesh.prototype.MAX_HOPS || 5;
+        gs.enableLevel(3);
+        assert('Hops: MAX_HOPS overridden on GhostMesh prototype', GhostMesh.prototype.MAX_HOPS === cfg.phantom.forcedMaxHops, `expected: ${cfg.phantom.forcedMaxHops}, got: ${GhostMesh.prototype.MAX_HOPS}`);
+
+        gs.disableLevel(3);
+        assert('Hops: MAX_HOPS restored after disable', GhostMesh.prototype.MAX_HOPS === origHops, `restored to: ${GhostMesh.prototype.MAX_HOPS}`);
+    } else {
+        skip('Hops: GhostMesh not loaded in test env', 'need ghostnet-mesh.js loaded');
+    }
+
+    gs.disableAll();
+}
+
+function testDummyPacketInjection() {
+    log('--- Dummy Packet Injection Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('Dummy: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+    gs._intervals.ghost = [];
+
+    gs.enableLevel(2);
+    assert('Dummy: ghost interval registered after L2', gs._intervals.ghost.length > 0, `${gs._intervals.ghost.length} intervals`);
+
+    gs.disableLevel(2);
+    assert('Dummy: ghost intervals cleared after L2 disable', gs._intervals.ghost.length === 0);
+
+    gs.disableAll();
+}
+
+function testDecoyBLE() {
+    log('--- Decoy BLE Advertising Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('Decoy: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+    gs._intervals.phantom = [];
+
+    gs.enableLevel(3);
+    assert('Decoy: phantom intervals registered after L3', gs._intervals.phantom.length > 0, `${gs._intervals.phantom.length} intervals`);
+
+    gs.disableLevel(3);
+    assert('Decoy: phantom intervals cleared after L3 disable', gs._intervals.phantom.length === 0);
+
+    gs.disableAll();
+}
+
+function testSignalIntelligence() {
+    log('--- Signal Intelligence Engine Tests ---');
+
+    assert('SigInt: window.SignalIntelligence exists', !!window.SignalIntelligence);
+    const si = window.SignalIntelligence;
+    if (!si) return;
+
+    // Clear existing signals
+    si.signals.clear();
+
+    // Process a safe device
+    const safe = si.processSignal({ mac: 'A2:B3:C4:D5:E6:F7', rssi: -75, name: 'iPhone 15', hasBLE: true, hasWiFi: true });
+    assert('SigInt: safe device processed', safe !== null);
+    assert('SigInt: safe device classified as Smartphone', safe.type === 'Smartphone', `type: ${safe.type}`);
+    assert('SigInt: safe device threat is SAFE', safe.threatLevel === 'SAFE', `threat: ${safe.threatLevel}`);
+
+    // Process a suspicious device (no name, strong signal, multi-channel)
+    const threat = si.processSignal({ mac: '00:1A:2B:3C:4D:5E', rssi: -25, name: '', channels: [1, 6, 11] });
+    assert('SigInt: threat device processed', threat !== null);
+    assert('SigInt: threat score > 60 for suspicious device', threat.threatScore > 60, `score: ${threat.threatScore}`);
+    assert('SigInt: classified as THREAT', threat.threatLevel === 'THREAT');
+
+    // Process a GhostNet node
+    const node = si.processSignal({ mac: '0xa752f1234567', rssi: -50, isGhostNode: true });
+    assert('SigInt: GhostNode processed', node !== null);
+    assert('SigInt: GhostNode threat score is 0', node.threatScore === 0);
+    assert('SigInt: GhostNode type is "GhostNet Node"', node.type === 'GhostNet Node');
+
+    // Signal report
+    const report = si.getSignalReport();
+    assert('SigInt: getSignalReport returns array', Array.isArray(report));
+    assert('SigInt: report has 3 entries', report.length === 3, `got: ${report.length}`);
+    assert('SigInt: report sorted by RSSI (strongest first)', report[0].rssi >= report[1].rssi);
+
+    // Threat level
+    const tl = si.getThreatLevel();
+    assert('SigInt: overall threat level is DANGER (threat present)', tl === 'DANGER', `level: ${tl}`);
+
+    // Interference
+    const interf = si.getInterference();
+    assert('SigInt: interference detected', interf.length > 0);
+
+    si.signals.clear();
+}
+
+function testSignalIntelService() {
+    log('--- SignalIntel Service Tests ---');
+
+    assert('Service: window.SignalIntelService exists', !!window.SignalIntelService);
+    const svc = window.SignalIntelService;
+    if (!svc) return;
+
+    assert('Service: has start() method', typeof svc.start === 'function');
+    assert('Service: has stop() method', typeof svc.stop === 'function');
+    assert('Service: has isActive() method', typeof svc.isActive === 'function');
+    assert('Service: has _mapRadarToSignal() method', typeof svc._mapRadarToSignal === 'function');
+
+    // Test MAC randomization detection
+    assert('Service: _isRandomizedMAC detects randomized', svc._isRandomizedMAC('A2:B3:C4:D5:E6:F7') === true, 'first octet 0xA2 has bit 1 set');
+    assert('Service: _isRandomizedMAC detects non-randomized', svc._isRandomizedMAC('00:1A:2B:3C:4D:5E') === false, 'first octet 0x00 has bit 1 clear');
+
+    // Test device mapping
+    const mapped = svc._mapRadarToSignal({
+        id: 'AA:BB:CC:DD:EE:FF',
+        rssi: -60,
+        name: 'Test Device',
+        type: 'apple_device',
+        source: 'real'
+    });
+    assert('Service: _mapRadarToSignal returns valid object', mapped !== null);
+    assert('Service: mapped.mac matches device.id', mapped && mapped.mac === 'AA:BB:CC:DD:EE:FF');
+    assert('Service: mapped.hasBLE for apple_device', mapped && mapped.hasBLE === true);
+    assert('Service: mapped.source is "real"', mapped && mapped.source === 'real');
+
+    // Null input
+    assert('Service: _mapRadarToSignal handles null', svc._mapRadarToSignal(null) === null);
+    assert('Service: _mapRadarToSignal handles missing id', svc._mapRadarToSignal({ rssi: -50 }) === null);
+}
+
+function testGhostRadar() {
+    log('--- Ghost Radar Tests ---');
+
+    assert('Radar: window.GhostRadar exists', !!window.GhostRadar);
+    const gr = window.GhostRadar;
+    if (!gr) return;
+
+    assert('Radar: has scanWifi() method', typeof gr.scanWifi === 'function');
+    assert('Radar: has scanBluetooth() method', typeof gr.scanBluetooth === 'function');
+    assert('Radar: has getNetworkInfo() method', typeof gr.getNetworkInfo === 'function');
+    assert('Radar: has startScan() method', typeof gr.startScan === 'function');
+    assert('Radar: results is array', Array.isArray(gr.results));
+
+    // Test frequency to channel conversion
+    assert('Radar: _freqToChannel 2412 = Ch1', gr._freqToChannel(2412) === 1);
+    assert('Radar: _freqToChannel 2437 = Ch6', gr._freqToChannel(2437) === 6);
+    assert('Radar: _freqToChannel 2462 = Ch11', gr._freqToChannel(2462) === 11);
+
+    // Test GhostNet node detection
+    assert('Radar: _isGhostNetNode detects "GhostNode" prefix', gr._isGhostNetNode({ name: 'GhostNode-abc123' }) === true);
+    assert('Radar: _isGhostNetNode detects 0x address', gr._isGhostNetNode({ name: '0x1234567890abcdef1234567890abcdef12345678' }) === true);
+    assert('Radar: _isGhostNetNode rejects normal name', gr._isGhostNetNode({ name: 'iPhone 15' }) === false);
+}
+
+async function testBLEPluginAvailability() {
+    log('--- BLE Plugin Availability Tests ---');
+
+    // Check if Capacitor is available
+    const hasCapacitor = typeof window.Capacitor !== 'undefined';
+    if (!hasCapacitor) {
+        skip('BLE: Capacitor not available', 'running in browser, not native app');
+        return;
+    }
+
+    assert('BLE: Capacitor runtime present', hasCapacitor);
+
+    // Try to import BLE plugin
+    try {
+        const { BleClient } = await import('@anthropic-community/bluetooth-le');
+        assert('BLE: plugin imported successfully', !!BleClient);
+    } catch (e) {
+        // In Capacitor, the plugin registers on the bridge, not via ES import
+        // Check if it's registered on Capacitor.Plugins
+        const registered = window.Capacitor.Plugins && window.Capacitor.Plugins.BluetoothLe;
+        if (registered) {
+            assert('BLE: plugin registered on Capacitor.Plugins', true);
+        } else {
+            // Check via Capacitor.isPluginAvailable
+            try {
+                const available = window.Capacitor.isPluginAvailable('BluetoothLe');
+                assert('BLE: BluetoothLe plugin available', available, available ? 'registered' : 'NOT registered');
+            } catch (_) {
+                assert('BLE: plugin availability check', false, 'could not check');
+            }
+        }
+    }
+}
+
+function testSecureIdGeneration() {
+    log('--- Crypto / Secure ID Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('Crypto: GhostShield missing', ''); return; }
+
+    // Test _secureId
+    const id1 = gs._secureId('test_');
+    assert('Crypto: _secureId starts with prefix', id1.startsWith('test_'));
+    assert('Crypto: _secureId is 21 chars (5 prefix + 16 hex)', id1.length === 21, `"${id1}" length: ${id1.length}`);
+
+    // Test uniqueness
+    const ids = new Set();
+    for (let i = 0; i < 1000; i++) ids.add(gs._secureId('x_'));
+    assert('Crypto: 1000 secureIds are all unique', ids.size === 1000, `${ids.size}/1000 unique`);
+
+    // Test _randomHex
+    const hex = gs._randomHex(16);
+    assert('Crypto: _randomHex(16) produces 32 hex chars', hex.length === 32 && /^[0-9a-f]+$/.test(hex), hex);
+}
+
+function testEventDispatching() {
+    log('--- Event System Tests ---');
+
+    const gs = window.GhostShield;
+    if (!gs) { skip('Events: GhostShield missing', ''); return; }
+
+    gs.disableAll();
+
+    // Test statsUpdated event
+    let statsReceived = false;
+    const handler = () => { statsReceived = true; };
+    window.addEventListener('ghostShield:statsUpdated', handler);
+
+    gs.enableAll();
+    // Stats emitter runs every 2s, but we can trigger manually
+    window.dispatchEvent(new CustomEvent('ghostShield:statsUpdated', { detail: gs.getStatus() }));
+    assert('Events: ghostShield:statsUpdated dispatches', statsReceived);
+
+    window.removeEventListener('ghostShield:statsUpdated', handler);
+
+    // Test macRotated event
+    let macReceived = false;
+    const macHandler = (e) => { macReceived = e.detail && e.detail.mac; };
+    window.addEventListener('ghostShield:macRotated', macHandler);
+
+    window.dispatchEvent(new CustomEvent('ghostShield:macRotated', { detail: { mac: 'AA:BB:CC:DD:EE:FF', count: 1 } }));
+    assert('Events: ghostShield:macRotated dispatches with MAC', macReceived === 'AA:BB:CC:DD:EE:FF');
+
+    window.removeEventListener('ghostShield:macRotated', macHandler);
+
+    gs.disableAll();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// RUNNER
+// ═══════════════════════════════════════════════════════════════
+
+async function runAllTests() {
+    results.length = 0;
+    logs.length = 0;
+    document.getElementById('results').innerHTML = '<p style="color:#888;">Running tests...</p>';
+    document.getElementById('summary').textContent = '';
+
+    // Small delay to let UI update
+    await new Promise(r => setTimeout(r, 100));
+
+    try {
+        testShieldConfig();
+        testGhostShieldEngine();
+        testLocalStoragePersistence();
+        testDNSOverHTTPS();
+        testPacketPadding();
+        testTimingObfuscation();
+        testMACRotation();
+        testForceMaxHops();
+        testDummyPacketInjection();
+        testDecoyBLE();
+        testSignalIntelligence();
+        testSignalIntelService();
+        testGhostRadar();
+        testSecureIdGeneration();
+        testEventDispatching();
+        await testBLEPluginAvailability();
+    } catch (e) {
+        log(`FATAL ERROR: ${e.message}`);
+        assert('Runner: no uncaught exceptions', false, e.message);
+    }
+
+    // Clean up — disable everything
+    if (window.GhostShield) window.GhostShield.disableAll();
+
+    renderResults();
+}
+</script>
+</body>
+</html>

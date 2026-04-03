@@ -1,0 +1,10 @@
+# AI Humanizer Testing Plan
+
+1. [ ] Navigate to http://localhost:8000
+2. [ ] Clear existing text and paste AI-heavy text
+3. [ ] Wait for initial analysis (4s)
+4. [ ] Record initial AI Detection Score
+5. [ ] Click "Humanize Text" and wait (4s)
+6. [ ] Record before/after scores from preview panel
+7. [ ] Click "Accept" and wait for re-analysis (3s)
+8. [ ] Report final AI Detection Score and take screenshot

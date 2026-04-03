@@ -1,0 +1,13 @@
+# Writing Assistant Testing Plan
+
+- [ ] Navigate to http://localhost:8000
+- [ ] Type test text: "I has went to the store yesterday. Their was alot of peoples there. your very good at writing. This are bad grammer."
+- [ ] Observe and record:
+    - [ ] Error underlines
+    - [ ] Word and sentence count
+    - [ ] Issue count
+    - [ ] Tone badge
+    - [ ] Readability score
+    - [ ] Issue cards
+- [ ] Test "fix" button for an issue
+- [ ] Report results (stats, tone, readability, visual quality)
