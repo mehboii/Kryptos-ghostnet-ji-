@@ -1,0 +1,54 @@
+╔════════════════════════════════════════════════════════════════╗
+║   GhostNet Backend — API Load Test                            ║
+║   Target: https://ghostnet-ji-production.up.railway.app    ║
+║   Concurrency: 100                                         ║
+║   Started: 2026-04-03T06:55:46.873Z                        ║
+╚════════════════════════════════════════════════════════════════╝
+
+  ⏳ Hitting /health with 100 concurrent requests... done.
+
+  ┌─── /health ────────────────────────────────────────────────┐
+  │  Responses: 100/100 ok  |  0 network errors  |  0 server errors
+  │  Status distribution: {"200":100}
+  │  Latency:  min 622.21ms  |  avg 725.13ms  |  p50 734.71ms  |  p95 815.91ms  |  p99 829.08ms  |  max 833.57ms
+  └──────────────────────────────────────────────────────────────┘
+
+  ⏳ Hitting /auth with 100 concurrent requests... done.
+
+  ┌─── /auth ──────────────────────────────────────────────────┐
+  │  Responses: 100/100 ok  |  0 network errors  |  0 server errors
+  │  Status distribution: {"404":100}
+  │  Latency:  min 272.16ms  |  avg 353.48ms  |  p50 348.19ms  |  p95 502.78ms  |  p99 566.7ms  |  max 568.85ms
+  └──────────────────────────────────────────────────────────────┘
+
+  ⏳ Hitting /messages with 100 concurrent requests... done.
+
+  ┌─── /messages ──────────────────────────────────────────────┐
+  │  Responses: 100/100 ok  |  0 network errors  |  0 server errors
+  │  Status distribution: {"404":100}
+  │  Latency:  min 268.14ms  |  avg 316.79ms  |  p50 288.62ms  |  p95 452.57ms  |  p99 501.82ms  |  max 502.77ms
+  └──────────────────────────────────────────────────────────────┘
+
+  ⏳ Hitting /nodes with 100 concurrent requests... done.
+
+  ┌─── /nodes ─────────────────────────────────────────────────┐
+  │  Responses: 100/100 ok  |  0 network errors  |  0 server errors
+  │  Status distribution: {"404":100}
+  │  Latency:  min 267.54ms  |  avg 332.37ms  |  p50 321.25ms  |  p95 496.76ms  |  p99 526.6ms  |  max 528.18ms
+  └──────────────────────────────────────────────────────────────┘
+
+╔═══════════════════════════════════════════════════════════════════════════════════════════╗
+║                              LOAD TEST SUMMARY                                          ║
+╠════════════╦══════╦══════╦═══════╦════════╦════════╦════════╦════════╦════════╦══════════╣
+║ Endpoint   ║  OK  ║ Fail ║ 5xx   ║ Min ms ║ Avg ms ║ p50 ms ║ p95 ms ║ p99 ms ║ Max ms  ║
+╠════════════╬══════╬══════╬═══════╬════════╬════════╬════════╬════════╬════════╬══════════╣
+║ /health    ║  100 ║    0 ║     0 ║ 622.21 ║ 725.13 ║ 734.71 ║ 815.91 ║ 829.08 ║  833.57 ║
+║ /auth      ║  100 ║    0 ║     0 ║ 272.16 ║ 353.48 ║ 348.19 ║ 502.78 ║  566.7 ║  568.85 ║
+║ /messages  ║  100 ║    0 ║     0 ║ 268.14 ║ 316.79 ║ 288.62 ║ 452.57 ║ 501.82 ║  502.77 ║
+║ /nodes     ║  100 ║    0 ║     0 ║ 267.54 ║ 332.37 ║ 321.25 ║ 496.76 ║  526.6 ║  528.18 ║
+╚════════════╩══════╩══════╩═══════╩════════╩════════╩════════╩════════╩════════╩══════════╝
+
+  Total: 400 requests  |  400 responded  |  0 network errors  |  0 server errors
+  Overall avg latency: 432ms  |  Worst p95: 816ms
+
+  🟢 ALL ENDPOINTS RESPONDED — No failures under load.
