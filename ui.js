@@ -3384,67 +3384,66 @@ const UI = {
             closeBtn.textContent = '✕ Close';
             closeBtn.style.cssText = 'background:#1e293b;color:#94a3b8;border:none;border-radius:24px;padding:12px 24px;font-weight:bold;cursor:pointer;';
 
+            // Ephemeral countdown — card self-destructs after expiry
+            const countdownEl = document.createElement('div');
+            countdownEl.style.cssText = 'margin-top:16px;font-family:monospace;font-size:13px;color:#f59e0b;text-align:center;opacity:0;animation:fadeSlideUp 0.4s 0.5s ease both;';
+
+            let countdownInterval = null;
+
             const triggerClose = () => {
+                // Kill countdown first
+                if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
+
                 // Remove listeners to avoid leaks
                 cardWrapper.removeEventListener('mousemove', mouseMoveParallax);
                 if (window.DeviceOrientationEvent && 'ontouchstart' in window) {
                     window.removeEventListener('deviceorientation', deviceParallax);
                 }
-                
+
                 // Stop floats and start exit
                 cardWrapper.style.animation = 'ghostCardExit 0.3s ease forwards';
                 shimmer.style.animation = 'none';
                 shimmer.style.opacity = '0';
                 btnContainer.style.opacity = '0';
-                
+
                 setTimeout(() => modal.remove(), 300);
             };
 
-            closeBtn.addEventListener('click', triggerClose);
-            closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); triggerClose(); });
-            
-            // Close on backdrop click (not inner elements)
-            const backdropHandler = (e) => {
-                if (e.target === modal) triggerClose();
-            };
-            modal.addEventListener('click', backdropHandler);
-            modal.addEventListener('touchend', (e) => {
-                if (e.target === modal) {
-                    e.preventDefault();
-                    triggerClose();
-                }
-            });
-
-            btnContainer.appendChild(saveBtn);
-            btnContainer.appendChild(shareBtn);
-            btnContainer.appendChild(closeBtn);
-            modal.appendChild(btnContainer);
-
-            // Ephemeral countdown — card self-destructs after expiry
-            const countdownEl = document.createElement('div');
-            countdownEl.style.cssText = 'margin-top:16px;font-family:monospace;font-size:13px;color:#f59e0b;text-align:center;opacity:0;animation:fadeSlideUp 0.4s 0.5s ease both;';
-            modal.appendChild(countdownEl);
-
-            const countdownInterval = setInterval(() => {
+            // Start the countdown timer
+            const tickCountdown = () => {
                 const remaining = Math.max(0, expTS - Date.now());
                 if (remaining <= 0) {
-                    clearInterval(countdownInterval);
+                    if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null; }
                     countdownEl.textContent = 'EXPIRED — generate a new card';
                     countdownEl.style.color = '#ef4444';
-                    // Auto-close after a beat
-                    setTimeout(triggerClose, 1500);
+                    // Disable save/share since card is dead
+                    saveBtn.disabled = true; saveBtn.style.opacity = '0.4';
+                    shareBtn.disabled = true; shareBtn.style.opacity = '0.4';
+                    setTimeout(triggerClose, 2000);
                     return;
                 }
                 const min = Math.floor(remaining / 60000);
                 const sec = Math.floor((remaining % 60000) / 1000);
                 countdownEl.textContent = `Expires in ${min}:${String(sec).padStart(2,'0')} — single use only`;
                 if (remaining < 60000) countdownEl.style.color = '#ef4444';
-            }, 1000);
+            };
+            tickCountdown(); // fire immediately so text shows on first frame
+            countdownInterval = setInterval(tickCountdown, 1000);
 
-            // Clean up interval on close
-            const _cleanup = () => { clearInterval(countdownInterval); };
-            modal.addEventListener('click', (e) => { if (e.target === modal) _cleanup(); });
-            closeBtn.addEventListener('click', _cleanup);
+            closeBtn.addEventListener('click', triggerClose);
+            closeBtn.addEventListener('touchend', (e) => { e.preventDefault(); triggerClose(); });
+
+            // Close on backdrop click (not inner elements)
+            modal.addEventListener('click', (e) => { if (e.target === modal) triggerClose(); });
+            modal.addEventListener('touchend', (e) => {
+                if (e.target === modal) { e.preventDefault(); triggerClose(); }
+            });
+
+            btnContainer.appendChild(saveBtn);
+            btnContainer.appendChild(shareBtn);
+            btnContainer.appendChild(closeBtn);
+            modal.appendChild(btnContainer);
+            modal.appendChild(countdownEl);
 
             document.body.appendChild(modal);
         };
