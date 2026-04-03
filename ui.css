@@ -5,7 +5,7 @@
     --bg-panel: #F6F8FB;
     --accent: #2563EB;
     --accent-dim: rgba(37, 99, 235, 0.1);
-    --accent-gradient: linear-gradient(135deg, #ff007f, #7000ff, #00f0ff);
+    --accent-gradient: var(--accent); /* Reverted to solid */
     --text-primary: #1e293b;
     --text-muted: #64748b;
     --border: #e2e8f0;
@@ -14,9 +14,7 @@
     --glow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    --gradient-subtle: linear-gradient(135deg, rgba(255, 0, 127, 0.03) 0%, rgba(0, 240, 255, 0.03) 100%);
-    --gradient-card: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(246,248,251,0.4) 100%);
-    --shadow-3d: 4px 4px 0px rgba(112, 0, 255, 0.3), 8px 8px 16px rgba(0, 0, 0, 0.15);
+    --shadow-3d: 4px 4px 0px rgba(37, 99, 235, 0.3), 8px 8px 16px rgba(0, 0, 0, 0.15);
 }
 
 [data-theme="dark"] {
@@ -24,16 +22,14 @@
     --bg-panel: #0a0a0a;
     --accent: #3b82f6;
     --accent-dim: rgba(59, 130, 246, 0.12);
-    --accent-gradient: linear-gradient(135deg, #ff007f, #7000ff, #00f0ff);
+    --accent-gradient: var(--accent); /* Reverted to solid */
     --text-primary: #f0f0f0;
     --text-muted: #888888;
     --border: #1a1a1a;
     --glass-bg: rgba(10, 10, 10, 0.85);
     --overlay-bg: rgba(0, 0, 0, 0.75);
     --glow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
-    --gradient-subtle: linear-gradient(135deg, rgba(255, 0, 127, 0.05) 0%, rgba(0, 240, 255, 0.03) 100%);
-    --gradient-card: linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0) 100%);
-    --shadow-3d: 4px 4px 0px rgba(112, 0, 255, 0.5), 8px 8px 24px rgba(0, 0, 0, 0.8);
+    --shadow-3d: 4px 4px 0px rgba(59, 130, 246, 0.3), 8px 8px 24px rgba(0, 0, 0, 0.8);
 }
 
 /* RESET */
@@ -45,7 +41,6 @@
 
 body {
     background: var(--bg-dark);
-    background-image: var(--gradient-subtle);
     color: var(--text-primary);
     font-family: var(--font-body);
     overflow: hidden;
@@ -64,7 +59,6 @@ body {
 .sidebar {
     width: 250px;
     background: var(--bg-panel);
-    background-image: var(--gradient-card);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -198,10 +192,7 @@ body {
     font-family: var(--font-heading);
     font-size: 2.4rem;
     font-weight: 900;
-    background: var(--accent-gradient);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
+    color: var(--accent);
     line-height: 1.2;
     text-shadow: 3px 3px 0px rgba(0,0,0,0.2);
     transform: perspective(500px) rotateX(5deg) scale(1.05);
@@ -275,7 +266,6 @@ body {
 
 .home-stat-card {
     background: var(--bg-panel);
-    background-image: var(--gradient-card);
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 18px 20px;
@@ -294,20 +284,20 @@ body {
 }
 
 .home-stat-card:nth-child(1) {
-    border-color: rgba(255, 0, 127, 0.3);
+    border-color: rgba(37, 99, 235, 0.3);
 }
 
 .home-stat-card:nth-child(2) {
-    border-color: rgba(112, 0, 255, 0.3);
+    border-color: rgba(37, 99, 235, 0.3);
 }
 
 .home-stat-card:nth-child(3) {
-    border-color: rgba(0, 240, 255, 0.3);
+    border-color: rgba(37, 99, 235, 0.3);
 }
 
 .home-stat-card:hover {
     transform: translateY(-8px) scale(1.02);
-    box-shadow: 8px 12px 0px rgba(112, 0, 255, 0.4), 16px 20px 30px rgba(0, 0, 0, 0.6);
+    box-shadow: 8px 12px 0px rgba(37, 99, 235, 0.4), 16px 20px 30px rgba(0, 0, 0, 0.6);
     border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
 }
 
@@ -360,7 +350,7 @@ body {
     font-family: var(--font-heading);
     color: var(--text-primary);
     line-height: 1.2;
-    text-shadow: 2px 2px 0px rgba(255, 0, 127, 0.3), 4px 4px 0px rgba(0, 240, 255, 0.2);
+    text-shadow: 2px 2px 0px rgba(37, 99, 235, 0.3), 4px 4px 0px rgba(0, 0, 0, 0.2);
     transform: perspective(500px) rotateX(5deg);
 }
 
@@ -420,7 +410,6 @@ body {
     border-radius: 18px;
     overflow: hidden;
     background: var(--bg-panel);
-    background-image: var(--gradient-subtle);
     height: 100%;
 }
 
@@ -517,7 +506,6 @@ canvas#mesh {
     border: 1px solid var(--border);
     padding: 20px;
     border-radius: 16px;
-    background-image: var(--gradient-card);
     transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease, border-color 0.2s ease;
     cursor: default;
     transform: translateY(0);
@@ -528,7 +516,7 @@ canvas#mesh {
 .node-card:hover,
 .file-card:hover {
     transform: translateY(-8px) scale(1.02);
-    box-shadow: 8px 12px 0px rgba(112, 0, 255, 0.4), 16px 20px 30px rgba(0, 0, 0, 0.6);
+    box-shadow: 8px 12px 0px rgba(37, 99, 235, 0.4), 16px 20px 30px rgba(0, 0, 0, 0.6);
     border-color: var(--accent);
 }
 
