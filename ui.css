@@ -5,7 +5,7 @@
     --bg-panel: #F6F8FB;
     --accent: #2563EB;
     --accent-dim: rgba(37, 99, 235, 0.1);
-    --accent-gradient: linear-gradient(90deg, #4f80ff, #1de3ab);
+    --accent-gradient: linear-gradient(135deg, #4f80ff, #1de3ab);
     --text-primary: #1e293b;
     --text-muted: #64748b;
     --border: #e2e8f0;
@@ -14,20 +14,24 @@
     --glow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --font-heading: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --gradient-subtle: linear-gradient(135deg, rgba(37, 99, 235, 0.03) 0%, rgba(16, 185, 129, 0.02) 100%);
+    --gradient-card: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(246,248,251,0.4) 100%);
 }
 
 [data-theme="dark"] {
-    --bg-dark: #0f172a;
-    --bg-panel: #1e293b;
+    --bg-dark: #000000;
+    --bg-panel: #0a0a0a;
     --accent: #3b82f6;
-    --accent-dim: rgba(59, 130, 246, 0.15);
-    --accent-gradient: linear-gradient(90deg, #4f80ff, #1de3ab);
-    --text-primary: #f8fafc;
-    --text-muted: #94a3b8;
-    --border: #334155;
-    --glass-bg: rgba(30, 41, 59, 0.85);
-    --overlay-bg: rgba(15, 23, 42, 0.7);
-    --glow: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.15);
+    --accent-dim: rgba(59, 130, 246, 0.12);
+    --accent-gradient: linear-gradient(135deg, #4f80ff, #1de3ab);
+    --text-primary: #f0f0f0;
+    --text-muted: #888888;
+    --border: #1a1a1a;
+    --glass-bg: rgba(10, 10, 10, 0.85);
+    --overlay-bg: rgba(0, 0, 0, 0.75);
+    --glow: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -1px rgba(0, 0, 0, 0.3);
+    --gradient-subtle: linear-gradient(135deg, rgba(79, 128, 255, 0.05) 0%, rgba(29, 227, 171, 0.03) 100%);
+    --gradient-card: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, rgba(255,255,255,0) 100%);
 }
 
 /* RESET */
@@ -38,7 +42,8 @@
 }
 
 body {
-    background-color: var(--bg-dark);
+    background: var(--bg-dark);
+    background-image: var(--gradient-subtle);
     color: var(--text-primary);
     font-family: var(--font-body);
     overflow: hidden;
@@ -57,6 +62,7 @@ body {
 .sidebar {
     width: 250px;
     background: var(--bg-panel);
+    background-image: var(--gradient-card);
     border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
@@ -264,6 +270,7 @@ body {
 
 .home-stat-card {
     background: var(--bg-panel);
+    background-image: var(--gradient-card);
     border: 1px solid var(--border);
     border-radius: 16px;
     padding: 18px 20px;
@@ -413,6 +420,7 @@ body {
     border-radius: 18px;
     overflow: hidden;
     background: var(--bg-panel);
+    background-image: var(--gradient-subtle);
     height: 100%;
 }
 
