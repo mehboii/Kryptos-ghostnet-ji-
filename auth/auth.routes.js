@@ -28,7 +28,8 @@ import {
     findByEmail, findById, createUser, sanitise,
     setResetToken, resetPassword,
     verifyEmail, resendVerifyCode,
-    generateUniqueShortCode, updateUserFields
+    generateUniqueShortCode, updateUserFields,
+    bumpTokenVersion
 } from './auth.model.js';
 import { requireAuth } from './auth.middleware.js';
 
@@ -177,10 +178,19 @@ const verifyLimiter = rateLimit({
     message: { error: 'Too many verification attempts. Please try again later.' },
 });
 
+// Signup — max 5 per 10 min to prevent mass account creation
+const signupLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many signup attempts. Please try again later.' },
+});
+
 // ============================================================
 // POST /auth/signup
 // ============================================================
-router.post('/signup', async (req, res) => {
+router.post('/signup', signupLimiter, async (req, res) => {
     console.log("SIGNUP HIT");
     try {
         const { email, password } = req.body;
@@ -211,9 +221,13 @@ router.post('/signup', async (req, res) => {
             return res.status(400).json({ error: 'Password must contain at least one special character.' });
         }
 
-        // --- Duplicate check ---------------------------------------------
+        // --- Duplicate check (generic response to prevent account enumeration) ---
         if (findByEmail(email)) {
-            return res.status(409).json({ error: 'An account with this email already exists.' });
+            return res.status(200).json({
+                success: true,
+                requiresVerification: true,
+                message: 'If this email is not already registered, a verification code has been sent.',
+            });
         }
 
         // --- Hash password -----------------------------------------------
@@ -260,7 +274,7 @@ router.post('/verify', verifyLimiter, async (req, res) => {
         }
 
         // --- Generate JWT (now that email is verified) -------------------
-        const token = jwt.sign({ userId: result.user.id }, JWT_SECRET, {
+        const token = jwt.sign({ userId: result.user.id, tv: result.user.tokenVersion || 0 }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
 
@@ -356,8 +370,8 @@ router.post('/login', loginLimiter, async (req, res) => {
             });
         }
 
-        // --- Generate JWT ------------------------------------------------
-        const token = jwt.sign({ userId: user.id }, JWT_SECRET, {
+        // --- Generate JWT (include tokenVersion for server-side revocation) --
+        const token = jwt.sign({ userId: user.id, tv: user.tokenVersion || 0 }, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
         });
 
@@ -466,6 +480,23 @@ router.get('/me', requireAuth, (req, res) => {
         return res.status(404).json({ error: 'User not found.' });
     }
     res.json({ user: sanitise(user) });
+});
+
+// ============================================================
+// POST /auth/logout  (Protected — invalidates all JWTs)
+// ============================================================
+router.post('/logout', requireAuth, (req, res) => {
+    try {
+        const newVersion = bumpTokenVersion(req.userId);
+        if (newVersion < 0) {
+            return res.status(404).json({ error: 'User not found.' });
+        }
+        console.log(`[Auth] User ${req.userId} logged out. tokenVersion bumped to ${newVersion}`);
+        res.json({ success: true, message: 'Logged out. All tokens invalidated.' });
+    } catch (err) {
+        console.error('Logout error:', err.message);
+        res.status(500).json({ error: 'Internal server error.' });
+    }
 });
 
 export default router;
