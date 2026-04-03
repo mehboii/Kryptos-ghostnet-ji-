@@ -8,16 +8,16 @@ class GhostRadarEngine {
     this.results = [];
     this.scanning = false;
     this.onUpdate = null;
-    this.permissionState = { ble: 'unknown', wifi: 'unknown', location: 'unknown' };
+    this.permissionState = { ble: 'unknown', wifi: 'unknown' };
     this._startRepeatingScan();
   }
 
   /**
-   * Check and request all required permissions.
-   * Returns an object: { ble: bool, wifi: bool, location: bool }
+   * Check and request required permissions (BLE + WiFi only).
+   * No location, no personal data — privacy first.
    */
   async checkPermissions() {
-    const result = { ble: false, wifi: false, location: false };
+    const result = { ble: false, wifi: false };
 
     // BLE permissions via Capacitor BLE plugin
     try {
@@ -28,39 +28,6 @@ class GhostRadarEngine {
     } catch (e) {
       console.warn('[GhostRadar] BLE permission/init failed:', e.message);
       this.permissionState.ble = 'denied';
-    }
-
-    // Location — required for BLE scanning on Android
-    try {
-      if (navigator.permissions) {
-        const loc = await navigator.permissions.query({ name: 'geolocation' });
-        if (loc.state === 'granted') {
-          result.location = true;
-          this.permissionState.location = 'granted';
-        } else if (loc.state === 'prompt') {
-          // Trigger the prompt
-          await new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              () => { result.location = true; this.permissionState.location = 'granted'; resolve(); },
-              () => { this.permissionState.location = 'denied'; resolve(); },
-              { timeout: 10000 }
-            );
-          });
-        } else {
-          this.permissionState.location = 'denied';
-        }
-      } else {
-        // Fallback: try directly
-        await new Promise((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            () => { result.location = true; this.permissionState.location = 'granted'; resolve(); },
-            () => { this.permissionState.location = 'denied'; resolve(); },
-            { timeout: 10000 }
-          );
-        });
-      }
-    } catch (e) {
-      this.permissionState.location = 'denied';
     }
 
     // WiFi — typically granted via manifest, just test the import

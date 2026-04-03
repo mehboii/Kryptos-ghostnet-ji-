@@ -270,15 +270,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     Permissions Required
                 </h4>
-                <p>Ghost Radar needs access to Bluetooth and Location to detect nearby devices. No data is sent or stored externally.</p>
+                <p>Ghost Radar needs Bluetooth and WiFi access to detect nearby signals. No location, identity, or personal data is ever collected or stored.</p>
                 <div class="perm-items">
                     <div class="perm-item">
                         <span class="perm-status unknown" id="perm-ble-dot">?</span>
                         <span>Bluetooth / BLE Scanning</span>
-                    </div>
-                    <div class="perm-item">
-                        <span class="perm-status unknown" id="perm-loc-dot">?</span>
-                        <span>Location (required for BLE on Android)</span>
                     </div>
                     <div class="perm-item">
                         <span class="perm-status unknown" id="perm-wifi-dot">?</span>
@@ -330,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </svg>
                         </div>
                         <div class="empty-title">No devices found</div>
-                        <div class="empty-desc">Scanning for BLE and WiFi signals nearby. Make sure Bluetooth and Location are enabled.</div>
+                        <div class="empty-desc">Scanning for BLE and WiFi signals nearby. Make sure Bluetooth is enabled.</div>
                     </div>
                 </div>
             </div>
@@ -360,8 +356,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!radar) return;
 
             const ps = radar.permissionState;
-            const allGranted = ps.ble === 'granted' && ps.location === 'granted';
-            const anyDenied = ps.ble === 'denied' || ps.location === 'denied';
+            const allGranted = ps.ble === 'granted';
+            const anyDenied = ps.ble === 'denied';
 
             const banner = document.getElementById('radar-perm-banner');
             if (allGranted) {
@@ -372,11 +368,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Update dots
             this._setPermDot('perm-ble-dot', ps.ble);
-            this._setPermDot('perm-loc-dot', ps.location);
             this._setPermDot('perm-wifi-dot', ps.wifi);
 
-            // Hide the grant button if everything is denied permanently
-            // (user must go to system settings)
+            // If denied permanently, user must go to system settings
             const btn = document.getElementById('btn-grant-perms');
             if (anyDenied && ps.ble !== 'unknown') {
                 btn.textContent = 'Open Settings to Grant';
@@ -467,7 +461,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             </svg>
                         </div>
                         <div class="empty-title">No devices found</div>
-                        <div class="empty-desc">Scanning for BLE and WiFi signals nearby. Make sure Bluetooth and Location are enabled.</div>
+                        <div class="empty-desc">Scanning for BLE and WiFi signals nearby. Make sure Bluetooth is enabled.</div>
                     </div>`;
                 if (countEl) countEl.textContent = '0';
                 return;
