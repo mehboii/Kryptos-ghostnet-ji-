@@ -111,7 +111,8 @@ class GhostMesh {
         this.heartbeatTimer = null;
         this.knownBLEDevices = [];
         this._destroyed = false; // [S11]
-        this._reconnectDelay = 3000;  // backoff state
+        this._connecting = false; // guard against overlapping connect attempts
+        this._reconnectDelay = 3000;  // exponential backoff state
 
         // Rate limiting maps
         this._peerAnnounceTimestamps = new Map(); // peerId -> last announcement timestamp
@@ -387,11 +388,26 @@ class GhostMesh {
 
     connectWebSocket() {
         if (this._destroyed) return; // [S11]
+        if (this._connecting) return; // prevent overlapping connect attempts
 
         // [F1] Require a JWT token — abort if missing
         const token = this.authToken || this.getAuthToken();
         if (!token) {
             return;
+        }
+
+        this._connecting = true;
+
+        // Close any existing socket before creating a new one
+        if (this.ws) {
+            try {
+                this.ws.onclose = null; // detach handler to prevent recursive reconnect
+                this.ws.onerror = null;
+                this.ws.onmessage = null;
+                this.ws.close();
+            } catch (_) { }
+            this.ws = null;
+            this.wsReady = false;
         }
 
         try {
@@ -400,14 +416,19 @@ class GhostMesh {
             const wsUrl = `${base}?token=${encodeURIComponent(token)}`;
             console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`); // don't log token
 
-            this.ws = new WebSocket(wsUrl);
+            const ws = new WebSocket(wsUrl);
+            this.ws = ws;
 
-            this.ws.onopen = () => {
+            ws.onopen = () => {
+                // Guard: if we've been replaced by a newer socket, ignore
+                if (this.ws !== ws) return;
+
                 console.log('✅ Mesh: WebSocket connected');
                 this.wsReady = true;
-                this._reconnectDelay = 3000; // reset backoff
+                this._connecting = false;
+                this._reconnectDelay = 3000; // reset backoff on success
 
-                safeSend(this.ws, JSON.stringify({
+                safeSend(ws, JSON.stringify({
                     type: 'register',
                     id: this.identity.id,
                     nodeId: this.identity.nodeId,
@@ -415,59 +436,71 @@ class GhostMesh {
                 }));
 
                 // Flush queue
-                messageQueue.forEach(msg => {
-                    if (this.ws.readyState === WebSocket.OPEN) {
-                        this.ws.send(msg);
+                const queued = [...messageQueue];
+                messageQueue = [];
+                queued.forEach(msg => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        try { ws.send(msg); } catch (_) { }
                     }
                 });
-                messageQueue = [];
 
                 this.onStatusChange({ state: 'connected', transport: 'ws' });
             };
 
-            this.ws.onmessage = (event) => {
+            ws.onmessage = (event) => {
+                if (this.ws !== ws) return; // stale socket guard
                 const clean = _sanitizeMeshMessage(event.data);
                 if (!clean) return;
                 this.handleWSMessage(clean);
             };
 
-            this.ws.onclose = () => {
+            ws.onclose = () => {
+                // Guard: only handle close for the current socket
+                if (this.ws !== ws) return;
+
                 console.warn('🔌 Mesh: WebSocket disconnected');
                 this.wsReady = false;
+                this._connecting = false;
+                this.ws = null;
                 this.onStatusChange({ state: 'disconnected', transport: 'ws' });
 
-                // Remove WS peers
+                // Remove WS peers — collect first, then delete (no delete-during-iteration)
+                const wsPeers = [];
                 for (const [id, peer] of this.peers) {
-                    if (peer.transport === 'ws') {
-                        this.peers.delete(id);
-                        this.onPeerLeave(peer);
-                    }
+                    if (peer.transport === 'ws') wsPeers.push(id);
+                }
+                for (const id of wsPeers) {
+                    const peer = this.peers.get(id);
+                    this.peers.delete(id);
+                    if (peer) this.onPeerLeave(peer);
                 }
                 this.onMeshUpdate(this.getPeers());
 
-                if (!this._destroyed) { // [S11]
-                    clearTimeout(this.reconnectTimer);
-                    console.log('[GhostNet] WebSocket closed — reconnecting in 3s...');
-                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
-                }
+                this._scheduleReconnect();
             };
 
-            this.ws.onerror = () => {
+            ws.onerror = () => {
                 console.warn('[GhostMesh] WebSocket error.'); // [S8] no raw event details
-                console.log('[GhostNet] WebSocket error — reconnecting...');
-                if (!this._destroyed) {
-                    clearTimeout(this.reconnectTimer);
-                    this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
-                }
+                // onclose always fires after onerror — let onclose handle reconnect
+                // Do NOT schedule reconnect here to avoid double-reconnect race
             };
 
         } catch (_) {
             console.warn('WebSocket setup failed');
-            if (!this._destroyed) {
-                clearTimeout(this.reconnectTimer);
-                this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
-            }
+            this._connecting = false;
+            this.ws = null;
+            this._scheduleReconnect();
         }
+    }
+
+    /** Exponential backoff reconnect (3s → 6s → 12s → ... → 60s max) */
+    _scheduleReconnect() {
+        if (this._destroyed) return;
+        clearTimeout(this.reconnectTimer);
+        const delay = this._reconnectDelay;
+        console.log(`[GhostNet] WebSocket closed — reconnecting in ${delay / 1000}s...`);
+        this.reconnectTimer = setTimeout(() => this.connectWebSocket(), delay);
+        this._reconnectDelay = Math.min(this._reconnectDelay * 2, 60000); // cap at 60s
     }
 
     handleWSMessage(msg) {
@@ -829,16 +862,17 @@ class GhostMesh {
         this.heartbeatTimer = setInterval(() => {
             const now = Date.now();
 
-            if (this.ws && this.wsReady) {
-                if (this.ws.readyState === WebSocket.OPEN) {
+            const ws = this.ws; // local ref to avoid race with reconnect
+            if (ws && this.wsReady) {
+                if (ws.readyState === WebSocket.OPEN) {
                     // Critical ping to keep Android background socket alive
                     try {
-                        this.ws.send(JSON.stringify({ type: 'ping', timestamp: now }));
+                        ws.send(JSON.stringify({ type: 'ping', timestamp: now }));
                     } catch (_) {}
-                    
+
                     // Normal mesh heartbeat
                     try {
-                        safeSend(this.ws, JSON.stringify({
+                        safeSend(ws, JSON.stringify({
                             type: 'HEARTBEAT',
                             id: this.identity.id,
                             ts: now,
@@ -846,9 +880,11 @@ class GhostMesh {
                         }));
                     } catch (_) { }
                 } else {
+                    // Socket in CLOSING/CLOSED state but flags not updated
                     console.log('[GhostNet] Heartbeat detected dropped connection. Forcing reconnect...');
-                    clearInterval(this.heartbeatTimer);
-                    if (!this._destroyed) this.connectWebSocket();
+                    this.wsReady = false;
+                    this.ws = null;
+                    this._scheduleReconnect();
                 }
             }
 
@@ -873,6 +909,7 @@ class GhostMesh {
 
     destroy() {
         this._destroyed = true; // [S11] prevent reconnect after destroy
+        this._connecting = false;
 
         clearInterval(this.heartbeatTimer);
         clearTimeout(this.reconnectTimer);  // [S11] was missing
@@ -881,6 +918,8 @@ class GhostMesh {
 
         if (this.ws) {
             this.ws.onclose = null; // prevent reconnect handler firing
+            this.ws.onerror = null;
+            this.ws.onmessage = null;
             this.ws.close();
             this.ws = null;
         }
