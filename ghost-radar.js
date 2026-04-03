@@ -8,7 +8,72 @@ class GhostRadarEngine {
     this.results = [];
     this.scanning = false;
     this.onUpdate = null;
+    this.permissionState = { ble: 'unknown', wifi: 'unknown', location: 'unknown' };
     this._startRepeatingScan();
+  }
+
+  /**
+   * Check and request all required permissions.
+   * Returns an object: { ble: bool, wifi: bool, location: bool }
+   */
+  async checkPermissions() {
+    const result = { ble: false, wifi: false, location: false };
+
+    // BLE permissions via Capacitor BLE plugin
+    try {
+      const { BleClient } = await import('@capacitor-community/bluetooth-le');
+      await BleClient.initialize();
+      result.ble = true;
+      this.permissionState.ble = 'granted';
+    } catch (e) {
+      console.warn('[GhostRadar] BLE permission/init failed:', e.message);
+      this.permissionState.ble = 'denied';
+    }
+
+    // Location — required for BLE scanning on Android
+    try {
+      if (navigator.permissions) {
+        const loc = await navigator.permissions.query({ name: 'geolocation' });
+        if (loc.state === 'granted') {
+          result.location = true;
+          this.permissionState.location = 'granted';
+        } else if (loc.state === 'prompt') {
+          // Trigger the prompt
+          await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              () => { result.location = true; this.permissionState.location = 'granted'; resolve(); },
+              () => { this.permissionState.location = 'denied'; resolve(); },
+              { timeout: 10000 }
+            );
+          });
+        } else {
+          this.permissionState.location = 'denied';
+        }
+      } else {
+        // Fallback: try directly
+        await new Promise((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            () => { result.location = true; this.permissionState.location = 'granted'; resolve(); },
+            () => { this.permissionState.location = 'denied'; resolve(); },
+            { timeout: 10000 }
+          );
+        });
+      }
+    } catch (e) {
+      this.permissionState.location = 'denied';
+    }
+
+    // WiFi — typically granted via manifest, just test the import
+    try {
+      await import('@capacitor-community/wifi-wizard2');
+      result.wifi = true;
+      this.permissionState.wifi = 'granted';
+    } catch (e) {
+      this.permissionState.wifi = 'denied';
+    }
+
+    window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
+    return result;
   }
 
   // 1. WiFi Networks — real scan
@@ -16,6 +81,7 @@ class GhostRadarEngine {
     try {
       const { WifiWizard2 } = await import('@capacitor-community/wifi-wizard2');
       const results = await WifiWizard2.scan();
+      this.permissionState.wifi = 'granted';
       return results.map(n => ({
         id: n.BSSID,
         name: n.SSID || 'Hidden Network',
@@ -28,6 +94,10 @@ class GhostRadarEngine {
       }));
     } catch(e) {
       console.error('[GhostRadar] WiFi scan failed:', e);
+      if (e.message && e.message.toLowerCase().includes('permission')) {
+        this.permissionState.wifi = 'denied';
+        window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
+      }
       return [];
     }
   }
@@ -37,6 +107,7 @@ class GhostRadarEngine {
     try {
       const { BleClient } = await import('@capacitor-community/bluetooth-le');
       await BleClient.initialize();
+      this.permissionState.ble = 'granted';
       const devices = [];
       await BleClient.requestLEScan(
         { allowDuplicates: false },
@@ -57,6 +128,10 @@ class GhostRadarEngine {
       return devices;
     } catch(e) {
       console.error('[GhostRadar] BLE scan failed:', e);
+      if (e.message && e.message.toLowerCase().includes('permission')) {
+        this.permissionState.ble = 'denied';
+        window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
+      }
       return [];
     }
   }
@@ -141,7 +216,11 @@ class GhostRadarEngine {
     console.log(`[GhostRadar] Scan complete — ${this.results.length} real signals found`);
     this.scanning = false;
     this.onUpdate?.(this.results);
-    
+
+    window.dispatchEvent(new CustomEvent('ghostRadar:scanComplete', {
+      detail: { count: this.results.length, results: this.results }
+    }));
+
     return this.results;
   }
 
