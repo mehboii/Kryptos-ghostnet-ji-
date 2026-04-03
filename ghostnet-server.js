@@ -202,12 +202,12 @@ function assertLoopbackUrl(rawUrl, envVarName) {
     return parsed.origin; // scheme + host + port only; no path
 }
 
-// VAULT_URL is operator-configured (docker-compose / env), not user input — skip loopback assertion
+// VAULT_URL — validate loopback to prevent SSRF
 const _rawVault = process.env.GHOSTNET_VAULT_URL || process.env.VAULT_URL || '';
 let VAULT_ORIGIN = null;
 if (_rawVault) {
-    try { VAULT_ORIGIN = new URL(_rawVault).origin; }
-    catch (_) { throw new Error('GHOSTNET_VAULT_URL is not a valid URL'); }
+    try { VAULT_ORIGIN = assertLoopbackUrl(_rawVault, 'GHOSTNET_VAULT_URL'); }
+    catch (e) { console.error(e.message); VAULT_ORIGIN = null; }
 }
 // BRIDGE_URL is operator-configured (docker-compose / env), not user input — skip loopback assertion
 const _rawBridge = process.env.GHOSTNET_BRIDGE_URL || 'http://127.0.0.1:3001';
@@ -359,7 +359,7 @@ function secureId(prefix = '') {
 // ─── App setup ───────────────────────────────────────────────────────────────
 
 const app = express();
-app.set('trust proxy', true); // Railway runs behind a reverse proxy — must be true, not 'loopback'
+app.set('trust proxy', 1); // Railway runs behind one reverse proxy — use count to prevent X-Forwarded-For spoofing
 
 // [33] Security headers — cross-origin policies disabled for API use
 app.use(helmet({
@@ -710,7 +710,15 @@ function requireAuth(req, res, next) {
 
 // ─── DECENTRALIZED NODE AUTH ──────────────────────────────────────────────────
 
-app.post('/auth/node', (req, res) => {
+const nodeAuthLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many node auth attempts. Please wait.' },
+});
+
+app.post('/auth/node', nodeAuthLimiter, (req, res) => {
     let nodeId;
     try { nodeId = validateNodeId(req.body?.nodeId); }
     catch (e) { return res.status(400).json({ error: e.message }); }
@@ -1249,7 +1257,7 @@ app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, r
 
         const record = {
             fileId,
-            fileName: fileName || req.file.originalname || 'encrypted_file',
+            fileName: path.basename((fileName || req.file.originalname || 'encrypted_file').replace(/[\x00-\x1f]/g, '')).slice(0, 255),
             fileSize,
             originalSize: parseInt(originalSize) || fileSize,
             fileHash,
@@ -1483,10 +1491,7 @@ wss.on('connection', (ws) => {
         }
     }
 
-    ws.on('close', () => {
-        if (ws._user && ws._user.id) clients.delete(ws._user.id);
-    });
-
+    // Close handler merged into the main close handler below (line ~1706)
     ws.on('pong', () => { ws.isAlive = true; });
 
     // Prevent unhandled socket errors from crashing the connection
@@ -1585,8 +1590,9 @@ wss.on('connection', (ws) => {
                     }
                     safeSend(ws, { type: 'MESH_PEERS', peers: peerList });
 
-                    // Broadcast join
-                    for (const client of wss.clients) {
+                    // Broadcast join — snapshot clients to avoid iteration mutation
+                    const joinSnapshot = [...wss.clients];
+                    for (const client of joinSnapshot) {
                         if (client !== ws) safeSend(client, { type: 'PEER_JOIN', id: clientId });
                     }
 
@@ -1626,7 +1632,7 @@ wss.on('connection', (ws) => {
 
                     const senderId = clientId || ws._user?.id;
                     if (!senderId) return; // must have an identity to send
-                    const timestamp = Number.isFinite(msg.timestamp) ? msg.timestamp : Date.now();
+                    const timestamp = Date.now(); // Server-authoritative — never trust client timestamps
                     let wsDelivered = false;
 
                     // Build a sanitized message — never forward raw attacker-controlled fields
@@ -1642,14 +1648,12 @@ wss.on('connection', (ws) => {
 
                     const targetWs = activeConnections.get(safeTarget);
                     if (targetWs && targetWs.readyState === 1) {
-                        targetWs.send(JSON.stringify(safeMsg));
+                        safeSend(targetWs, safeMsg);
                         wsDelivered = true;
-                        // Send delivery receipt to sender
-                        ws.send(JSON.stringify({ type: 'receipt', status: 'delivered', msgId }));
+                        safeSend(ws, { type: 'receipt', status: 'delivered', msgId });
                     } else {
                         queueMessage(safeTarget, safeMsg);
-                        // Send storage receipt to sender
-                        ws.send(JSON.stringify({ type: 'receipt', status: 'queued', msgId }));
+                        safeSend(ws, { type: 'receipt', status: 'queued', msgId });
                     }
                     
                     // Legacy persist for internal tracking
@@ -1696,6 +1700,9 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
+        // Clean clients map (merged from earlier close handler)
+        if (ws._user && ws._user.id) clients.delete(ws._user.id);
+
         // [Bridge Fix] Remove from active connections
         const staleIds = [];
         for (const [nodeId, conn] of activeConnections.entries()) {
@@ -1713,11 +1720,15 @@ wss.on('connection', (ws) => {
         }
         toRemove.forEach(id => meshPeers.delete(id));
 
+        // Snapshot wss.clients before broadcasting to avoid iteration mutation
         if (toRemove.length > 0) {
-            for (const client of wss.clients) {
+            const snapshot = [...wss.clients];
+            for (const client of snapshot) {
                 safeSend(client, { type: 'PEER_LEAVE', id: clientId || toRemove[0] });
             }
         }
+
+        clientId = null; // prevent stale references
     });
 
     safeSend(ws, { type: 'welcome' });
@@ -1726,11 +1737,13 @@ wss.on('connection', (ws) => {
 // ─── WS ping / stale cleanup ─────────────────────────────────────────────────
 
 const WS_PING_INTERVAL = setInterval(() => {
-    wss.clients.forEach(ws => {
-        if (!ws.isAlive) { ws.terminate(); return; }
+    // Snapshot to avoid terminate() mutating the Set during iteration
+    const snapshot = [...wss.clients];
+    for (const ws of snapshot) {
+        if (!ws.isAlive) { ws.terminate(); continue; }
         ws.isAlive = false;
-        ws.ping();
-    });
+        try { ws.ping(); } catch (_) { }
+    }
 }, 25_000);
 
 const STALE_CLEANUP_INTERVAL = setInterval(() => {

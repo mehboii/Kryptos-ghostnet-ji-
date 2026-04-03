@@ -347,46 +347,19 @@ class GhostShieldEngine {
         const minBytes = cfg.ghost.paddingMinBytes;
         const maxBytes = cfg.ghost.paddingMaxBytes;
 
-        // Intercept WebSocket.send to pad all outgoing messages
-        const OrigWsSend = WebSocket.prototype.send;
-        this._originalWsSend = OrigWsSend;
-
-        WebSocket.prototype.send = function(data) {
-            let padded = data;
-            try {
-                if (typeof data === 'string') {
-                    // Generate random padding bytes
-                    const padLen = minBytes + Math.floor(
-                        (crypto.getRandomValues(new Uint8Array(1))[0] / 255) * (maxBytes - minBytes)
-                    );
-                    const padBytes = new Uint8Array(padLen);
-                    crypto.getRandomValues(padBytes);
-                    const padStr = btoa(String.fromCharCode(...padBytes));
-
-                    // Wrap in envelope with padding
-                    try {
-                        const parsed = JSON.parse(data);
-                        parsed._pad = padStr;
-                        padded = JSON.stringify(parsed);
-                    } catch (_) {
-                        // Non-JSON data: append padding marker
-                        padded = data + '\x00PAD\x00' + padStr;
-                    }
-                }
-            } catch (_) { }
-            return OrigWsSend.call(this, padded);
-        };
+        // Save the true original only once — never overwrite with a wrapped version
+        if (!this._originalWsSend) {
+            this._originalWsSend = WebSocket.prototype.send;
+        }
 
         this._paddingActive = true;
+        this._rebuildWsSendChain(); // rebuild the composed wrapper
         this._log(`Padding all outgoing packets (${minBytes}-${maxBytes} bytes)`);
     }
 
     _disablePacketPadding() {
-        if (this._originalWsSend) {
-            WebSocket.prototype.send = this._originalWsSend;
-            this._originalWsSend = null;
-        }
         this._paddingActive = false;
+        this._rebuildWsSendChain(); // rebuild without padding
     }
 
     _enableTimingObfuscation() {
@@ -394,33 +367,87 @@ class GhostShieldEngine {
         const cfg = window.ShieldConfig;
         if (!cfg) return;
 
-        const minMs = cfg.ghost.timingDelayMinMs;
-        const maxMs = cfg.ghost.timingDelayMaxMs;
-
-        // Wrap WebSocket.send with random delay
-        const currentSend = WebSocket.prototype.send;
-        const delayedSend = function(data) {
-            const delay = minMs + Math.floor(
-                (crypto.getRandomValues(new Uint8Array(2))[0] / 255) * (maxMs - minMs)
-            );
-            setTimeout(() => {
-                try { currentSend.call(this, data); } catch (_) { }
-            }, delay);
-        };
-        WebSocket.prototype.send = delayedSend;
+        // Save the true original only once
+        if (!this._originalWsSend) {
+            this._originalWsSend = WebSocket.prototype.send;
+        }
 
         this._timingActive = true;
+        this._rebuildWsSendChain(); // rebuild with timing
+        const minMs = cfg.ghost.timingDelayMinMs;
+        const maxMs = cfg.ghost.timingDelayMaxMs;
         this._log(`Timing obfuscation active (${minMs}-${maxMs}ms random delays)`);
     }
 
     _disableTimingObfuscation() {
-        // Restore is handled by _disablePacketPadding restoring original send
-        // If padding wasn't active, we need to restore here
-        if (this._timingActive && this._originalWsSend) {
-            WebSocket.prototype.send = this._originalWsSend;
-            this._originalWsSend = null;
-        }
         this._timingActive = false;
+        this._rebuildWsSendChain(); // rebuild without timing
+    }
+
+    /**
+     * Rebuild WebSocket.prototype.send as a single composed wrapper.
+     * This avoids the wrapper-chain corruption that occurs when padding
+     * and timing each independently wrap/unwrap the prototype.
+     * The chain is: original → padding (optional) → timing delay (optional)
+     */
+    _rebuildWsSendChain() {
+        const orig = this._originalWsSend;
+        if (!orig) return;
+
+        // If neither feature is active, restore the original
+        if (!this._paddingActive && !this._timingActive) {
+            WebSocket.prototype.send = orig;
+            this._originalWsSend = null;
+            return;
+        }
+
+        const cfg = window.ShieldConfig;
+        if (!cfg) return;
+
+        const padActive = this._paddingActive;
+        const timeActive = this._timingActive;
+        const minBytes = cfg.ghost.paddingMinBytes || 0;
+        const maxBytes = cfg.ghost.paddingMaxBytes || 0;
+        const minMs = cfg.ghost.timingDelayMinMs || 0;
+        const maxMs = cfg.ghost.timingDelayMaxMs || 0;
+
+        WebSocket.prototype.send = function(data) {
+            let payload = data;
+
+            // Step 1: Apply padding if active
+            if (padActive && typeof payload === 'string') {
+                try {
+                    const padLen = minBytes + Math.floor(
+                        (crypto.getRandomValues(new Uint8Array(1))[0] / 255) * (maxBytes - minBytes)
+                    );
+                    const padBytes = new Uint8Array(padLen);
+                    crypto.getRandomValues(padBytes);
+                    const padStr = btoa(String.fromCharCode(...padBytes));
+
+                    try {
+                        const parsed = JSON.parse(payload);
+                        parsed._pad = padStr;
+                        payload = JSON.stringify(parsed);
+                    } catch (_) {
+                        payload = payload + '\x00PAD\x00' + padStr;
+                    }
+                } catch (_) { }
+            }
+
+            // Step 2: Apply timing delay if active, otherwise send immediately
+            if (timeActive) {
+                const delay = minMs + Math.floor(
+                    (crypto.getRandomValues(new Uint8Array(2))[0] / 255) * (maxMs - minMs)
+                );
+                const ws = this;
+                const finalPayload = payload;
+                setTimeout(() => {
+                    try { orig.call(ws, finalPayload); } catch (_) { }
+                }, delay);
+            } else {
+                return orig.call(this, payload);
+            }
+        };
     }
 
     _startDummyPacketInjection() {
@@ -435,8 +462,9 @@ class GhostShieldEngine {
             this.stats.packetsProtected++;
 
             // Inject cryptographically random noise packet into mesh
-            if (window.app && window.app.mesh && window.app.mesh.ws &&
-                window.app.mesh.ws.readyState === WebSocket.OPEN) {
+            const mesh = window.app?.mesh;
+            const ws = mesh?.ws;
+            if (ws && ws.readyState === WebSocket.OPEN) {
                 const noise = new Uint8Array(dummySize);
                 crypto.getRandomValues(noise);
                 const noiseStr = btoa(String.fromCharCode(...noise));
@@ -447,7 +475,7 @@ class GhostShieldEngine {
                         data: '__DUMMY__' + noiseStr,
                         ts: Date.now()
                     });
-                    window.app.mesh.ws.send(dummyMsg);
+                    ws.send(dummyMsg);
                 } catch (_) { }
             }
         }, intervalMs);

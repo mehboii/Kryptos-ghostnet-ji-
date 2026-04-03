@@ -21,7 +21,10 @@
     "server": "node ghostnet-server.js",
     "bridge": "node ghostnet-bridge/bridge.js",
     "client": "node ghostnet-client/server.js",
-    "build": "echo 'static site'"
+    "build": "echo 'static site'",
+    "stress-test": "node stress-test-ws.js",
+    "stress-test:chaos": "node stress-test-ws.js --chaos",
+    "stress-test:100": "node stress-test-ws.js --clients=100 --duration=120"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.1.3",
