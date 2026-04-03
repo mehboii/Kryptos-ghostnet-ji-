@@ -1,0 +1,78 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+815 characters
+Artificial intelligence is
+fundametally
+transforming the landscape of modern technology. Funny enough, these developments have big
+implications
+for various industries. But why does this matter? Which shouldn't be surprising, the
+setup
+of machine learning algorithms has demonstrated major improvements in efficiency. Organizations should focus on the use of these technologies. Not to mention, the establishment of robust
+frameworks
+is necessary to help the adoption of AI solutions. Still, it's major to look at the potential challenges that may arise. Look, what's more, the future of artificial intelligence — at least in my view — holds tremendous promise for people and organizations alike.
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+[2] (780,521)<aside class='sidebar' id='sidebar' scrollable='true' />
+	100
+	Words
+	8
+	Sentences
+	4
+	Issues
+	34.3
+	Readability
+	Tone
+	Casual
+	Polarity
+	0.038
+	Subjectivity
+	0.62
+	Readability
+	34.3
+	Difficult — best understood by graduates
+	Grade Level
+	11.6
+	Issues
+	4
+	[3] (777,628)<div class='issues-list' id='issues-list' scrollable='true' />
+		spelling
+		Possible spelling error: "fundametally"
+		ial intelligence is fundametally transforming the la
+		fundamentally
+		[4] (774,520)<div  />
+			[5] (637,489)<div >spelling />
+			[6] (774,505)<div >Possible spelling error: "implications" />
+			[7] (774,527)<div >velopments have big implications for various industr />
+			[8] (774,550)<div  />
+				[9] (654,550)<button class='fix-btn'>implication />
+		[10] (774,621)<div  />
+			[11] (637,590)<div >spelling />
+			[12] (774,606)<div >Possible spelling error: "setup" />
+			[13] (774,628)<div >be surprising, the setup of machine learning />
+			[14] (774,651)<div  />
+				[15] (624,651)<button class='fix-btn'>set />
+				[16] (680,651)<button class='fix-btn'>step />
+				[17] (740,651)<button class='fix-btn'>stop />
+				[18] (803,651)<button class='fix-btn'>serum />
+		[19] (774,722)<div  />
+			[20] (637,692)<div >spelling />
+			[21] (774,708)<div >Possible spelling error: "frameworks" />
+			[22] (774,729)<div >blishment of robust frameworks is necessary to hel />
+			[23] (774,752)<div  />
+				[24] (647,752)<button class='fix-btn'>framework />
+	AI Humanizer
+	NEW
+	AI Detection Score
+	Likely Human-Written
+	Human
+	8%
+	AI
+	Higher average word length than typical human writing
+	[25] (777,932)<button class='humanize-btn' id='btn-humanize'>Humanize Text />
+
+</current_dom>

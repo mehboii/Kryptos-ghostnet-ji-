@@ -1,0 +1,22 @@
+# ProsePolish Writing Assistant Testing Plan
+
+## Checklist
+- [ ] Navigate to http://localhost:8000
+- [ ] Verify key elements (header, textarea, sidebar)
+- [ ] Input text: "I has went to the store yesterday. Their was alot of peoples there. your very good at writing. This are bad grammer."
+- [ ] Wait for analysis (3 seconds)
+- [ ] Extract Word and Sentence count
+- [ ] Extract issues from the issues panel
+- [ ] Extract Tone badge value
+- [ ] Extract Readability score
+- [ ] Verify error underlines in the editor
+- [ ] Report overall visual appearance and findings
+
+## Findings
+- Word Count: 0 (appears to be failing to update)
+- Sentence Count: 0 (appears to be failing to update)
+- Issues: 0 (No issues found yet, POST /check returns 500 error)
+- Tone: Casual (Polarity: 0.105, Subjectivity: 0.723)
+- Readability: 87 (Very Easy, Grade Level: 2.6)
+- Error Underlines: None visible (consistent with 500 error from /check)
+- Visual Appearance: Premium dark theme, sidebar with widgets, large editor area. Polished UI but backend issues preventing analysis.

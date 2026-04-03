@@ -1,0 +1,87 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+751 characters
+Artificial intelligence is
+fundametally
+transforming the landscape of modern technology. Furthermore, it is essential to acknowledge that these developments have significant
+implications
+fnor
+various industries. Additionally, the implementation of machine learning algorithms has demonstrated substantial improvements in efficiency. Moreover, it is important to note that organizations should prioritize the utilization of these technologies. Consequently, the establishment of robust
+frameworks
+is necessary to facilitate the adoption of AI solutions. Nevertheless, it is crucial to examine the potential challenges that may arise. In conclusion, the future of artificial intelligence holds tremendous promise for individuals and organizations alike.
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+[2] (780,521)<aside class='sidebar' id='sidebar' scrollable='true' />
+	0
+	Very Difficult — best understood by professionals
+	Grade Level
+	16.9
+	Issues
+	4
+	[3] (777,316)<div class='issues-list' id='issues-list' scrollable='true' />
+		[4] (774,223)<div  />
+			[5] (637,192)<div >spelling />
+			[6] (774,208)<div >Possible spelling error: "fundametally" />
+			[7] (774,229)<div >ial intelligence is fundametally transforming the la />
+			[8] (774,253)<div  />
+				[9] (662,253)<button class='fix-btn'>fundamentally />
+		[10] (774,324)<div  />
+			[11] (637,293)<div >spelling />
+			[12] (774,309)<div >Possible spelling error: "implications" />
+			[13] (774,330)<div >ts have significant implications fnor various indust />
+			[14] (774,354)<div  />
+				[15] (654,354)<button class='fix-btn'>implication />
+		[16] (774,425)<div  />
+			[17] (637,394)<div >spelling />
+			[18] (774,410)<div >Possible spelling error: "fnor" />
+			[19] (774,432)<div >ficant implications fnor various industries. />
+			[20] (774,455)<div  />
+				[21] (624,455)<button class='fix-btn'>for />
+				[22] (676,455)<button class='fix-btn'>nor />
+		spelling
+		Possible spelling error: "frameworks"
+		blishment of robust frameworks is necessary to fac
+		framework
+	AI Humanizer
+	NEW
+	AI Detection Score
+	Mixed — Some AI Signals
+	Human
+	58.3%
+	AI
+	Sentence lengths are very uniform (AI pattern)
+	No contractions used — AI typically avoids them
+	High density of transition words
+	Higher average word length than typical human writing
+	[23] (777,682)<button class='humanize-btn' id='btn-humanize'>Humanize Text />
+	Humanized Preview
+	58.3%
+	8%
+	[24] (777,805)<div class='result-text' id='result-text' scrollable='true'>Artificial intelligence is fundametally transforming the landscape of modern technology. Funny enough, these developments have big implications fnor various industries. But why does this matter? Which shouldn't be surprising, the setup of machine learning algorithms has demonstrated major improvements in efficiency. Organizations should focus on the use of these technologies. Not to mention, the establishment of robust frameworks is necessary to help the adoption of AI solutions. Still, it's major to look at the potential challenges that may arise. Look, what's more, the future of artificial intelligence — at least in my view — holds tremendous promise for people and organizations alike. />
+	[25] (777,919)<div class='result-changes' id='result-changes' scrollable='true'>Removed AI-typical filler phrases
+Applied natural contractions throughout
+Removed overused academic transitions
+Replaced formal vocabulary with casual words
+Broke repetitive sentence patterns
+Added conversational sentence openers
+Inserted natural parenthetical asides
+Added rhetorical question for engagement
+Varied sentence ending for natural tone />
+		Removed AI-typical filler phrases
+		Applied natural contractions throughout
+		Removed overused academic transitions
+		Replaced formal vocabulary with casual words
+		Broke repetitive sentence patterns
+		Added conversational sentence openers
+		Inserted natural parenthetical asides
+		Added rhetorical question for engagement
+		Varied sentence ending for natural tone
+	[26] (686,981)<button class='accept-btn' id='btn-accept'>Accept />
+	[27] (867,981)<button class='reject-btn' id='btn-reject'>Reject />
+
+</current_dom>

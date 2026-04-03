@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx cap:*)",
+      "Bash(adb devices:*)",
+      "Bash(where adb:*)",
+      "Read(//c/Users/novtw/.gemini/antigravity/$LOCALAPPDATA/Android/Sdk/platform-tools/**)",
+      "Read(//c/Users/novtw/.gemini/antigravity/$HOME/AppData/Local/Android/Sdk/platform-tools/**)",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe\" devices:*)",
+      "Bash(./gradlew assembleDebug)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files/Android/Android Studio/jbr//**)",
+      "Read(//c/Users/novtw/.gemini/antigravity/android/$LOCALAPPDATA/Android/**)",
+      "Bash(export JAVA_HOME=\"/c/Program Files/Android/Android Studio/jbr\")",
+      "Bash(\"$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe\" install:*)",
+      "Bash(node test-ghost-shield-node.js)",
+      "Bash(find /c/Users/novtw/.gemini/antigravity -maxdepth 3 -type f \\\\\\(-name *.js -o -name *.json -o -name *.html \\\\\\) ! -path */node_modules/* ! -path */.git/* ! -path */build/* ! -path */.gradle/* ! -path */.idea/* ! -path */.vercel/*)",
+      "Read(//c/Users/novtw/.gemini/antigravity/**)",
+      "Bash(wc -l \"c:/Users/novtw/.gemini/antigravity/services/firewall/\"*.js)"
+    ]
+  }
+}

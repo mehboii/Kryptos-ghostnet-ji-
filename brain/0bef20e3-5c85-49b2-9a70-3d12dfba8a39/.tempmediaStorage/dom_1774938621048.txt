@@ -1,0 +1,73 @@
+<current_dom_explanation>
+This is a temporary snapshot of the current page's DOM structure. The DOM will change if you navigate to or interact with another page. Use a tool like browser_get_dom to capture and preserve the DOM in your trajectory if needed for later reference.
+</current_dom_explanation>
+<current_dom>
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+116 characters
+I has
+went to the store yesterday. Their was
+alot
+of peoples there.
+your very
+good at writing.
+This are
+bad
+grammer
+.
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+22
+Words
+4
+Sentences
+6
+Issues
+89.7
+Readability
+Tone
+Casual
+Polarity
+0.105
+Subjectivity
+0.723
+Readability
+89.7
+Very Easy — easily understood by 11-year-olds
+Grade Level
+2.1
+Issues
+6
+[2] (780,632)<div class='issues-list' id='issues-list' scrollable='true' />
+	[3] (777,538)<div  />
+		[4] (640,508)<div >grammar />
+		[5] (777,524)<div >Subject-verb agreement: use "have" with this subject />
+		[6] (777,545)<div >I has went to the store y />
+		[7] (777,568)<div  />
+			[8] (628,568)<button class='fix-btn'>have />
+	[9] (777,640)<div  />
+		[10] (637,609)<div >spelling />
+		[11] (777,625)<div >Possible spelling error: "alot" />
+		[12] (777,646)<div >esterday. Their was alot of peoples there. y />
+		[13] (777,670)<div  />
+			[14] (628,670)<button class='fix-btn'>clot />
+			[15] (684,670)<button class='fix-btn'>lot />
+			[16] (740,670)<button class='fix-btn'>plot />
+			[17] (799,670)<button class='fix-btn'>blot />
+	[18] (777,741)<div  />
+		[19] (640,710)<div >grammar />
+		[20] (777,726)<div >Did you mean "you're" (you are)? />
+		[21] (777,747)<div >t of peoples there. your very good at writing. Th />
+		[22] (777,771)<div  />
+			[23] (635,771)<button class='fix-btn'>you're />
+	style
+	Consider a stronger word
+	peoples there. your very good at writing. This ar
+	excellent
+	grammar
+	Subject-verb agreement: use "this is"
+	ry good at writing. This are bad grammer.
+	this is
+
+</current_dom>

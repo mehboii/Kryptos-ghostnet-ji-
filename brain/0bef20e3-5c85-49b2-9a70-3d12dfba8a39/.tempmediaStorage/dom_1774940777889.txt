@@ -1,0 +1,46 @@
+ProsePolish
+LOCAL
+[0] (898,21)<button class='header-btn' id='btn-clear' title='Clear text'>Clear />
+Editor
+515 characters
+Artificial intelligence is completely changing the
+tech
+world today. These developments matter a lot for different fields. Sounds good on paper, right? Actually, using AI models has shown much better speed and workflow. And companies need to focus on — believe it or not — using these tools, no question about it. The setting up strong systems is necessary to get people using AI. Still, we should look at the problems that might pop up. Funny enough, the future of artificial intelligence looks great for everyone.
+[1] (280,535)<textarea id='editor' placeholder='Start typing or paste your text here…' />
+84
+Words
+8
+Sentences
+1
+Issues
+61.2
+Readability
+Tone
+Casual
+Polarity
+0.134
+Subjectivity
+0.632
+Readability
+61.2
+Standard — easily understood by 13–15-year-olds
+Grade Level
+7.3
+Issues
+1
+[2] (780,538)<div  />
+	[3] (637,508)<div >spelling />
+	[4] (780,524)<div >Possible spelling error: "tech" />
+	[5] (780,545)<div >letely changing the tech world today. These />
+	[6] (780,568)<div  />
+		[7] (632,568)<button class='fix-btn'>teach />
+		[8] (695,568)<button class='fix-btn'>lech />
+AI Humanizer
+NEW
+AI Detection Score
+Likely Human-Written
+Human
+13.8%
+AI
+Sentence lengths are very uniform (AI pattern)
+[9] (780,748)<button class='humanize-btn' id='btn-humanize'>Humanize Text />

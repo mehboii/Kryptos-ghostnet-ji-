@@ -1,0 +1,22 @@
+# ProsePolish Writing Assistant Testing Plan
+
+## Checklist
+- [ ] Navigate to http://localhost:8000
+- [ ] Verify key elements (header, textarea, sidebar)
+- [ ] Input text: "I has went to the store yesterday. Their was alot of peoples there. your very good at writing. This are bad grammer."
+- [ ] Wait for analysis (3 seconds)
+- [ ] Extract Word and Sentence count
+- [ ] Extract issues from the issues panel
+- [ ] Extract Tone badge value
+- [ ] Extract Readability score
+- [ ] Verify error underlines in the editor
+- [ ] Report overall visual appearance and findings
+
+## Findings
+- Word Count: 
+- Sentence Count: 
+- Issues: 
+- Tone: 
+- Readability: 
+- Error Underlines: 
+- Visual Appearance: 

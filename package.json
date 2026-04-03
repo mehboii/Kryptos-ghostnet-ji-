@@ -24,7 +24,9 @@
     "build": "echo 'static site'",
     "stress-test": "node stress-test-ws.js",
     "stress-test:chaos": "node stress-test-ws.js --chaos",
-    "stress-test:100": "node stress-test-ws.js --clients=100 --duration=120"
+    "stress-test:100": "node stress-test-ws.js --clients=100 --duration=120",
+    "stress-test:logout": "node stress-test-logout.js",
+    "stress-test:logout-heavy": "node stress-test-logout.js --users=100 --cycles=20"
   },
   "dependencies": {
     "@capacitor-community/bluetooth-le": "^8.1.3",
