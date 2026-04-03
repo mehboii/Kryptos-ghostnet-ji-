@@ -1406,6 +1406,14 @@ server.on('upgrade', (req, socket, head) => {
         try { user = jwt.verify(token, JWT_SECRET); }
         catch (_) { socket.destroy(); return; }
 
+        // Validate tokenVersion — reject revoked tokens (post-logout/password-reset)
+        const dbUser = findAuthUserById(user.userId);
+        if (dbUser) {
+            const currentTv = dbUser.tokenVersion || 0;
+            const tokenTv = user.tv ?? 0;
+            if (tokenTv < currentTv) { socket.destroy(); return; }
+        }
+
         wss.handleUpgrade(req, socket, head, ws => {
             ws._user = user; // attach verified user to socket
             wss.emit('connection', ws, req);

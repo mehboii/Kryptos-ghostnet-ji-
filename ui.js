@@ -661,7 +661,48 @@ const UI = {
             UI.vaultRenderFiles([]);
         }
 
-        // 3. Clear In-Memory State
+        // 3. Server-side logout — invalidate JWT on backend (fire-and-forget)
+        try {
+            const token = _readToken();
+            if (token) {
+                fetch(`${BACKEND_URL}/auth/logout`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                }).catch(() => {}); // best-effort, don't block logout on network failure
+            }
+        } catch (_) {}
+
+        // 4. Destroy mesh connection — send PEER_LEAVE + close WebSocket
+        if (window.app && window.app.mesh) {
+            const mesh = window.app.mesh;
+            // Send explicit PEER_LEAVE before destroying so peers know immediately
+            if (mesh.ws && mesh.wsReady && mesh.ws.readyState === WebSocket.OPEN) {
+                try {
+                    const peerId = mesh.identity?.id || mesh.identity?.nodeId;
+                    if (peerId) {
+                        mesh.ws.send(JSON.stringify({ type: 'PEER_LEAVE', id: peerId }));
+                    }
+                } catch (_) {}
+            }
+            mesh.destroy(); // closes WS, clears timers, disconnects BLE
+            window.app.mesh = null;
+        }
+
+        // 5. Clear GhostChat session
+        if (window.app && window.app.chat) {
+            // Wipe in-memory decrypted messages
+            if (typeof window.app.chat.clearMessages === 'function') {
+                window.app.chat.clearMessages();
+            }
+            window.app.chat = null;
+        }
+
+        // 6. Clear crypto identity session key from memory
+        if (window.GhostIdentity && typeof window.GhostIdentity.clearSession === 'function') {
+            window.GhostIdentity.clearSession();
+        }
+
+        // 7. Clear In-Memory State
         if (window.AppState) {
             window.AppState.identity = null;
             window.AppState.messages = [];
@@ -675,11 +716,17 @@ const UI = {
             window.app.chatTarget = null;
         }
 
-        // 4. Restore Scroll Style
+        // 8. Cross-tab logout signal — other tabs detect this via 'storage' event
+        try {
+            localStorage.setItem('ghostnet_logout_signal', Date.now().toString());
+            localStorage.removeItem('ghostnet_logout_signal');
+        } catch (_) {}
+
+        // 9. Restore Scroll Style
         document.body.style.overflow = 'auto';
         document.documentElement.style.overflow = 'auto';
-        
-        // 5. Remove all Modals and Overlays
+
+        // 10. Remove all Modals and Overlays
         const blockers = [
             'ghostcard-modal', 
             'screenshot-overlay', 
@@ -701,7 +748,7 @@ const UI = {
             return;
         }
 
-        // 6. Navigation
+        // 11. Navigation
         const loginUrl = new URL(window.location.href);
         loginUrl.hash = 'profile'; 
         window.history.replaceState(null, '', loginUrl.href);
@@ -3657,6 +3704,14 @@ window.addEventListener("DOMContentLoaded", () => {
     UI.init();
     renderHome();
     initTilt3D();
+
+    // Cross-tab logout: if another tab fires clearSession, log out this tab too
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'ghostnet_logout_signal' && e.newValue) {
+            console.log('[UI] Cross-tab logout detected. Clearing session in this tab...');
+            UI.clearSession();
+        }
+    });
 });
 
 /* ── Subtle 3D Mouse-Tracking Tilt ─────────────────────────────────────── */

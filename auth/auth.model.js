@@ -184,6 +184,19 @@ export function sanitise(user) {
 }
 
 /**
+ * Bump a user's tokenVersion, invalidating all previously issued JWTs.
+ * @param {string} userId
+ * @returns {number} The new tokenVersion
+ */
+export function bumpTokenVersion(userId) {
+    const user = authUsers.find(u => u.id === userId);
+    if (!user) return -1;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
+    _persist();
+    return user.tokenVersion;
+}
+
+/**
  * Update arbitrary fields on a user record.
  * @param {string} userId
  * @param {object} fields - key/value pairs to update
@@ -305,8 +318,9 @@ export async function resetPassword(email, token, newPasswordHash) {
         return { success: false, error: 'Invalid reset code.' };
     }
 
-    // Update password and clear token
+    // Update password, clear token, and bump tokenVersion to invalidate all existing JWTs
     user.password_hash = newPasswordHash;
+    user.tokenVersion = (user.tokenVersion || 0) + 1;
     delete user.reset_token;
     delete user.reset_token_expires;
     _persist();
