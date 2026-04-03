@@ -101,20 +101,25 @@ class SignalIntelligenceEngine {
         if (surveillanceOUIs.includes(oui)) threatScore += 40;
 
         threatScore = Math.min(100, threatScore);
-        
-        let threatLevel = 'SAFE';
-        if (threatScore > 60) threatLevel = 'THREAT';
-        else if (threatScore > 30) threatLevel = 'MONITOR';
+
+        // Threshold-based classification (configurable via ShieldConfig)
+        const cfg = window.ShieldConfig;
+        const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
+        const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
+
+        let threatLevel = 'ALLOWED';
+        if (threatScore > blockedAt) threatLevel = 'BLOCKED';
+        else if (threatScore >= warningAt) threatLevel = 'WARNING';
 
         // 4. Device Type Classification
         let type = 'UNKNOWN';
         if (device.isGhostNode) {
             type = 'GhostNet Node';
             threatScore = 0; // Override threat score for trusted nodes
-            threatLevel = 'SAFE';
-        } else if (threatScore > 60 && interferenceFlags.includes('MULTI_CHANNEL_BROADCAST') && interferenceFlags.includes('POTENTIAL_JAMMER')) {
+            threatLevel = 'ALLOWED';
+        } else if (threatScore > blockedAt && interferenceFlags.includes('MULTI_CHANNEL_BROADCAST') && interferenceFlags.includes('POTENTIAL_JAMMER')) {
             type = 'Surveillance Device';
-        } else if (threatScore > 40 && interferenceFlags.includes('RAPID_MOVEMENT')) {
+        } else if (threatScore >= warningAt && interferenceFlags.includes('RAPID_MOVEMENT')) {
             type = 'Suspicious Tracker';
         } else if (device.hasBLE && device.hasWiFi) {
             type = 'Smartphone';
@@ -144,11 +149,12 @@ class SignalIntelligenceEngine {
     }
 
     getThreatLevel() {
-        const activeDevices = this.getSignalReport().filter(d => Date.now() - d.lastUpdated < 120000);
-        const threats = activeDevices.filter(d => d.threatLevel === 'THREAT');
-        if (threats.length > 0) return 'DANGER';
-        const monitors = activeDevices.filter(d => d.threatLevel === 'MONITOR');
-        if (monitors.length > 0) return 'ELEVATED';
+        const staleMs = window.ShieldConfig ? window.ShieldConfig.signalIntel.signalStaleMs : 120000;
+        const activeDevices = this.getSignalReport().filter(d => Date.now() - d.lastUpdated < staleMs);
+        const blocked = activeDevices.filter(d => d.threatLevel === 'BLOCKED');
+        if (blocked.length > 0) return 'DANGER';
+        const warnings = activeDevices.filter(d => d.threatLevel === 'WARNING');
+        if (warnings.length > 0) return 'ELEVATED';
         return 'NORMAL';
     }
 
@@ -159,8 +165,9 @@ class SignalIntelligenceEngine {
     }
 
     getBestPath() {
-        const activeDevices = this.getSignalReport().filter(d => Date.now() - d.lastUpdated < 120000);
-        const optimalNodes = activeDevices.filter(d => d.quality === 'OPTIMAL' && d.threatLevel === 'SAFE');
+        const staleMs = window.ShieldConfig ? window.ShieldConfig.signalIntel.signalStaleMs : 120000;
+        const activeDevices = this.getSignalReport().filter(d => Date.now() - d.lastUpdated < staleMs);
+        const optimalNodes = activeDevices.filter(d => d.quality === 'OPTIMAL' && d.threatLevel === 'ALLOWED');
         if (optimalNodes.length > 0) {
             // Pick highest RSSI optimal node
             return optimalNodes[0];

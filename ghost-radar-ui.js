@@ -425,13 +425,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const x = cx + dist * Math.cos(angle);
                 const y = cy + dist * Math.sin(angle);
 
+                const cfg = window.ShieldConfig;
+                const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
+                const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
+
                 const blip = document.createElement('div');
                 blip.className = 'radar-blip';
                 if (d.isGhostNode) {
                     blip.classList.add('ghost-node');
-                } else if (d.threatScore > 60) {
+                } else if (d.threatScore > blockedAt) {
                     blip.classList.add('threat');
-                } else if (d.threatScore > 30) {
+                } else if (d.threatScore >= warningAt) {
                     blip.classList.add('monitor');
                 } else {
                     blip.classList.add('safe');
@@ -478,12 +482,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return (b.rssi || -100) - (a.rssi || -100);
             });
 
+            const cfg = window.ShieldConfig;
+            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
+            const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
+
             let html = '';
             for (const d of sorted) {
+                const score = Number(d.threatScore) || 0;
                 let cls = 'safe';
-                if (d.isGhostNode) cls = 'ghost-node';
-                else if (d.threatScore > 60) cls = 'threat';
-                else if (d.threatScore > 30) cls = 'monitor';
+                let badgeLabel = 'ALLOWED';
+                if (d.isGhostNode) { cls = 'ghost-node'; badgeLabel = 'NODE'; }
+                else if (score > blockedAt) { cls = 'threat'; badgeLabel = 'BLOCKED'; }
+                else if (score >= warningAt) { cls = 'monitor'; badgeLabel = 'WARNING'; }
 
                 const name = this._esc(d.name || 'Unknown Device');
                 const rssiLabel = d.rssi != null ? d.rssi + ' dBm' : '--';
@@ -498,11 +508,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 html += `
                     <div class="radar-device-item ${cls}">
                         <div class="dev-top">
-                            <span class="dev-name">${name}</span>
+                            <span class="dev-name">${name} <span style="font-size:0.7rem; font-family:monospace; opacity:0.7;">[${score}]</span></span>
                             <span class="dev-rssi">${rssiLabel}</span>
                         </div>
                         <div class="dev-bottom">
                             <span class="dev-badge">${typeLabel}</span>
+                            <span class="dev-badge" style="${score > blockedAt ? 'color:#ef4444;' : score >= warningAt ? 'color:#f59e0b;' : 'color:#10b981;'}">${badgeLabel}</span>
                             <span>ID: ${this._esc((d.id || 'N/A').substring(0, 20))}</span>
                             ${extras.length ? '<span>\u00B7</span><span>' + extras.join(' \u00B7 ') + '</span>' : ''}
                         </div>

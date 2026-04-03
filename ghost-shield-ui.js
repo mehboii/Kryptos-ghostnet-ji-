@@ -199,26 +199,46 @@ document.addEventListener('DOMContentLoaded', () => {
             transition: all 0.2s;
         }
         
-        .threat-item.safe { border-left-color: #10b981; }
-        .threat-item.monitor { border-left-color: #f59e0b; }
-        .threat-item.danger { border-left-color: #ef4444; cursor: pointer; }
-        .threat-item.danger:hover { background: rgba(239, 68, 68, 0.1); }
+        .threat-item.allowed  { border-left-color: #10b981; }
+        .threat-item.warning  { border-left-color: #f59e0b; cursor: pointer; }
+        .threat-item.warning:hover { background: rgba(245, 158, 11, 0.08); }
+        .threat-item.blocked-score { border-left-color: #ef4444; }
+        .threat-item.auto-blocked { border-left-color: #ef4444; opacity: 0.7; }
         .threat-item.blocked { border-left-color: #6b7280; opacity: 0.6; }
 
         .threat-item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-        .threat-item-bot { font-size: 0.75rem; color: var(--text-muted); display:flex; gap:10px;}
+        .threat-item-bot { font-size: 0.75rem; color: var(--text-muted); display:flex; gap:10px; flex-wrap:wrap; }
 
         .threat-score { font-family: monospace; font-weight: bold; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
-        .threat-score.high { color: #ef4444; background: rgba(239, 68, 68, 0.2); }
+        .threat-score.score-blocked { color: #ef4444; background: rgba(239, 68, 68, 0.2); }
+        .threat-score.score-warning { color: #f59e0b; background: rgba(245, 158, 11, 0.15); }
+        .threat-score.score-allowed { color: #10b981; background: rgba(16, 185, 129, 0.15); }
+
+        /* Score bar */
+        .threat-score-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+        .threat-score-bar .bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+        .bar-fill.fill-allowed { background: #10b981; }
+        .bar-fill.fill-warning { background: #f59e0b; }
+        .bar-fill.fill-blocked { background: #ef4444; }
+
+        .threat-level-badge {
+            font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
+            padding: 2px 6px; border-radius: 4px;
+        }
+        .badge-allowed { background: rgba(16,185,129,0.15); color: #10b981; }
+        .badge-warning { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .badge-blocked { background: rgba(239,68,68,0.15); color: #ef4444; }
 
         .btn-block-device {
             display: none; width: 100%; margin-top: 10px; background: #ef4444; color: white;
             border: none; padding: 6px; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.8rem;
         }
-        .threat-item.danger.expanded .btn-block-device { display: block; }
+        .threat-item.warning.expanded .btn-block-device { display: block; }
         .threat-item.blocked .btn-block-device { display: none; }
+        .threat-item.auto-blocked .btn-block-device { display: none; }
         .blocked-label { display: none; margin-top: 8px; color: #ef4444; font-size: 0.8rem; font-weight: bold; text-align: center; }
         .threat-item.blocked .blocked-label { display: block; }
+        .threat-item.auto-blocked .blocked-label { display: block; }
 
         /* Stats Bar */
         .shield-stats {
@@ -447,33 +467,61 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            const cfg = window.ShieldConfig;
+            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
+
             let html = '';
             for (const sig of signals) {
-                const isBlocked = window.GhostShield.blockedMacs.has(sig.mac);
-                let cls = 'safe';
-                if (sig.threatLevel === 'THREAT') cls = 'danger';
-                else if (sig.threatLevel === 'MONITOR') cls = 'monitor';
+                const score = Number(sig.threatScore) || 0;
+                const manualBlocked = window.GhostShield.blockedMacs.has(sig.mac);
 
-                if (isBlocked) cls = 'blocked';
+                // Auto-block: score >75 triggers automatic blocking
+                const autoBlocked = score > blockedAt && !manualBlocked;
+                if (autoBlocked && window.GhostShield && !window.GhostShield.blockedMacs.has(sig.mac)) {
+                    window.GhostShield.blockDevice(sig.mac);
+                }
+                const isBlocked = manualBlocked || autoBlocked;
+
+                // CSS class based on threat level
+                let cls = 'allowed';
+                if (isBlocked) cls = manualBlocked ? 'blocked' : 'auto-blocked';
+                else if (sig.threatLevel === 'BLOCKED') cls = 'blocked-score';
+                else if (sig.threatLevel === 'WARNING') cls = 'warning';
+
+                // Score styling
+                let scoreClass = 'score-allowed';
+                let fillClass = 'fill-allowed';
+                let badgeClass = 'badge-allowed';
+                let badgeLabel = 'ALLOWED';
+                if (sig.threatLevel === 'BLOCKED') {
+                    scoreClass = 'score-blocked'; fillClass = 'fill-blocked';
+                    badgeClass = 'badge-blocked'; badgeLabel = 'BLOCKED';
+                } else if (sig.threatLevel === 'WARNING') {
+                    scoreClass = 'score-warning'; fillClass = 'fill-warning';
+                    badgeClass = 'badge-warning'; badgeLabel = 'WARNING';
+                }
 
                 const flags = this._esc((sig.interferenceFlags || []).join(', ') || 'Normal behavior');
-                const scoreClass = sig.threatScore > 60 ? 'high' : '';
                 const safeMac = this._escAttr(sig.mac);
                 const safeName = this._esc(sig.type || sig.name || 'Unknown Device');
-                const safeScore = String(Number(sig.threatScore) || 0).padStart(2, ' ');
+                const safeScore = String(score).padStart(2, ' ');
 
                 html += `
                     <div class="threat-item ${cls}" onclick="GhostShieldUI.toggleBlockView(this)">
                         <div class="threat-item-top">
-                            <strong style="font-size:0.9rem; color:var(--text-primary);"><span class="threat-score ${scoreClass}">[${safeScore}]</span> ${safeName}</strong>
+                            <strong style="font-size:0.9rem; color:var(--text-primary);">
+                                <span class="threat-score ${scoreClass}">[${safeScore}]</span> ${safeName}
+                            </strong>
+                            <span class="threat-level-badge ${badgeClass}">${badgeLabel}</span>
                         </div>
+                        <div class="threat-score-bar"><div class="bar-fill ${fillClass}" style="width:${Math.min(100, score)}%"></div></div>
                         <div class="threat-item-bot">
                             <span>MAC: ${sig.isRandomizedMac ? 'Randomized' : this._esc(sig.mac)}</span>
-                            <span>·</span>
+                            <span>\u00B7</span>
                             <span>${flags}</span>
                         </div>
-                        ${!isBlocked && sig.threatLevel === 'THREAT' ? `<button class="btn-block-device" onclick="GhostShieldUI.blockMac('${safeMac}', event)">Block This Device</button>` : ''}
-                        ${isBlocked ? `<div class="blocked-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>BLOCKED — APP INVISIBLE TO THIS DEVICE <br><a href="#" style="color:var(--text-muted); font-weight:normal; text-decoration:underline; font-size:10px;" onclick="GhostShieldUI.unblockMac('${safeMac}', event)">Unblock</a></div>` : ''}
+                        ${!isBlocked && sig.threatLevel === 'WARNING' ? `<button class="btn-block-device" onclick="GhostShieldUI.blockMac('${safeMac}', event)">Block This Device</button>` : ''}
+                        ${isBlocked ? `<div class="blocked-label"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>${autoBlocked ? 'AUTO-BLOCKED — Score exceeded threshold' : 'BLOCKED — APP INVISIBLE TO THIS DEVICE'}<br><a href="#" style="color:var(--text-muted); font-weight:normal; text-decoration:underline; font-size:10px;" onclick="GhostShieldUI.unblockMac('${safeMac}', event)">Unblock</a></div>` : ''}
                     </div>
                 `;
             }

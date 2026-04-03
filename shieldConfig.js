@@ -69,6 +69,10 @@ const ShieldConfig = {
         signalStaleMs: 120000,
         /** RSSI threshold for "dangerously close" classification */
         dangerRssiThreshold: -30,
+        /** Threat score thresholds — scores 0-100 */
+        thresholdBlocked: 75,   // >75 = auto-blocked
+        thresholdWarning: 50,   // 50-75 = warning
+                                // <50 = allowed
     },
 
     // ─── Persistence Keys (localStorage) ─────────────────────────
