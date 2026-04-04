@@ -3644,3 +3644,228 @@ canvas#mesh {
         animation: none !important;
     }
 }
+
+/* Threat Score Animations */
+@keyframes threatUpdate {
+    0% { transform: scale(1); filter: brightness(1); }
+    50% { transform: scale(1.15); filter: brightness(1.5); }
+    100% { transform: scale(1); filter: brightness(1); }
+}
+
+.score-bounce {
+    animation: threatUpdate 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ONBOARDING FLOW
+   ═══════════════════════════════════════════════════════════════════════════ */
+#ghostnet-onboarding {
+    position: fixed; inset: 0;
+    z-index: 99998;
+    background: #020428;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    overflow: hidden;
+    transition: opacity 0.5s ease;
+}
+#ghostnet-onboarding.fade-out {
+    opacity: 0; pointer-events: none;
+}
+
+/* Particle field background */
+.onboard-particles {
+    position: absolute; inset: 0;
+    overflow: hidden; pointer-events: none;
+}
+.onboard-particle {
+    position: absolute;
+    width: 2px; height: 2px;
+    background: rgba(88, 217, 255, 0.4);
+    border-radius: 50%;
+    animation: particleDrift 8s linear infinite;
+}
+@keyframes particleDrift {
+    0%   { transform: translateY(100vh) scale(0); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { transform: translateY(-20vh) scale(1); opacity: 0; }
+}
+
+/* Slide container */
+.onboard-slides {
+    position: relative;
+    width: 100%; max-width: 400px;
+    height: 420px;
+    z-index: 2;
+}
+.onboard-slide {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 0 32px;
+    opacity: 0;
+    transform: translateX(60px);
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    pointer-events: none;
+}
+.onboard-slide.active {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: auto;
+}
+.onboard-slide.exit-left {
+    opacity: 0;
+    transform: translateX(-60px);
+}
+
+/* Visual elements per slide */
+.onboard-icon {
+    width: 100px; height: 100px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 32px;
+    position: relative;
+}
+.onboard-icon::before {
+    content: '';
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent, rgba(88, 217, 255, 0.4), transparent 60%);
+    animation: iconSpin 4s linear infinite;
+}
+@keyframes iconSpin {
+    to { transform: rotate(360deg); }
+}
+.onboard-icon-inner {
+    width: 100%; height: 100%;
+    border-radius: 50%;
+    background: rgba(88, 217, 255, 0.08);
+    border: 1px solid rgba(88, 217, 255, 0.2);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1;
+}
+.onboard-icon svg {
+    stroke: #58d9ff;
+    filter: drop-shadow(0 0 8px rgba(88, 217, 255, 0.5));
+}
+
+.onboard-title {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 12px;
+    letter-spacing: -0.02em;
+}
+.onboard-subtitle {
+    font-size: 0.95rem;
+    color: rgba(255, 255, 255, 0.55);
+    line-height: 1.6;
+    max-width: 300px;
+}
+
+/* Progress dots */
+.onboard-dots {
+    display: flex; gap: 10px;
+    z-index: 2;
+    margin-top: 20px;
+}
+.onboard-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: all 0.3s ease;
+}
+.onboard-dot.active {
+    background: #58d9ff;
+    box-shadow: 0 0 8px rgba(88, 217, 255, 0.6);
+    width: 24px;
+    border-radius: 4px;
+}
+
+/* CTA button */
+.onboard-btn {
+    z-index: 2;
+    margin-top: 32px;
+    padding: 14px 48px;
+    border: none;
+    border-radius: 12px;
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    color: #020428;
+    background: #58d9ff;
+    box-shadow: 0 0 20px rgba(88, 217, 255, 0.3);
+}
+.onboard-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 0 30px rgba(88, 217, 255, 0.5);
+}
+.onboard-btn:active {
+    transform: translateY(0);
+}
+.onboard-btn.secondary {
+    background: transparent;
+    color: rgba(255, 255, 255, 0.5);
+    box-shadow: none;
+    padding: 10px 24px;
+    font-size: 0.85rem;
+    margin-top: 8px;
+}
+.onboard-btn.secondary:hover {
+    color: rgba(255, 255, 255, 0.8);
+    box-shadow: none;
+}
+
+/* Slide 3 special: large shield animation */
+.onboard-shield-glow {
+    position: absolute;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(88, 217, 255, 0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    animation: shieldPulse 2s ease-in-out infinite;
+    pointer-events: none;
+}
+@keyframes shieldPulse {
+    0%, 100% { transform: scale(1); opacity: 0.5; }
+    50%      { transform: scale(1.2); opacity: 1; }
+}
+
+/* Mesh line animation for slide 2 */
+.onboard-mesh-lines {
+    position: absolute;
+    width: 200px; height: 200px;
+    pointer-events: none;
+}
+.mesh-node {
+    position: absolute;
+    width: 8px; height: 8px;
+    background: #58d9ff;
+    border-radius: 50%;
+    box-shadow: 0 0 6px rgba(88, 217, 255, 0.6);
+}
+.mesh-node:nth-child(1) { top: 20%; left: 50%; animation: meshFloat 3s ease-in-out infinite; }
+.mesh-node:nth-child(2) { top: 60%; left: 15%; animation: meshFloat 3s ease-in-out 0.5s infinite; }
+.mesh-node:nth-child(3) { top: 60%; left: 85%; animation: meshFloat 3s ease-in-out 1s infinite; }
+.mesh-node:nth-child(4) { top: 90%; left: 50%; animation: meshFloat 3s ease-in-out 1.5s infinite; }
+.mesh-line {
+    position: absolute;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(88, 217, 255, 0.3), transparent);
+    transform-origin: left center;
+}
+@keyframes meshFloat {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-6px); }
+}
+
+@media (max-width: 480px) {
+    .onboard-title { font-size: 1.5rem; }
+    .onboard-subtitle { font-size: 0.85rem; }
+    .onboard-icon { width: 80px; height: 80px; }
+    .onboard-btn { padding: 12px 40px; }
+}
