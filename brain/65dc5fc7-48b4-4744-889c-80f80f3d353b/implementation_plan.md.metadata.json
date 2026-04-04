@@ -1,0 +1,6 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
+  "summary":  "Implementation plan for the GhostTag username system. Covers three new server endpoints (claim, check, resolve), client-side registration flow changes with real-time availability feedback, chat resolution by @username, and invite link sharing. Includes open questions about tag immutability and offline-first behavior.",
+  "updatedAt":  "2026-04-04T04:39:19.555315700Z",
+  "requestFeedback":  true
+}
