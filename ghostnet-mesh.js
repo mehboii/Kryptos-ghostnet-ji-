@@ -411,12 +411,12 @@ class GhostMesh {
         }
 
         try {
-            // [F2] Dynamic URL from page origin; [F1] token in query string
+            // [SEC FIX H1] Token sent as post-connect message, NOT in URL query string.
+            // URL query params leak into server logs, browser history, proxy logs, and Referer headers.
             const base = this.buildWsUrl();
-            const wsUrl = `${base}?token=${encodeURIComponent(token)}`;
-            console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`); // don't log token
+            console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`);
 
-            const ws = new WebSocket(wsUrl);
+            const ws = new WebSocket(base);
             this.ws = ws;
 
             ws.onopen = () => {
@@ -424,6 +424,10 @@ class GhostMesh {
                 if (this.ws !== ws) return;
 
                 console.log('✅ Mesh: WebSocket connected');
+
+                // Authenticate first, then register
+                safeSend(ws, JSON.stringify({ type: 'auth', token }));
+
                 this.wsReady = true;
                 this._connecting = false;
                 this._reconnectDelay = 3000; // reset backoff on success
