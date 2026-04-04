@@ -145,6 +145,7 @@ const USERS_FILE = path.join(__dirname, 'users.json');
 const NODES_FILE = path.join(__dirname, 'nodes.json');
 const PENDING_FILE = path.join(__dirname, 'pending.json');
 const VAULT_KEYS_FILE = path.join(__dirname, 'vault-keys.json');
+const GHOSTTAGS_FILE = path.join(__dirname, 'ghosttags.json');
 
 const VAULT_DIR = path.join(__dirname, 'vault-data');
 const META_FILE = path.join(__dirname, 'vault-meta.json');
@@ -327,6 +328,19 @@ const pendingQueue = new Map(Object.entries(loadJson(PENDING_FILE, {})));
 
 let vaultKeys = loadJson(VAULT_KEYS_FILE, {});
 
+// GhostTag registry: { "lowercasetag": { nodeId, publicKey, ownerId, displayName, claimedAt } }
+let ghostTags = Object.create(null);
+{
+    const raw = loadJson(GHOSTTAGS_FILE, {});
+    for (const k of Object.keys(raw)) {
+        ghostTags[k.toLowerCase()] = raw[k];
+    }
+}
+
+function saveGhostTags() {
+    scheduleWrite(GHOSTTAGS_FILE, ghostTags);
+}
+
 function saveNodeRegistry() { // [29] debounced
     scheduleWrite(NODES_FILE, registeredNodes);
 }
@@ -451,6 +465,8 @@ const ALLOWED_STATIC_FILES = new Set([
     'crypto-identity.js',
     'jsQR.js',
     'qrcode.min.js',
+    'ghosttag.js',
+    'ghostnet-sync.js',
 ]);
 
 app.get('/:asset', (req, res, next) => {
@@ -984,6 +1000,153 @@ app.patch('/user/profile', requireAuth, express.json({ limit: '600kb' }), (req, 
     if (updatedNode) saveNodeRegistry();
 
     res.json({ success: true, displayName: user.displayName, avatar: user.avatar || null, nodeId: user.id });
+});
+
+// ─── GHOSTTAG USERNAME SYSTEM ────────────────────────────────────────────────
+
+const GHOSTTAG_RE = /^[a-z0-9_]{3,20}$/;
+
+const ghosttagCheckLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 60, // generous for real-time availability checks
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many tag check requests. Please wait.' },
+});
+
+const ghosttagClaimLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many tag claim attempts. Please wait.' },
+});
+
+// Claim a GhostTag — binds it to the authenticated user's nodeId
+app.post('/ghosttag/claim', requireAuth, ghosttagClaimLimiter, (req, res) => {
+    const rawTag = req.body?.tag;
+    if (!rawTag || typeof rawTag !== 'string') {
+        return res.status(400).json({ error: 'GhostTag required' });
+    }
+
+    const tag = rawTag.trim().toLowerCase().replace(/^@/, '');
+    if (!GHOSTTAG_RE.test(tag)) {
+        return res.status(400).json({ error: 'GhostTag must be 3–20 chars: lowercase letters, numbers, underscores only' });
+    }
+
+    // Check if this user already owns a tag
+    const existingOwned = Object.entries(ghostTags).find(([, v]) => v.ownerId === req.user.id);
+    if (existingOwned) {
+        return res.status(409).json({ error: 'You already have a GhostTag', yourTag: '@' + existingOwned[0] });
+    }
+
+    // Check if tag is taken
+    if (ghostTags[tag]) {
+        // Generate suggestions using crypto-random suffixes
+        const suggestions = Array.from({ length: 5 }, () =>
+            tag + (parseInt(crypto.randomBytes(2).toString('hex'), 16) % 1000)
+        ).filter(s => !ghostTags[s] && GHOSTTAG_RE.test(s));
+        return res.status(409).json({ error: 'GhostTag taken', suggestions });
+    }
+
+    // Validate nodeId and publicKey from the body
+    let nodeId;
+    try { nodeId = validateNodeId(req.body?.nodeId || req.user.id); }
+    catch (e) { return res.status(400).json({ error: 'Invalid nodeId' }); }
+
+    const publicKey = typeof req.body.publicKey === 'string' ? req.body.publicKey.slice(0, 512) : null;
+    const displayName = typeof req.body.displayName === 'string' ? req.body.displayName.slice(0, 64) : tag;
+
+    ghostTags[tag] = {
+        nodeId,
+        publicKey,
+        displayName,
+        ownerId: req.user.id,
+        claimedAt: Date.now(),
+    };
+    saveGhostTags();
+
+    console.log(`[GhostTag] @${tag} claimed by ${nodeId.slice(0, 12)}...`);
+    res.json({ success: true, tag: '@' + tag });
+});
+
+// Check availability — public, rate-limited
+app.get('/ghosttag/check/:tag', ghosttagCheckLimiter, (req, res) => {
+    const tag = (req.params.tag || '').trim().toLowerCase().replace(/^@/, '');
+    if (!GHOSTTAG_RE.test(tag)) {
+        return res.status(400).json({ error: 'Invalid tag format' });
+    }
+    res.json({ tag: '@' + tag, available: !ghostTags[tag] });
+});
+
+// Resolve a GhostTag → identity info — authenticated
+app.get('/ghosttag/resolve/:tag', requireAuth, (req, res) => {
+    const tag = (req.params.tag || '').trim().toLowerCase().replace(/^@/, '');
+    if (!GHOSTTAG_RE.test(tag)) {
+        return res.status(400).json({ error: 'Invalid tag format' });
+    }
+
+    const entry = ghostTags[tag];
+    if (!entry) {
+        return res.status(404).json({ error: 'GhostTag not found' });
+    }
+
+    // Return the identity linked to this tag
+    const node = registeredNodes[entry.nodeId];
+    res.json({
+        tag: '@' + tag,
+        nodeId: entry.nodeId,
+        publicKey: entry.publicKey || node?.publicKey || null,
+        displayName: entry.displayName || node?.displayName || tag,
+        avatar: node?.avatar || null,
+        online: meshPeers.has(entry.nodeId),
+    });
+});
+
+// Release a GhostTag — called when user deletes their identity
+app.delete('/ghosttag/release', requireAuth, (req, res) => {
+    // Find the tag owned by this user
+    const ownedEntry = Object.entries(ghostTags).find(([, v]) => v.ownerId === req.user.id);
+    if (!ownedEntry) {
+        return res.status(404).json({ error: 'No GhostTag owned by this identity' });
+    }
+
+    const [tag] = ownedEntry;
+    delete ghostTags[tag];
+    saveGhostTags();
+
+    console.log(`[GhostTag] @${tag} released by ${req.user.id.slice(0, 12)}...`);
+    res.json({ success: true, released: '@' + tag });
+});
+
+// Full identity deletion — releases tag + removes user/node data
+app.delete('/identity', requireAuth, (req, res) => {
+    const userId = req.user.id;
+
+    // 1. Release GhostTag
+    const ownedTag = Object.entries(ghostTags).find(([, v]) => v.ownerId === userId);
+    if (ownedTag) {
+        delete ghostTags[ownedTag[0]];
+        saveGhostTags();
+        console.log(`[Identity] Released @${ownedTag[0]}`);
+    }
+
+    // 2. Remove from users list
+    const idx = users.findIndex(u => u.ownerId === userId || u.id === userId);
+    if (idx !== -1) {
+        users.splice(idx, 1);
+        scheduleWrite(USERS_FILE, users);
+    }
+
+    // 3. Remove from registered nodes
+    const nodeKeys = Object.keys(registeredNodes).filter(k => registeredNodes[k].ownerId === userId || k === userId);
+    for (const k of nodeKeys) {
+        delete registeredNodes[k];
+    }
+    if (nodeKeys.length) saveNodeRegistry();
+
+    console.log(`[Identity] Fully deleted user ${userId.slice(0, 12)}...`);
+    res.json({ success: true, releasedTag: ownedTag ? '@' + ownedTag[0] : null });
 });
 
 // ─── MESSAGING ───────────────────────────────────────────────────────────────

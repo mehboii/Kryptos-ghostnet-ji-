@@ -72,6 +72,8 @@
     <script src="ghostnet-chat.js"></script>
     <script src="ghostnet-mesh.js"></script>
     <script src="ghostnet-file-vault.js"></script>
+    <script src="ghosttag.js"></script>
+    <script src="ghostnet-sync.js"></script>
     <script src="app.js"></script>
     <script src="shieldConfig.js"></script>
     <script src="signal-intelligence.js"></script>
@@ -896,8 +898,10 @@
                                     <div style="position: relative;">
                                         <span style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--accent); font-weight: bold;">@</span>
                                         <input type="text" id="id-ghost-tag" class="auth-input" placeholder="username"
-                                            maxlength="20" autocomplete="off" style="padding-left: 28px;">
+                                            maxlength="20" autocomplete="off" style="padding-left: 28px; padding-right: 32px;" oninput="IdentityUI.checkGhostTag()">
+                                        <div id="ghost-tag-status" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font-size: 14px; pointer-events: none;"></div>
                                     </div>
+                                    <div id="ghost-tag-suggestions" style="color: var(--accent); font-size: 0.8rem; margin-top: 4px; display: none;"></div>
                                 </div>
                                 <div id="id-name-error" class="id-error"></div>
                                 <button class="auth-btn-primary" onclick="IdentityUI.submitName()">CONTINUE</button>
@@ -1643,7 +1647,69 @@
                         }
                     }
 
-                    // ─── SCREEN 2: Name ───────────────────────────
+                    // ─── SCREEN 2: Name & GhostTag ────────────────
+                    let _ghostTagCheckTimeout = null;
+                    let _ghostTagValid = false;
+
+                    function checkGhostTag() {
+                        const raw = document.getElementById('id-ghost-tag').value.trim().replace(/^@/, '');
+                        const statusEl = document.getElementById('ghost-tag-status');
+                        const suggEl = document.getElementById('ghost-tag-suggestions');
+                        
+                        suggEl.style.display = 'none';
+                        statusEl.textContent = '';
+                        _ghostTagValid = false;
+                        
+                        if (!raw) return;
+                        
+                        // Use GhostTag module for validation
+                        const validation = window.GhostTag ? GhostTag.validate(raw) : { valid: /^[a-zA-Z0-9_]{3,20}$/.test(raw) };
+                        if (!validation.valid) {
+                            statusEl.textContent = '✗';
+                            statusEl.style.color = '#ef4444';
+                            return;
+                        }
+
+                        statusEl.innerHTML = '<div class="id-spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;"></div>';
+                        
+                        clearTimeout(_ghostTagCheckTimeout);
+                        _ghostTagCheckTimeout = setTimeout(async () => {
+                            try {
+                                if (window.GhostTag) {
+                                    const result = await GhostTag.checkAvailability(raw);
+                                    if (result.available) {
+                                        statusEl.textContent = '✓';
+                                        statusEl.style.color = result.offline ? '#f59e0b' : '#10b981';
+                                        _ghostTagValid = true;
+                                        if (result.offline) {
+                                            statusEl.title = 'Server offline — will verify when online';
+                                        }
+                                    } else {
+                                        statusEl.textContent = '✗';
+                                        statusEl.style.color = '#ef4444';
+                                        _ghostTagValid = false;
+                                    }
+                                } else {
+                                    // Fallback if GhostTag module not loaded
+                                    const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                                    const res = await fetch(`${API_URL}/ghosttag/check/${raw}`);
+                                    if (res.ok) {
+                                        const data = await res.json();
+                                        statusEl.textContent = data.available ? '✓' : '✗';
+                                        statusEl.style.color = data.available ? '#10b981' : '#ef4444';
+                                        _ghostTagValid = !!data.available;
+                                    } else {
+                                        statusEl.textContent = '';
+                                        _ghostTagValid = true; // optimistic offline
+                                    }
+                                }
+                            } catch (e) {
+                                statusEl.textContent = '';
+                                _ghostTagValid = true; // Optimistic offline
+                            }
+                        }, 500);
+                    }
+
                     function submitName() {
                         const name = document.getElementById('id-display-name').value.trim();
                         const ghostTag = document.getElementById('id-ghost-tag').value.trim().replace(/^@/, '');
@@ -1659,6 +1725,12 @@
                         }
                         if (!/^[a-zA-Z0-9_]+$/.test(ghostTag)) {
                             err.textContent = 'GhostTag can only contain letters, numbers, and underscores.';
+                            return;
+                        }
+                        // Disallow proceeding if explicitly checked and taken
+                        const statusEl = document.getElementById('ghost-tag-status');
+                        if (statusEl.textContent === '✗') {
+                            err.textContent = 'GhostTag is already taken or invalid.';
                             return;
                         }
 
@@ -1798,7 +1870,10 @@
                             const _regToken = _getAuthToken();
                             if (_regToken) {
                                 const storedId = GhostIdentity.getStoredIdentity();
-                                fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                                
+                                // Node Registration
+                                await fetch(`${API_URL}/register-node`, {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
@@ -1812,6 +1887,47 @@
                                         avatar: localStorage.getItem('ghostnet_avatar_' + storedId.address) || ''
                                     })
                                 }).catch(e => console.warn('Node registration failed:', e));
+                                
+                                // GhostTag Claiming — uses GhostTag module for offline-first support
+                                if (window.GhostTag && storedId.ghostTag) {
+                                    const claimResult = await GhostTag.claimTag(storedId.ghostTag, {
+                                        nodeId: storedId.nodeId,
+                                        publicKey: storedId.publicKey,
+                                        displayName: storedId.displayName,
+                                    });
+                                    if (claimResult.success) {
+                                        console.log(`[GhostTag] Claimed: ${claimResult.tag}${claimResult.pending ? ' (pending sync)' : ''}`);
+                                        // Start sync watcher if pending
+                                        if (claimResult.pending) GhostTag.startSyncWatcher();
+                                    } else {
+                                        console.warn('[GhostTag] Claim failed:', claimResult.error);
+                                    }
+                                } else if (!window.GhostTag) {
+                                    // Fallback: raw fetch (legacy)
+                                    const claimStatus = await fetch(`${API_URL}/ghosttag/claim`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${_regToken}` },
+                                        body: JSON.stringify({ tag: storedId.ghostTag, nodeId: storedId.nodeId, publicKey: storedId.publicKey, displayName: storedId.displayName })
+                                    }).catch(e => { console.warn('GhostTag claim network fail:', e); return null; });
+                                    if (claimStatus && !claimStatus.ok && claimStatus.status !== 409) {
+                                        localStorage.setItem('ghostnet_pending_tag_claim', 'true');
+                                    } else if (claimStatus && claimStatus.ok) {
+                                        localStorage.removeItem('ghostnet_pending_tag_claim');
+                                    }
+                                }
+                            } else {
+                                // Offline creation: use GhostTag module to queue
+                                if (window.GhostTag && storedId.ghostTag) {
+                                    GhostTag.claimTag(storedId.ghostTag, {
+                                        nodeId: storedId.nodeId,
+                                        publicKey: storedId.publicKey,
+                                        displayName: storedId.displayName,
+                                    }).then(r => {
+                                        if (r.pending) GhostTag.startSyncWatcher();
+                                    });
+                                } else {
+                                    localStorage.setItem('ghostnet_pending_tag_claim', 'true');
+                                }
                             }
 
                             // Save 7-day session token if checked
@@ -2241,8 +2357,21 @@
                         }
                     }
 
-                    function destroyIdentity() {
-                        if (!confirm('⚠️ This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase. Are you sure?')) return;
+                    async function destroyIdentity() {
+                        if (!confirm('⚠️ This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase.\n\nYour GhostTag will be RELEASED and become available to other users.\n\nAre you sure?')) return;
+                        
+                        // Release GhostTag on server BEFORE clearing local data
+                        // This makes the tag available to other users
+                        if (window.GhostTag) {
+                            try {
+                                const result = await GhostTag.deleteIdentity();
+                                console.log('[Destroy] Identity deletion result:', result);
+                            } catch (e) {
+                                console.warn('[Destroy] Server-side identity deletion failed:', e.message);
+                            }
+                            GhostTag.stopSyncWatcher();
+                        }
+                        
                         UI.clearSession(true);
                     }
 
@@ -2302,7 +2431,8 @@
                                     window.dispatchEvent(new Event('identity:updated'));
                                     _showDashboard(stored);
                                     _updateSidebar(stored);
-                                    fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                    const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                                    fetch(`${API_URL}/register-node`, {
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json',
@@ -2316,6 +2446,58 @@
                                             avatar: localStorage.getItem('ghostnet_avatar_' + stored.address) || ''
                                         })
                                     }).catch(e => console.warn('Node registration failed:', e));
+                                    
+                                    // GhostTag Sync — use the GhostTag module for robust offline sync
+                                    if (window.GhostTag) {
+                                        const pending = GhostTag.getPendingClaim();
+                                        if (pending) {
+                                            GhostTag.startSyncWatcher();
+                                            GhostTag.syncPendingClaim().then(result => {
+                                                if (result.success) {
+                                                    console.log('[Sync] GhostTag synchronized successfully.');
+                                                    if (typeof showToast === 'function') showToast('GhostTag synced ✓');
+                                                } else if (result.conflict) {
+                                                    console.error('[Sync] GhostTag conflict: @' + result.tag + ' was taken while offline!');
+                                                    // Notify user of the conflict
+                                                    if (typeof showToast === 'function') {
+                                                        showToast('⚠ Your GhostTag was claimed by another user!', 5000);
+                                                    }
+                                                }
+                                            });
+                                        }
+                                        
+                                        // Check for unresolved sync conflicts
+                                        const conflict = GhostTag.getSyncConflict();
+                                        if (conflict) {
+                                            console.warn('[GhostTag] Unresolved sync conflict:', conflict);
+                                            if (typeof showToast === 'function') {
+                                                showToast('⚠ Your GhostTag @' + conflict.tag + ' was taken. Tap Profile to reclaim.', 5000);
+                                            }
+                                        }
+                                    } else {
+                                        // Fallback: legacy sync logic
+                                        if (localStorage.getItem('ghostnet_pending_tag_claim') === 'true' && stored.ghostTag) {
+                                            fetch(`${API_URL}/ghosttag/claim`, {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json', 'X-Auth-Token': _getAuthToken() || '' },
+                                                body: JSON.stringify({ tag: stored.ghostTag, nodeId: stored.nodeId, publicKey: stored.publicKey, displayName: stored.displayName })
+                                            }).then(res => {
+                                                if (res.ok) { localStorage.removeItem('ghostnet_pending_tag_claim'); }
+                                                else if (res.status === 409) { localStorage.removeItem('ghostnet_pending_tag_claim'); }
+                                            }).catch(e => console.warn('[Sync] Pending GhostTag claim failed:', e));
+                                        }
+                                    }
+                                    
+                                    // Listen for GhostTag sync events to update UI
+                                    window.addEventListener('ghosttag:sync', (e) => {
+                                        const { status, tag } = e.detail;
+                                        if (status === 'synced') {
+                                            console.log('[GhostTag] Sync event: tag synced — @' + tag);
+                                            _showDashboard(GhostIdentity.getStoredIdentity());
+                                        } else if (status === 'conflict') {
+                                            console.error('[GhostTag] Sync event: conflict — @' + tag);
+                                        }
+                                    });
                                     return;
                                 }
                             }
@@ -2349,7 +2531,8 @@
                         copySyncString,
                         processSyncImport,
                         init,
-                        handleAvatarUpload
+                        handleAvatarUpload,
+                        checkGhostTag
                     };
                 })();
             </script>

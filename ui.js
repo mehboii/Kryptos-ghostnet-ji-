@@ -622,9 +622,18 @@ const UI = {
                 'ghostnet_identity_vault',
                 'ghostnet_vault_index',
                 'ghostnet_seed_words',
-                'ghostnet_ble_devices'
+                'ghostnet_ble_devices',
+                'ghostnet_ghost_tag',
+                'ghostnet_pending_tag_claim',
+                'ghostnet_pending_tag_claim_data',
+                'ghostnet_tag_sync_conflict'
             ];
             identityKeys.forEach(k => localStorage.removeItem(k));
+            
+            // Stop GhostTag sync watcher
+            if (window.GhostTag && typeof window.GhostTag.stopSyncWatcher === 'function') {
+                window.GhostTag.stopSyncWatcher();
+            }
             
             // Also wipe all avatars
             for (let i = 0; i < localStorage.length; i++) {

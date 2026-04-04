@@ -1,0 +1,5 @@
+{
+  "artifactType":  "ARTIFACT_TYPE_WALKTHROUGH",
+  "summary":  "Complete implementation walkthrough for the GhostTag username system. Covers the architecture (client→server→sync flow), all files modified/created, the 5 key features (no duplicates, permanent lock, release on delete, offline sync, real-time check), the full GhostTag module API reference, and security considerations.",
+  "updatedAt":  "2026-04-04T05:04:19.955273600Z"
+}
