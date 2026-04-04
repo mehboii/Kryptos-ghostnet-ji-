@@ -199,35 +199,87 @@ document.addEventListener('DOMContentLoaded', () => {
             transition: all 0.2s;
         }
         
-        .threat-item.allowed  { border-left-color: #10b981; }
-        .threat-item.warning  { border-left-color: #f59e0b; cursor: pointer; }
-        .threat-item.warning:hover { background: rgba(245, 158, 11, 0.08); }
-        .threat-item.blocked-score { border-left-color: #ef4444; }
-        .threat-item.auto-blocked { border-left-color: #ef4444; opacity: 0.7; }
+        .threat-item.allowed  { border-left-color: #22d3ee; }
+        .threat-item.warning  { border-left-color: #fbbf24; cursor: pointer; }
+        .threat-item.warning:hover { background: rgba(251, 191, 36, 0.06); }
+        .threat-item.blocked-score { border-left-color: #f87171; }
+        .threat-item.auto-blocked { border-left-color: #f87171; opacity: 0.7; }
         .threat-item.blocked { border-left-color: #6b7280; opacity: 0.6; }
 
         .threat-item-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .threat-item-bot { font-size: 0.75rem; color: var(--text-muted); display:flex; gap:10px; flex-wrap:wrap; }
 
-        .threat-score { font-family: monospace; font-weight: bold; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; }
-        .threat-score.score-blocked { color: #ef4444; background: rgba(239, 68, 68, 0.2); }
-        .threat-score.score-warning { color: #f59e0b; background: rgba(245, 158, 11, 0.15); }
-        .threat-score.score-allowed { color: #10b981; background: rgba(16, 185, 129, 0.15); }
+        /* Score badge — pill with embedded number */
+        .threat-score-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            font-family: 'Space Grotesk', monospace; font-weight: 700; font-size: 0.8rem;
+            padding: 3px 10px; border-radius: 20px;
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+            position: relative;
+        }
+        .threat-score-badge .score-num {
+            min-width: 20px; text-align: center;
+            transition: transform 0.3s ease;
+        }
+        .threat-score-badge.score-safe {
+            color: #22d3ee; background: rgba(34, 211, 238, 0.12);
+            border: 1px solid rgba(34, 211, 238, 0.25);
+        }
+        .threat-score-badge.score-warn {
+            color: #fbbf24; background: rgba(251, 191, 36, 0.12);
+            border: 1px solid rgba(251, 191, 36, 0.25);
+        }
+        .threat-score-badge.score-threat {
+            color: #f87171; background: rgba(248, 113, 113, 0.15);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+        }
+
+        /* Micro-animation: score change pulse */
+        .threat-score-badge.score-changed {
+            animation: scorePop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .threat-score-badge.score-changed .score-num {
+            animation: numTick 0.4s ease;
+        }
+        @keyframes scorePop {
+            0%   { transform: scale(1); }
+            40%  { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        @keyframes numTick {
+            0%   { transform: translateY(8px); opacity: 0.3; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+
+        /* Glow ring on threat-level escalation */
+        .threat-score-badge.score-escalated::after {
+            content: '';
+            position: absolute; inset: -3px;
+            border-radius: 20px;
+            border: 2px solid currentColor;
+            opacity: 0;
+            animation: escalateRing 0.6s ease-out forwards;
+        }
+        @keyframes escalateRing {
+            0%   { transform: scale(0.8); opacity: 0.8; }
+            100% { transform: scale(1.3); opacity: 0; }
+        }
 
         /* Score bar */
         .threat-score-bar { width: 100%; height: 4px; background: rgba(255,255,255,0.06); border-radius: 2px; margin-top: 6px; overflow: hidden; }
-        .threat-score-bar .bar-fill { height: 100%; border-radius: 2px; transition: width 0.4s ease; }
-        .bar-fill.fill-allowed { background: #10b981; }
-        .bar-fill.fill-warning { background: #f59e0b; }
-        .bar-fill.fill-blocked { background: #ef4444; }
+        .threat-score-bar .bar-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease, background 0.5s ease; }
+        .bar-fill.fill-safe    { background: linear-gradient(90deg, #06b6d4, #22d3ee); }
+        .bar-fill.fill-warn    { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        .bar-fill.fill-threat  { background: linear-gradient(90deg, #ef4444, #f87171); }
 
+        /* Threat level text badge */
         .threat-level-badge {
             font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;
             padding: 2px 6px; border-radius: 4px;
         }
-        .badge-allowed { background: rgba(16,185,129,0.15); color: #10b981; }
-        .badge-warning { background: rgba(245,158,11,0.15); color: #f59e0b; }
-        .badge-blocked { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .badge-allowed { background: rgba(34,211,238,0.12); color: #22d3ee; }
+        .badge-warning { background: rgba(251,191,36,0.12); color: #fbbf24; }
+        .badge-blocked { background: rgba(248,113,113,0.15); color: #f87171; }
 
         .btn-block-device {
             display: none; width: 100%; margin-top: 10px; background: #ef4444; color: white;
@@ -359,6 +411,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. UI logic
     window.GhostShieldUI = {
         scanInterval: null,
+        _prevScores: {},   // mac → { score, level } for change detection
 
         toggleEnableAll() {
             const status = window.GhostShield.getStatus();
@@ -469,6 +522,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const cfg = window.ShieldConfig;
             const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
+            const warnAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
+            const newScores = {};
 
             let html = '';
             for (const sig of signals) {
@@ -488,29 +543,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (sig.threatLevel === 'BLOCKED') cls = 'blocked-score';
                 else if (sig.threatLevel === 'WARNING') cls = 'warning';
 
-                // Score styling
-                let scoreClass = 'score-allowed';
-                let fillClass = 'fill-allowed';
+                // Determine color tier: cyan (safe) → amber (warning) → red (threat)
+                let tier = 'safe';
+                let fillClass = 'fill-safe';
                 let badgeClass = 'badge-allowed';
                 let badgeLabel = 'ALLOWED';
-                if (sig.threatLevel === 'BLOCKED') {
-                    scoreClass = 'score-blocked'; fillClass = 'fill-blocked';
+                if (sig.threatLevel === 'BLOCKED' || score > blockedAt) {
+                    tier = 'threat'; fillClass = 'fill-threat';
                     badgeClass = 'badge-blocked'; badgeLabel = 'BLOCKED';
-                } else if (sig.threatLevel === 'WARNING') {
-                    scoreClass = 'score-warning'; fillClass = 'fill-warning';
+                } else if (sig.threatLevel === 'WARNING' || score > warnAt) {
+                    tier = 'warn'; fillClass = 'fill-warn';
                     badgeClass = 'badge-warning'; badgeLabel = 'WARNING';
                 }
+
+                // Score change detection
+                const prev = this._prevScores[sig.mac];
+                let changed = false;
+                let escalated = false;
+                if (prev) {
+                    if (prev.score !== score) changed = true;
+                    const tierOrder = { safe: 0, warn: 1, threat: 2 };
+                    if (tierOrder[tier] > tierOrder[prev.level]) escalated = true;
+                }
+                newScores[sig.mac] = { score, level: tier };
+
+                const animCls = changed ? (escalated ? 'score-changed score-escalated' : 'score-changed') : '';
 
                 const flags = this._esc((sig.interferenceFlags || []).join(', ') || 'Normal behavior');
                 const safeMac = this._escAttr(sig.mac);
                 const safeName = this._esc(sig.type || sig.name || 'Unknown Device');
-                const safeScore = String(score).padStart(2, ' ');
 
                 html += `
                     <div class="threat-item ${cls}" onclick="GhostShieldUI.toggleBlockView(this)">
                         <div class="threat-item-top">
-                            <strong style="font-size:0.9rem; color:var(--text-primary);">
-                                <span class="threat-score ${scoreClass}">[${safeScore}]</span> ${safeName}
+                            <strong style="font-size:0.9rem; color:var(--text-primary); display:flex; align-items:center; gap:8px;">
+                                <span class="threat-score-badge score-${tier} ${animCls}"><span class="score-num">${score}</span></span>
+                                ${safeName}
                             </strong>
                             <span class="threat-level-badge ${badgeClass}">${badgeLabel}</span>
                         </div>
@@ -525,6 +593,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     </div>
                 `;
             }
+
+            this._prevScores = newScores;
             container.innerHTML = html;
         },
 
