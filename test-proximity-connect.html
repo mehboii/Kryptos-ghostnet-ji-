@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proximity Connect — Test Suite</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+        background: #0a0f1e; color: #e2e8f0; font-family: 'SF Mono', 'Fira Code', monospace;
+        padding: 20px; min-height: 100vh;
+    }
+    h1 { font-size: 1.4rem; margin-bottom: 6px; color: #fff; }
+    .subtitle { color: #64748b; font-size: 0.8rem; margin-bottom: 24px; }
+    .env-badge {
+        display: inline-block; font-size: 0.65rem; padding: 3px 8px;
+        border-radius: 6px; margin-left: 8px; font-weight: 700; letter-spacing: 0.5px;
+    }
+    .env-browser { background: rgba(59,130,246,0.2); color: #60a5fa; }
+    .env-mobile { background: rgba(168,85,247,0.2); color: #c084fc; }
+    .env-crypto { background: rgba(16,185,129,0.2); color: #34d399; }
+
+    .test-group { margin-bottom: 24px; }
+    .test-group-title {
+        font-size: 0.85rem; font-weight: 700; color: #94a3b8;
+        margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid #1e293b;
+        text-transform: uppercase; letter-spacing: 1px;
+    }
+
+    .test-item {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 10px 14px; border-radius: 8px; margin-bottom: 4px;
+        background: rgba(255,255,255,0.02); border: 1px solid #1e293b;
+        font-size: 0.8rem; transition: all 0.2s;
+    }
+    .test-item.running { border-color: #3b82f6; background: rgba(59,130,246,0.05); }
+    .test-item.pass { border-color: #10b981; background: rgba(16,185,129,0.05); }
+    .test-item.fail { border-color: #ef4444; background: rgba(239,68,68,0.08); }
+
+    .test-name { flex: 1; }
+    .test-status { font-weight: 700; font-size: 0.75rem; min-width: 60px; text-align: right; }
+    .test-status.running { color: #3b82f6; }
+    .test-status.pass { color: #10b981; }
+    .test-status.fail { color: #ef4444; }
+    .test-detail { font-size: 0.7rem; color: #64748b; margin-top: 4px; word-break: break-all; }
+    .test-detail.error { color: #f87171; }
+
+    .summary {
+        margin-top: 20px; padding: 16px; border-radius: 10px;
+        font-weight: 700; text-align: center; font-size: 0.9rem;
+    }
+    .summary.pass { background: rgba(16,185,129,0.1); border: 1px solid #10b981; color: #10b981; }
+    .summary.fail { background: rgba(239,68,68,0.1); border: 1px solid #ef4444; color: #ef4444; }
+    .summary.running { background: rgba(59,130,246,0.1); border: 1px solid #3b82f6; color: #60a5fa; }
+
+    .run-btn {
+        display: block; width: 100%; margin-top: 16px; padding: 14px;
+        background: #8b5cf6; color: #fff; border: none; border-radius: 10px;
+        font-weight: 700; font-size: 0.9rem; cursor: pointer; letter-spacing: 0.5px;
+    }
+    .run-btn:hover { background: #7c3aed; }
+    .run-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .timing { font-size: 0.7rem; color: #64748b; margin-top: 2px; }
+</style>
+</head>
+<body>
+
+<h1>Proximity Connect Test Suite
+    <span class="env-badge env-crypto">Web Crypto</span>
+</h1>
+<p class="subtitle">
+    Simulates two devices (Alice + Bob) performing the full BLE handshake protocol.
+    Real ECDH, HKDF, AES-GCM — only BLE transport is mocked.
+    <span id="env-info"></span>
+</p>
+
+<div id="test-container"></div>
+<div id="summary" class="summary running">Waiting to start...</div>
+<button class="run-btn" id="run-btn" onclick="runAllTests()">Run All Tests</button>
+
+<script>
+// ── Detect environment ──────────────────────────────────────
+const envInfo = document.getElementById('env-info');
+const isMobile = /Android|iPhone|iPad/i.test(navigator.userAgent);
+const isCapacitor = typeof window.Capacitor !== 'undefined';
+const isSecure = window.isSecureContext;
+const hasCrypto = typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined';
+
+envInfo.innerHTML = [
+    isMobile ? '<span class="env-badge env-mobile">Mobile</span>' : '<span class="env-badge env-browser">Browser</span>',
+    isCapacitor ? '<span class="env-badge env-mobile">Capacitor</span>' : '',
+    isSecure ? '<span class="env-badge env-crypto">Secure Context</span>' : '<span class="env-badge" style="background:rgba(239,68,68,0.2);color:#f87171;">NOT Secure</span>',
+    hasCrypto ? '' : '<span class="env-badge" style="background:rgba(239,68,68,0.2);color:#f87171;">No Web Crypto</span>',
+].join(' ');
+</script>
+
+<!-- Load only the class, not the global instantiation -->
+<script>
+// We need two separate instances, so inline the class without the global assignment
+</script>
+<script src="proximity-connect.js"></script>
+
+<script>
+// ── Test Framework ──────────────────────────────────────────
+const tests = [];
+let passed = 0, failed = 0;
+
+function test(group, name, fn) {
+    tests.push({ group, name, fn, status: 'pending', detail: '', time: 0 });
+}
+
+function renderTests() {
+    const container = document.getElementById('test-container');
+    const groups = {};
+    tests.forEach(t => {
+        if (!groups[t.group]) groups[t.group] = [];
+        groups[t.group].push(t);
+    });
+
+    let html = '';
+    for (const [group, items] of Object.entries(groups)) {
+        html += `<div class="test-group"><div class="test-group-title">${group}</div>`;
+        for (const t of items) {
+            const cls = t.status === 'pass' ? 'pass' : t.status === 'fail' ? 'fail' : t.status === 'running' ? 'running' : '';
+            const label = t.status === 'pass' ? 'PASS' : t.status === 'fail' ? 'FAIL' : t.status === 'running' ? '...' : '—';
+            html += `<div class="test-item ${cls}">
+                <div>
+                    <div class="test-name">${t.name}</div>
+                    ${t.detail ? `<div class="test-detail ${t.status === 'fail' ? 'error' : ''}">${t.detail}</div>` : ''}
+                    ${t.time ? `<div class="timing">${t.time}ms</div>` : ''}
+                </div>
+                <div class="test-status ${cls}">${label}</div>
+            </div>`;
+        }
+        html += '</div>';
+    }
+    container.innerHTML = html;
+}
+
+function assert(condition, msg) {
+    if (!condition) throw new Error(msg || 'Assertion failed');
+}
+
+// ── TESTS ───────────────────────────────────────────────────
+
+// Group 1: Environment
+test('Environment', 'Secure context available', async () => {
+    assert(window.isSecureContext, 'Tests require HTTPS or localhost');
+});
+
+test('Environment', 'Web Crypto API available', async () => {
+    assert(crypto && crypto.subtle, 'crypto.subtle not available');
+});
+
+test('Environment', 'ECDH P-256 supported', async () => {
+    const kp = await crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
+    assert(kp.privateKey && kp.publicKey, 'Key generation failed');
+});
+
+test('Environment', 'AES-GCM-256 supported', async () => {
+    const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new Uint8Array([1,2,3]));
+    assert(ct.byteLength > 0, 'Encryption produced empty output');
+});
+
+test('Environment', 'HKDF-SHA-256 supported', async () => {
+    const ikm = await crypto.subtle.importKey('raw', crypto.getRandomValues(new Uint8Array(32)), 'HKDF', false, ['deriveKey']);
+    const key = await crypto.subtle.deriveKey(
+        { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(16), info: new TextEncoder().encode('test') },
+        ikm, { name: 'AES-GCM', length: 256 }, false, ['encrypt']
+    );
+    assert(key.type === 'secret', 'HKDF derivation failed');
+});
+
+test('Environment', 'ProximityConnect class loaded', async () => {
+    assert(typeof ProximityConnect === 'function', 'ProximityConnect not found');
+});
+
+// Group 2: Init & Key Generation
+test('Init & Keys', 'Alice generates ephemeral ECDH keypair', async () => {
+    const alice = new ProximityConnect();
+    await alice.init({ nodeId: 'alice_node_001', publicKeyHex: 'deadbeef' });
+    assert(alice.localEphemeral, 'No ephemeral keypair');
+    assert(alice.localEphemeral.privateKey, 'No private key');
+    assert(alice.localEphemeral.publicKey, 'No public key');
+    assert(alice._ephemeralPubHex.length === 130, 'P-256 uncompressed pubkey should be 65 bytes (130 hex chars), got ' + alice._ephemeralPubHex.length);
+    window._alice = alice;
+});
+
+test('Init & Keys', 'Bob generates ephemeral ECDH keypair', async () => {
+    const bob = new ProximityConnect();
+    await bob.init({ nodeId: 'bob_node_002', publicKeyHex: 'cafebabe' });
+    assert(bob._ephemeralPubHex.length === 130, 'Bad pubkey length');
+    assert(bob._ephemeralPubHex !== window._alice._ephemeralPubHex, 'Alice and Bob have the same key — randomness failure');
+    window._bob = bob;
+});
+
+test('Init & Keys', 'Private keys are non-extractable', async () => {
+    const alice = window._alice;
+    try {
+        await crypto.subtle.exportKey('pkcs8', alice.localEphemeral.privateKey);
+        throw new Error('Should have thrown');
+    } catch (e) {
+        assert(e.message !== 'Should have thrown', 'Private key was extractable — security violation');
+    }
+});
+
+test('Init & Keys', 'Rejects missing identity', async () => {
+    const bad = new ProximityConnect();
+    try {
+        await bad.init(null);
+        throw new Error('Should have thrown');
+    } catch (e) {
+        assert(e.message.includes('Identity required'), 'Wrong error: ' + e.message);
+    }
+});
+
+// Group 3: ECDH Key Agreement
+test('ECDH Key Exchange', 'Both sides derive the same shared secret', async () => {
+    const alice = window._alice;
+    const bob = window._bob;
+
+    // Import each other's public keys
+    const bobPubForAlice = await crypto.subtle.importKey(
+        'raw', alice._hexToBuf(bob._ephemeralPubHex),
+        { name: 'ECDH', namedCurve: 'P-256' }, false, []
+    );
+    const alicePubForBob = await crypto.subtle.importKey(
+        'raw', bob._hexToBuf(alice._ephemeralPubHex),
+        { name: 'ECDH', namedCurve: 'P-256' }, false, []
+    );
+
+    // Derive shared secrets
+    const aliceShared = await crypto.subtle.deriveBits(
+        { name: 'ECDH', public: bobPubForAlice },
+        alice.localEphemeral.privateKey, 256
+    );
+    const bobShared = await crypto.subtle.deriveBits(
+        { name: 'ECDH', public: alicePubForBob },
+        bob.localEphemeral.privateKey, 256
+    );
+
+    const a = new Uint8Array(aliceShared);
+    const b = new Uint8Array(bobShared);
+    assert(a.length === 32, 'Shared secret not 32 bytes');
+    assert(a.every((v, i) => v === b[i]), 'Shared secrets do not match');
+
+    window._sharedBits = aliceShared;
+    return 'Shared: ' + alice._bufToHex(aliceShared).slice(0, 16) + '...';
+});
+
+test('ECDH Key Exchange', 'Verification codes match on both sides', async () => {
+    const alice = window._alice;
+    const bob = window._bob;
+    const shared = window._sharedBits;
+
+    const codeA = await alice._deriveVerificationCode(shared);
+    const codeB = await bob._deriveVerificationCode(shared);
+
+    assert(codeA === codeB, `Codes differ: ${codeA} vs ${codeB}`);
+    assert(codeA.length === 6, 'Code not 6 digits');
+    assert(/^\d{6}$/.test(codeA), 'Code not numeric');
+    return 'Code: ' + codeA;
+});
+
+test('ECDH Key Exchange', 'Different sessions produce different codes', async () => {
+    const pc1 = new ProximityConnect();
+    await pc1.init({ nodeId: 'x1' });
+    const pc2 = new ProximityConnect();
+    await pc2.init({ nodeId: 'x2' });
+
+    const pub1 = await crypto.subtle.importKey('raw', pc1._hexToBuf(pc2._ephemeralPubHex), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const shared1 = await crypto.subtle.deriveBits({ name: 'ECDH', public: pub1 }, pc1.localEphemeral.privateKey, 256);
+    const code1 = await pc1._deriveVerificationCode(shared1);
+
+    const pc3 = new ProximityConnect();
+    await pc3.init({ nodeId: 'x3' });
+    const pc4 = new ProximityConnect();
+    await pc4.init({ nodeId: 'x4' });
+
+    const pub2 = await crypto.subtle.importKey('raw', pc3._hexToBuf(pc4._ephemeralPubHex), { name: 'ECDH', namedCurve: 'P-256' }, false, []);
+    const shared2 = await crypto.subtle.deriveBits({ name: 'ECDH', public: pub2 }, pc3.localEphemeral.privateKey, 256);
+    const code2 = await pc3._deriveVerificationCode(shared2);
+
+    assert(code1 !== code2, 'Two different sessions produced the same code — entropy failure');
+    return code1 + ' vs ' + code2;
+});
+
+// Group 4: Session Key Derivation
+test('Session Keys', 'HKDF derives enc + mac keys from shared secret', async () => {
+    const alice = window._alice;
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const keys = await alice._deriveSessionKeys(window._sharedBits, salt);
+
+    assert(keys.encKey, 'No encryption key');
+    assert(keys.macKey, 'No MAC key');
+    assert(keys.encKey.type === 'secret', 'encKey not a CryptoKey');
+    assert(keys.macKey.type === 'secret', 'macKey not a CryptoKey');
+    window._sessionSalt = salt;
+});
+
+test('Session Keys', 'Same shared bits + salt → same keys on both sides', async () => {
+    const alice = window._alice;
+    const bob = window._bob;
+    const salt = window._sessionSalt;
+
+    const keysA = await alice._deriveSessionKeys(window._sharedBits, salt);
+    const keysB = await bob._deriveSessionKeys(window._sharedBits, salt);
+
+    // Encrypt with A's key, decrypt with B's key
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const msg = new TextEncoder().encode('cross-device test');
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, keysA.encKey, msg);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, keysB.encKey, ct);
+    const result = new TextDecoder().decode(pt);
+
+    assert(result === 'cross-device test', 'Cross-key decrypt failed: ' + result);
+    window._keysA = keysA;
+    window._keysB = keysB;
+});
+
+test('Session Keys', 'Different salt → different keys (no key reuse)', async () => {
+    const alice = window._alice;
+    const salt2 = crypto.getRandomValues(new Uint8Array(16));
+    const keys2 = await alice._deriveSessionKeys(window._sharedBits, salt2);
+
+    // Encrypt with original key, try to decrypt with different-salt key
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, window._keysA.encKey, new TextEncoder().encode('x'));
+    try {
+        await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, keys2.encKey, ct);
+        throw new Error('Should have thrown');
+    } catch (e) {
+        assert(e.message !== 'Should have thrown', 'Different salt produced the same key');
+    }
+});
+
+// Group 5: Challenge-Response
+test('Challenge-Response', 'Full challenge-response round trip', async () => {
+    const alice = window._alice;
+    const bob = window._bob;
+
+    // Alice (challenger) creates challenge
+    const nonce = crypto.getRandomValues(new Uint8Array(16));
+    const challengeIv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: challengeIv },
+        window._keysA.encKey, nonce
+    );
+
+    // Bob (responder) decrypts and re-encrypts
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: challengeIv },
+        window._keysB.encKey, encrypted
+    );
+
+    const respIv = crypto.getRandomValues(new Uint8Array(12));
+    const reEncrypted = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: respIv },
+        window._keysB.encKey, decrypted
+    );
+
+    // Alice verifies
+    const echoedRaw = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: respIv },
+        window._keysA.encKey, reEncrypted
+    );
+    const echoed = new Uint8Array(echoedRaw);
+
+    assert(alice._constantTimeEqual(nonce, echoed), 'Nonce mismatch after round trip');
+    return 'Nonce verified: ' + alice._bufToHex(nonce).slice(0, 16) + '...';
+});
+
+test('Challenge-Response', 'Wrong key fails challenge decryption', async () => {
+    const eve = new ProximityConnect();
+    await eve.init({ nodeId: 'eve_attacker' });
+    const eveSalt = crypto.getRandomValues(new Uint8Array(16));
+    // Eve makes her own keys from random bits
+    const fakeShared = crypto.getRandomValues(new Uint8Array(32));
+    const eveKeys = await eve._deriveSessionKeys(fakeShared, eveSalt);
+
+    // Alice's challenge
+    const nonce = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, window._keysA.encKey, nonce);
+
+    // Eve tries to decrypt
+    try {
+        await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, eveKeys.encKey, ct);
+        throw new Error('Should have thrown');
+    } catch (e) {
+        assert(e.message !== 'Should have thrown', 'Eve decrypted the challenge — ECDH broken');
+    }
+});
+
+test('Challenge-Response', 'Constant-time compare catches tampered nonce', async () => {
+    const pc = window._alice;
+    const a = new Uint8Array([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]);
+    const b = new Uint8Array([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,99]);
+    assert(!pc._constantTimeEqual(a, b), 'Accepted tampered nonce');
+    assert(pc._constantTimeEqual(a, a), 'Rejected identical nonce');
+    const c = new Uint8Array([1,2,3]); // different length
+    assert(!pc._constantTimeEqual(a, c), 'Accepted different-length nonce');
+});
+
+// Group 6: Full Handshake Simulation
+test('Full Handshake', 'Simulated handshake: init → accept → challenge → verify', async () => {
+    // Fresh instances
+    const deviceA = new ProximityConnect(); // peripheral
+    const deviceB = new ProximityConnect(); // central
+
+    await deviceA.init({ nodeId: 'device_a_sim', publicKeyHex: 'aaa' });
+    await deviceB.init({ nodeId: 'device_b_sim', publicKeyHex: 'bbb' });
+
+    // Step 1: B sends HANDSHAKE_INIT to A
+    const initPayload = {
+        type: 'HANDSHAKE_INIT',
+        nodeId: deviceB.localIdentity.nodeId,
+        ephemeralPub: deviceB._ephemeralPubHex,
+        ts: Date.now()
+    };
+
+    // Step 2: A handles init and sends back HANDSHAKE_ACCEPT
+    let acceptPayload;
+    await deviceA.handleIncomingHandshake(initPayload, async (data) => {
+        acceptPayload = JSON.parse(data);
+    });
+    assert(acceptPayload.type === 'HANDSHAKE_ACCEPT', 'No accept sent');
+    assert(acceptPayload.ephemeralPub, 'No ephemeral key in accept');
+
+    // Step 3: B imports A's ephemeral key and derives shared secret
+    const aPubKey = await deviceB._importEphemeralPub(acceptPayload.ephemeralPub);
+    const bSharedBits = await crypto.subtle.deriveBits(
+        { name: 'ECDH', public: aPubKey },
+        deviceB.localEphemeral.privateKey, 256
+    );
+
+    // Step 4: B derives verification code and session keys
+    const bCode = await deviceB._deriveVerificationCode(bSharedBits);
+    const sessionSalt = crypto.getRandomValues(new Uint8Array(16));
+    const bKeys = await deviceB._deriveSessionKeys(bSharedBits, sessionSalt);
+
+    // Step 5: B sends challenge
+    const nonce = crypto.getRandomValues(new Uint8Array(16));
+    const challengeIv = crypto.getRandomValues(new Uint8Array(12));
+    const challengeCt = await crypto.subtle.encrypt(
+        { name: 'AES-GCM', iv: challengeIv },
+        bKeys.encKey, nonce
+    );
+
+    const challengePayload = {
+        type: 'CHALLENGE',
+        iv: deviceB._bufToHex(challengeIv),
+        data: deviceB._bufToHex(challengeCt),
+        salt: deviceB._bufToHex(sessionSalt)
+    };
+
+    // Step 6: A handles challenge
+    let challengeResponse;
+    await deviceA.handleChallenge(challengePayload, async (data) => {
+        challengeResponse = JSON.parse(data);
+    });
+    assert(challengeResponse.type === 'CHALLENGE_RESPONSE', 'No challenge response');
+
+    // Step 7: B verifies challenge response
+    const respIv = deviceB._hexToBuf(challengeResponse.iv);
+    const respCt = deviceB._hexToBuf(challengeResponse.data);
+    const decrypted = await crypto.subtle.decrypt(
+        { name: 'AES-GCM', iv: respIv },
+        bKeys.encKey, respCt
+    );
+    const echoed = new Uint8Array(decrypted);
+    assert(deviceB._constantTimeEqual(nonce, echoed), 'Challenge nonce mismatch');
+
+    // Step 8: Verify both codes match
+    assert(deviceA.verificationCode === bCode, 'Verification codes differ: ' + deviceA.verificationCode + ' vs ' + bCode);
+
+    // Step 9: Both are connected
+    assert(deviceA.state === 'connected', 'Device A not connected: ' + deviceA.state);
+    assert(deviceA.sessionKeys, 'Device A has no session keys');
+
+    return 'Code: ' + deviceA.verificationCode + ' — both sides verified';
+});
+
+// Group 7: Encrypted Messaging
+test('Encrypted Messaging', 'Encrypt on A, decrypt on B', async () => {
+    // Use the keys from session keys test
+    const alice = new ProximityConnect();
+    alice.sessionKeys = window._keysA;
+
+    const bob = new ProximityConnect();
+    bob.sessionKeys = window._keysB;
+
+    const envelope = await alice.sendEncrypted('some-device', 'Hello from Alice, completely offline!');
+    assert(envelope.type === 'ENCRYPTED_MSG', 'Wrong envelope type');
+    assert(envelope.iv, 'No IV');
+    assert(envelope.data, 'No ciphertext');
+    assert(!envelope.data.includes('Hello'), 'Plaintext leaked into ciphertext');
+
+    const plaintext = await bob.decryptMessage(envelope);
+    assert(plaintext === 'Hello from Alice, completely offline!', 'Decrypted wrong: ' + plaintext);
+    return 'Decrypted: "' + plaintext.slice(0, 30) + '..."';
+});
+
+test('Encrypted Messaging', 'Encrypt on B, decrypt on A (bidirectional)', async () => {
+    const alice = new ProximityConnect();
+    alice.sessionKeys = window._keysA;
+    const bob = new ProximityConnect();
+    bob.sessionKeys = window._keysB;
+
+    const envelope = await bob.sendEncrypted('x', { msg: 'Bob says hi', ts: 12345 });
+    const plaintext = await alice.decryptMessage(envelope);
+    const parsed = JSON.parse(plaintext);
+    assert(parsed.msg === 'Bob says hi', 'Wrong message');
+    assert(parsed.ts === 12345, 'Wrong timestamp');
+});
+
+test('Encrypted Messaging', 'Tampered ciphertext fails decryption (AES-GCM integrity)', async () => {
+    const alice = new ProximityConnect();
+    alice.sessionKeys = window._keysA;
+    const bob = new ProximityConnect();
+    bob.sessionKeys = window._keysB;
+
+    const envelope = await alice.sendEncrypted('x', 'secret message');
+    // Tamper with ciphertext (flip a byte)
+    const tampered = envelope.data.slice(0, -2) + (envelope.data.slice(-2) === 'ff' ? '00' : 'ff');
+    try {
+        await bob.decryptMessage({ iv: envelope.iv, data: tampered });
+        throw new Error('Should have thrown');
+    } catch (e) {
+        assert(e.message !== 'Should have thrown', 'Tampered ciphertext was accepted');
+    }
+});
+
+test('Encrypted Messaging', 'No session → sendEncrypted throws', async () => {
+    const pc = new ProximityConnect();
+    try {
+        await pc.sendEncrypted('x', 'test');
+        throw new Error('Should have thrown');
+    } catch (e) {
+        assert(e.message.includes('No session'), 'Wrong error: ' + e.message);
+    }
+});
+
+// Group 8: Utilities
+test('Utilities', 'bufToHex round-trips correctly', async () => {
+    const pc = new ProximityConnect();
+    const original = crypto.getRandomValues(new Uint8Array(32));
+    const hex = pc._bufToHex(original);
+    const recovered = new Uint8Array(pc._hexToBuf(hex));
+    assert(hex.length === 64, 'Hex length wrong');
+    assert(original.every((v, i) => v === recovered[i]), 'Round-trip failed');
+});
+
+test('Utilities', 'hexToBuf handles 0x prefix', async () => {
+    const pc = new ProximityConnect();
+    const buf1 = pc._hexToBuf('0xdeadbeef');
+    const buf2 = pc._hexToBuf('deadbeef');
+    const a = new Uint8Array(buf1);
+    const b = new Uint8Array(buf2);
+    assert(a.length === b.length && a.every((v, i) => v === b[i]), '0x prefix handling broken');
+});
+
+test('Utilities', 'Event system works', async () => {
+    const pc = new ProximityConnect();
+    let received = null;
+    pc.on('test', (d) => { received = d; });
+    pc._emit('test', { value: 42 });
+    assert(received && received.value === 42, 'Event not received');
+});
+
+test('Utilities', 'disconnect() clears all state', async () => {
+    const pc = new ProximityConnect();
+    await pc.init({ nodeId: 'test_disconnect' });
+    pc.sessionKeys = 'fake';
+    pc.remotePeer = { deviceId: null };
+    pc.verificationCode = '123456';
+    pc.disconnect();
+    assert(pc.sessionKeys === null, 'sessionKeys not cleared');
+    assert(pc.remotePeer === null, 'remotePeer not cleared');
+    assert(pc.verificationCode === null, 'verificationCode not cleared');
+    assert(pc.localEphemeral === null, 'ephemeral keys not cleared');
+    assert(pc.state === 'idle', 'state not idle');
+});
+
+// ── Runner ──────────────────────────────────────────────────
+async function runAllTests() {
+    const btn = document.getElementById('run-btn');
+    btn.disabled = true;
+    btn.textContent = 'Running...';
+    passed = 0;
+    failed = 0;
+
+    const summary = document.getElementById('summary');
+    summary.className = 'summary running';
+    summary.textContent = 'Running tests...';
+
+    for (const t of tests) {
+        t.status = 'running';
+        t.detail = '';
+        renderTests();
+
+        const start = performance.now();
+        try {
+            const result = await t.fn();
+            t.status = 'pass';
+            t.detail = typeof result === 'string' ? result : '';
+            passed++;
+        } catch (e) {
+            t.status = 'fail';
+            t.detail = e.message;
+            failed++;
+        }
+        t.time = Math.round(performance.now() - start);
+        renderTests();
+    }
+
+    summary.className = failed > 0 ? 'summary fail' : 'summary pass';
+    summary.textContent = failed > 0
+        ? `FAILED — ${passed} passed, ${failed} failed out of ${tests.length}`
+        : `ALL ${passed} TESTS PASSED`;
+
+    btn.disabled = false;
+    btn.textContent = 'Run Again';
+}
+
+renderTests();
+
+// Auto-run on load
+setTimeout(runAllTests, 300);
+</script>
+</body>
+</html>
