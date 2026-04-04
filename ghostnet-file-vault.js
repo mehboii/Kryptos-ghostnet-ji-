@@ -214,10 +214,16 @@
             const h = window.getAuthHeaders();
             if (h.Authorization) return { ...h, ...extra };
         }
-        // Fallback: read from storage and unwrap JSON envelope if needed
-        let raw = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+        // [SEC FIX H2] Only read from sessionStorage — never fall back to localStorage.
+        // localStorage tokens may be stale/expired and are accessible to XSS across sessions.
+        let raw = sessionStorage.getItem('ghostnet_token') || '';
         if (raw) {
-            try { const p = JSON.parse(raw); if (p && p.token) raw = p.token; } catch (_) {}
+            try {
+                const p = JSON.parse(raw);
+                // Enforce client-side expiry check
+                if (p && p.expiresAt && Date.now() > p.expiresAt) { raw = ''; }
+                else if (p && p.token) { raw = p.token; }
+            } catch (_) {}
         }
         return {
             'Authorization': `Bearer ${raw}`,
@@ -360,18 +366,64 @@
             }
 
             // [Fallback] If remote fetch failed and recovery was skipped/failed, use local key
+            // [SEC FIX C2] Local vault key is now wrapped with a device-specific key
+            // derived from a random secret stored only in sessionStorage.
+            // The raw JWK is NEVER written to localStorage in plaintext.
             console.warn('[Vault] Remote fetch and recovery failed. Falling back to local key.');
             try {
-                const localKeyData = localStorage.getItem('ghostnet_vault_local_key');
-                if (localKeyData) {
-                    const jwk = JSON.parse(localKeyData);
+                const wrappedData = localStorage.getItem('ghostnet_vault_local_key_wrapped');
+                const legacyData = localStorage.getItem('ghostnet_vault_local_key');
+
+                // Device-scoped wrapping: random 256-bit key in sessionStorage
+                let wrapKeyB64 = sessionStorage.getItem('ghostnet_vault_wrap_key');
+                if (!wrapKeyB64) {
+                    // If we have a wrapped key but no wrap key, we can't decrypt — need new key
+                    if (wrappedData && !legacyData) {
+                        console.warn('[Vault] Wrap key lost (session expired). Vault needs re-unlock.');
+                        throw new Error('Vault session expired. Please re-enter PIN.');
+                    }
+                    // Generate new wrap key for this session
+                    const wrapRaw = crypto.getRandomValues(new Uint8Array(32));
+                    wrapKeyB64 = btoa(String.fromCharCode(...wrapRaw));
+                    sessionStorage.setItem('ghostnet_vault_wrap_key', wrapKeyB64);
+                }
+                const wrapKeyBytes = Uint8Array.from(atob(wrapKeyB64), c => c.charCodeAt(0));
+                const wrapKey = await crypto.subtle.importKey('raw', wrapKeyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+
+                if (wrappedData) {
+                    // Unwrap the stored key
+                    const packed = Uint8Array.from(atob(wrappedData), c => c.charCodeAt(0));
+                    const iv = packed.slice(0, 12);
+                    const ciphertext = packed.slice(12);
+                    const jwkBytes = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, wrapKey, ciphertext);
+                    const jwk = JSON.parse(new TextDecoder().decode(jwkBytes));
                     this.key = await crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+                } else if (legacyData) {
+                    // Migrate plaintext legacy key → wrapped format
+                    console.warn('[Vault] Migrating plaintext vault key to wrapped format.');
+                    const jwk = JSON.parse(legacyData);
+                    this.key = await crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+                    // Wrap and store
+                    const iv = crypto.getRandomValues(new Uint8Array(12));
+                    const jwkBytes = new TextEncoder().encode(JSON.stringify(jwk));
+                    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, jwkBytes);
+                    const packed = new Uint8Array(12 + encrypted.byteLength);
+                    packed.set(iv);
+                    packed.set(new Uint8Array(encrypted), 12);
+                    localStorage.setItem('ghostnet_vault_local_key_wrapped', btoa(String.fromCharCode(...packed)));
+                    localStorage.removeItem('ghostnet_vault_local_key'); // Delete plaintext
                 } else {
-                    // Generate new local key so uploads don't break
-                    // Generate as extractable only to export for storage, then re-import as non-extractable
+                    // Generate new local key, wrap it before storing
                     const tempKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']);
                     const exported = await crypto.subtle.exportKey('jwk', tempKey);
-                    localStorage.setItem('ghostnet_vault_local_key', JSON.stringify(exported));
+                    // Wrap with session key
+                    const iv = crypto.getRandomValues(new Uint8Array(12));
+                    const jwkBytes = new TextEncoder().encode(JSON.stringify(exported));
+                    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, jwkBytes);
+                    const packed = new Uint8Array(12 + encrypted.byteLength);
+                    packed.set(iv);
+                    packed.set(new Uint8Array(encrypted), 12);
+                    localStorage.setItem('ghostnet_vault_local_key_wrapped', btoa(String.fromCharCode(...packed)));
                     this.key = await crypto.subtle.importKey('jwk', exported, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
                 }
                 return this.key;

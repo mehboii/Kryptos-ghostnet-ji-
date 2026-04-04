@@ -393,15 +393,16 @@ const GhostIdentity = (() => {
     async function saveSession(privateKey) {
         const sessionKeyBytes = crypto.getRandomValues(new Uint8Array(32));
         const encryptedBlob = await _rawEncrypt(privateKey, sessionKeyBytes);
-        // Blob in localStorage (survives reloads, but useless without the key).
-        localStorage.setItem(_SK.SESSION_KEY + '_blob', encryptedBlob);
-        // Raw key only in sessionStorage (cleared when tab/browser closes).
+        // [SEC FIX H5] Both blob and key in sessionStorage only — never localStorage.
+        // This ensures the encrypted private key blob cannot be exfiltrated cross-tab.
+        // Trade-off: session does not survive tab close (acceptable for security).
+        sessionStorage.setItem(_SK.SESSION_KEY + '_blob', encryptedBlob);
         sessionStorage.setItem(_SK.SESSION_KEY, btoa(String.fromCharCode(...sessionKeyBytes)));
     }
 
     async function getSessionPrivateKey() {
         const keyB64 = sessionStorage.getItem(_SK.SESSION_KEY);
-        const blob = localStorage.getItem(_SK.SESSION_KEY + '_blob');
+        const blob = sessionStorage.getItem(_SK.SESSION_KEY + '_blob');
         if (!keyB64 || !blob) return null;
         try {
             const rawKeyBytes = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
@@ -414,6 +415,8 @@ const GhostIdentity = (() => {
 
     function clearSession() {
         sessionStorage.removeItem(_SK.SESSION_KEY);
+        sessionStorage.removeItem(_SK.SESSION_KEY + '_blob');
+        // Clean up any legacy localStorage blob from pre-fix versions
         localStorage.removeItem(_SK.SESSION_KEY + '_blob');
     }
 
