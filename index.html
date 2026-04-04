@@ -119,6 +119,178 @@
       window.addEventListener('load', () => { setTimeout(() => { const sp = document.getElementById('ghostnet-splash-overlay'); if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.remove(), 600); } }, 1500); });
     </script>
 
+    <!-- ═══ ONBOARDING FLOW (first-time users only) ═══ -->
+    <div id="ghostnet-onboarding" style="display:none;">
+        <!-- Floating particles -->
+        <div class="onboard-particles" id="onboard-particles"></div>
+
+        <!-- 3 Slides -->
+        <div class="onboard-slides">
+            <!-- SLIDE 1: Your keys. Your network. -->
+            <div class="onboard-slide active" data-slide="0">
+                <div class="onboard-icon">
+                    <div class="onboard-icon-inner">
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+                        </svg>
+                    </div>
+                </div>
+                <h2 class="onboard-title">Your keys. Your network.</h2>
+                <p class="onboard-subtitle">Your identity is a cryptographic keypair that lives on your device. No accounts. No servers. No one can take it from you.</p>
+            </div>
+
+            <!-- SLIDE 2: Every device is a relay. -->
+            <div class="onboard-slide" data-slide="1">
+                <div class="onboard-icon">
+                    <div class="onboard-icon-inner" style="position:relative;">
+                        <div class="onboard-mesh-lines">
+                            <div class="mesh-node"></div>
+                            <div class="mesh-node"></div>
+                            <div class="mesh-node"></div>
+                            <div class="mesh-node"></div>
+                        </div>
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="5" r="2"/>
+                            <circle cx="5" cy="19" r="2"/>
+                            <circle cx="19" cy="19" r="2"/>
+                            <line x1="12" y1="7" x2="5" y2="17"/>
+                            <line x1="12" y1="7" x2="19" y2="17"/>
+                            <line x1="5" y1="19" x2="19" y2="19"/>
+                        </svg>
+                    </div>
+                </div>
+                <h2 class="onboard-title">Every device is a relay.</h2>
+                <p class="onboard-subtitle">Messages hop across the mesh, encrypted end-to-end. No central server. The network grows with every node that joins.</p>
+            </div>
+
+            <!-- SLIDE 3: Go Ghost. -->
+            <div class="onboard-slide" data-slide="2">
+                <div class="onboard-icon" style="position:relative;">
+                    <div class="onboard-shield-glow"></div>
+                    <div class="onboard-icon-inner">
+                        <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        </svg>
+                    </div>
+                </div>
+                <h2 class="onboard-title">Go Ghost.</h2>
+                <p class="onboard-subtitle">No email. No phone number. No tracking. Just you and the mesh. Ready to create your identity?</p>
+            </div>
+        </div>
+
+        <!-- Progress dots -->
+        <div class="onboard-dots">
+            <div class="onboard-dot active" data-dot="0"></div>
+            <div class="onboard-dot" data-dot="1"></div>
+            <div class="onboard-dot" data-dot="2"></div>
+        </div>
+
+        <!-- Buttons -->
+        <button class="onboard-btn" id="onboard-next-btn">Next</button>
+        <button class="onboard-btn secondary" id="onboard-skip-btn">Skip</button>
+    </div>
+    <script>
+    (() => {
+        const ONBOARDED_KEY = 'ghostnet_onboarded';
+
+        // Only show for first-time users (no identity stored, not onboarded)
+        function shouldShowOnboarding() {
+            if (localStorage.getItem(ONBOARDED_KEY) === '1') return false;
+            if (localStorage.getItem('ghostnet_identity')) return false;
+            return true;
+        }
+
+        if (!shouldShowOnboarding()) return;
+
+        const overlay = document.getElementById('ghostnet-onboarding');
+        overlay.style.display = 'flex';
+
+        // Generate particles
+        const particleContainer = document.getElementById('onboard-particles');
+        for (let i = 0; i < 30; i++) {
+            const p = document.createElement('div');
+            p.className = 'onboard-particle';
+            p.style.left = Math.random() * 100 + '%';
+            p.style.animationDelay = (Math.random() * 8) + 's';
+            p.style.animationDuration = (5 + Math.random() * 6) + 's';
+            p.style.opacity = 0.2 + Math.random() * 0.5;
+            particleContainer.appendChild(p);
+        }
+
+        let current = 0;
+        const slides = overlay.querySelectorAll('.onboard-slide');
+        const dots = overlay.querySelectorAll('.onboard-dot');
+        const nextBtn = document.getElementById('onboard-next-btn');
+        const skipBtn = document.getElementById('onboard-skip-btn');
+
+        function goTo(idx) {
+            // Exit current
+            slides[current].classList.remove('active');
+            slides[current].classList.add('exit-left');
+            dots[current].classList.remove('active');
+
+            current = idx;
+
+            // Enter new
+            setTimeout(() => {
+                slides.forEach(s => s.classList.remove('exit-left'));
+                slides[current].classList.add('active');
+                dots[current].classList.add('active');
+            }, 100);
+
+            // Update button text on last slide
+            if (current === 2) {
+                nextBtn.textContent = 'Create Identity';
+                skipBtn.textContent = 'I have a seed phrase';
+            } else {
+                nextBtn.textContent = 'Next';
+                skipBtn.textContent = 'Skip';
+            }
+        }
+
+        function dismiss(goToRestore) {
+            localStorage.setItem(ONBOARDED_KEY, '1');
+            overlay.classList.add('fade-out');
+            setTimeout(() => {
+                overlay.remove();
+                // If user said "I have a seed phrase", go straight to restore screen
+                if (goToRestore && window.IdentityUI) {
+                    IdentityUI.showScreen('restore');
+                }
+            }, 500);
+        }
+
+        nextBtn.addEventListener('click', () => {
+            if (current < 2) {
+                goTo(current + 1);
+            } else {
+                // Last slide "Create Identity" — dismiss and let identity welcome screen take over
+                dismiss(false);
+            }
+        });
+
+        skipBtn.addEventListener('click', () => {
+            if (current === 2) {
+                // "I have a seed phrase" — go to restore
+                dismiss(true);
+            } else {
+                dismiss(false);
+            }
+        });
+
+        // Swipe support for mobile
+        let touchStartX = 0;
+        overlay.addEventListener('touchstart', (e) => { touchStartX = e.touches[0].clientX; }, { passive: true });
+        overlay.addEventListener('touchend', (e) => {
+            const diff = touchStartX - e.changedTouches[0].clientX;
+            if (Math.abs(diff) > 50) {
+                if (diff > 0 && current < 2) goTo(current + 1);
+                else if (diff < 0 && current > 0) goTo(current - 1);
+            }
+        }, { passive: true });
+    })();
+    </script>
+
     <div class="app-container">
         <!-- MOBILE HAMBURGER -->
         <button class="mobile-menu-btn" id="mobile-menu-btn" onclick="UI.toggleMobileMenu()">
