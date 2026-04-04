@@ -1614,7 +1614,55 @@ const UI = {
 
             const usernameSpan = document.createElement('span');
             usernameSpan.className = 'chat-username';
-            usernameSpan.textContent = username;
+            
+            const nameText = document.createElement('span');
+            nameText.textContent = username;
+            
+            usernameSpan.style.display = 'flex';
+            usernameSpan.style.alignItems = 'center';
+            usernameSpan.style.gap = '6px';
+            usernameSpan.appendChild(nameText);
+
+            const targetId = c.otherUser ? (c.otherUser.id || '') : '';
+            if (targetId) {
+                if (!window._lastConvoThreatScores) window._lastConvoThreatScores = {};
+                let threatScore = 0;
+                if (window.SignalIntelligence && window.SignalIntelligence.signals) {
+                    const signal = window.SignalIntelligence.signals.get(targetId) || Array.from(window.SignalIntelligence.signals.values()).find(s => s.mac === targetId);
+                    if (signal) threatScore = signal.threatScore || 0;
+                }
+
+                let badgeColor = '#00f0ff';
+                let badgeBg = 'rgba(0, 240, 255, 0.1)';
+                if (threatScore >= 40) {
+                    if (threatScore >= 75) {
+                        badgeColor = '#ef4444';
+                        badgeBg = 'rgba(239, 68, 68, 0.15)';
+                    } else {
+                        badgeColor = '#f59e0b';
+                        badgeBg = 'rgba(245, 158, 11, 0.15)';
+                    }
+                }
+
+                let animClass = '';
+                if (window._lastConvoThreatScores[c.id] !== undefined && window._lastConvoThreatScores[c.id] !== threatScore) {
+                    animClass = 'score-bounce'; 
+                }
+                window._lastConvoThreatScores[c.id] = threatScore;
+
+                const badge = document.createElement('span');
+                badge.className = `threat-badge ${animClass}`;
+                badge.style.padding = '1px 5px';
+                badge.style.borderRadius = '8px';
+                badge.style.fontSize = '0.65rem';
+                badge.style.fontWeight = '700';
+                badge.style.color = badgeColor;
+                badge.style.background = badgeBg;
+                badge.style.border = `1px solid ${badgeColor}`;
+                badge.style.boxShadow = `0 0 4px ${badgeBg}`;
+                badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px; margin-right:2px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>${threatScore}`;
+                usernameSpan.appendChild(badge);
+            }
 
             const timeSpan = document.createElement('span');
             timeSpan.className = 'chat-time';
@@ -1657,6 +1705,48 @@ const UI = {
         const label = document.getElementById('label-transport');
         if (label) {
             label.innerText = nameStr ? nameStr : targetUserId;
+            
+            if (targetUserId) {
+                if (!window._lastHeaderThreatScore) window._lastHeaderThreatScore = {};
+                let threatScore = 0;
+                if (window.SignalIntelligence && window.SignalIntelligence.signals) {
+                    const signal = window.SignalIntelligence.signals.get(targetUserId) || Array.from(window.SignalIntelligence.signals.values()).find(s => s.mac === targetUserId);
+                    if (signal) threatScore = signal.threatScore || 0;
+                }
+
+                let badgeColor = '#00f0ff';
+                let badgeBg = 'rgba(0, 240, 255, 0.1)';
+                if (threatScore >= 40) {
+                    if (threatScore >= 75) { badgeColor = '#ef4444'; badgeBg = 'rgba(239, 68, 68, 0.15)'; } 
+                    else { badgeColor = '#f59e0b'; badgeBg = 'rgba(245, 158, 11, 0.15)'; }
+                }
+
+                let existingBadge = label.parentNode.querySelector('.threat-badge-header');
+                if (existingBadge) existingBadge.remove();
+
+                let animClass = '';
+                if (window._lastHeaderThreatScore[targetUserId] !== undefined && window._lastHeaderThreatScore[targetUserId] !== threatScore) {
+                    animClass = 'score-bounce'; 
+                }
+                window._lastHeaderThreatScore[targetUserId] = threatScore;
+
+                const badge = document.createElement('span');
+                badge.className = `threat-badge threat-badge-header ${animClass}`;
+                badge.style.marginLeft = '8px';
+                badge.style.padding = '2px 6px';
+                badge.style.borderRadius = '8px';
+                badge.style.fontSize = '0.7rem';
+                badge.style.fontWeight = '700';
+                badge.style.color = badgeColor;
+                badge.style.background = badgeBg;
+                badge.style.border = `1px solid ${badgeColor}`;
+                badge.style.boxShadow = `0 0 4px ${badgeBg}`;
+                badge.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="vertical-align:-1px; margin-right:2px;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>${threatScore}`;
+                
+                label.parentNode.insertBefore(badge, label.nextSibling);
+                label.parentNode.style.flexDirection = 'row';
+                label.parentNode.style.alignItems = 'center';
+            }
         }
 
         // Store active targets state globally
@@ -1975,19 +2065,83 @@ const UI = {
             });
         }
 
-        html += allPeers.map(p => `
+        // Threat score global state for animation tracking
+        if (!window._lastNodeThreatScores) window._lastNodeThreatScores = {};
+
+        html += allPeers.map(p => {
+            // Check Threat Score from Signal Intel
+            let threatScore = 0;
+            let type = p.type;
+            
+            if (window.SignalIntelligence && window.SignalIntelligence.signals) {
+                const signal = window.SignalIntelligence.signals.get(p.id) || Array.from(window.SignalIntelligence.signals.values()).find(s => s.mac === p.id);
+                if (signal) {
+                    threatScore = signal.threatScore || 0;
+                    type = signal.type || p.type;
+                } else if (p.type !== 'BLE') {
+                    // Randomize slightly for web demo nodes
+                    threatScore = Math.floor(Math.random() * 20); 
+                }
+            }
+
+            // Map score to color
+            let badgeColor = '#00f0ff'; // Cyan
+            let badgeBg = 'rgba(0, 240, 255, 0.1)';
+            if (threatScore >= 40) {
+                // If it hits red at 75, let's map colors accurately
+                if (threatScore >= 75) {
+                    badgeColor = '#ef4444'; // Red
+                    badgeBg = 'rgba(239, 68, 68, 0.15)';
+                } else {
+                    badgeColor = '#f59e0b'; // Amber
+                    badgeBg = 'rgba(245, 158, 11, 0.15)';
+                }
+            }
+            
+            // Micro-animation check
+            let animClass = '';
+            // If we have a cached score, and it's DIFFERENT from the current score, trigger bounce
+            if (window._lastNodeThreatScores[p.id] !== undefined && window._lastNodeThreatScores[p.id] !== threatScore) {
+                animClass = 'score-bounce'; 
+            }
+            window._lastNodeThreatScores[p.id] = threatScore;
+
+            return `
             <div class="node-card">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div class="node-address" style="color:var(--accent);">${_escapeHTML(p.id)}</div>
-                    <div style="font-size:0.8rem; color:${p.latency < 50 ? '#10b981' : '#f59e0b'}">${_escapeHTML(String(p.latency || '??'))}ms</div>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                    <div>
+                        <div class="node-address" style="color:var(--accent); display:flex; align-items:center; gap:8px;">
+                            ${_escapeHTML(p.id)}
+                        </div>
+                        <div class="node-meta" style="margin-top:4px;">${_escapeHTML(type)} Node • Verified</div>
+                    </div>
+                    <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+                        <div style="font-size:0.8rem; color:${p.latency < 50 ? '#10b981' : '#f59e0b'}">${_escapeHTML(String(p.latency || '??'))}ms</div>
+                        <div class="threat-badge ${animClass}" style="
+                            padding: 2px 8px; 
+                            border-radius: 12px; 
+                            font-size: 0.72rem; 
+                            font-weight: 700; 
+                            color: ${badgeColor}; 
+                            background: ${badgeBg}; 
+                            border: 1px solid ${badgeColor};
+                            box-shadow: 0 0 8px ${badgeBg};
+                            display: flex;
+                            align-items: center;
+                            gap: 4px;
+                        ">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Score: ${threatScore}
+                        </div>
+                    </div>
                 </div>
-                <div class="node-meta">${_escapeHTML(p.type)} Node • Verified</div>
                 ${p.type === 'BLE' ? '<div style="margin-top:5px; font-size:0.75rem; color:#10b981;">via Bluetooth Mesh</div>' : ''}
                 <div style="margin-top:10px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
-                    <div style="width: ${Math.random() * 100}%; height:100%; background:${p.type === 'BLE' ? '#10b981' : 'var(--text-muted)'};"></div>
+                    <div style="width: ${threatScore > 0 ? (100 - threatScore) : Math.random() * 80 + 20}%; height:100%; background:${badgeColor}; transition: width 0.5s ease;"></div>
                 </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
 
         el.innerHTML = html;
         if (typeof lucide !== 'undefined') lucide.createIcons();
