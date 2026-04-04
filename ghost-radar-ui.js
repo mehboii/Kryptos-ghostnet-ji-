@@ -25,27 +25,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         .ghost-radar-visual {
             position: relative;
-            width: 220px;
-            height: 220px;
+            width: 240px;
+            height: 240px;
             border-radius: 50%;
-            background: radial-gradient(circle, rgba(16,185,129,0.06) 0%, rgba(0,0,0,0.4) 70%);
-            border: 1px solid rgba(16,185,129,0.25);
+            background: radial-gradient(circle, rgba(16,185,129,0.04) 0%, rgba(0,0,0,0.45) 70%);
+            border: 1px solid rgba(16,185,129,0.18);
             overflow: hidden;
+            box-shadow: 0 0 30px rgba(16,185,129,0.06), inset 0 0 40px rgba(0,0,0,0.3);
         }
         .ghost-radar-visual .radar-ring {
             position: absolute;
             border-radius: 50%;
-            border: 1px solid rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.08);
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
         }
         .ghost-radar-visual .radar-ring.r1 { width: 33%; height: 33%; }
         .ghost-radar-visual .radar-ring.r2 { width: 66%; height: 66%; }
-        .ghost-radar-visual .radar-ring.r3 { width: 100%; height: 100%; }
+        .ghost-radar-visual .radar-ring.r3 { width: 100%; height: 100%; border-color: rgba(16,185,129,0.12); }
         .ghost-radar-visual .radar-crosshair-h,
         .ghost-radar-visual .radar-crosshair-v {
             position: absolute;
-            background: rgba(16,185,129,0.1);
+            background: rgba(16,185,129,0.06);
         }
         .ghost-radar-visual .radar-crosshair-h {
             width: 100%; height: 1px; top: 50%; left: 0;
@@ -53,22 +54,48 @@ document.addEventListener('DOMContentLoaded', () => {
         .ghost-radar-visual .radar-crosshair-v {
             width: 1px; height: 100%; top: 0; left: 50%;
         }
+        /* Sweep arm — smooth gradient with soft afterglow trail */
         .ghost-radar-visual .radar-sweep {
             position: absolute;
             width: 50%; height: 50%;
             top: 50%; left: 50%;
             transform-origin: 0 0;
-            background: conic-gradient(from 0deg, rgba(16,185,129,0.35), transparent 60deg);
-            animation: radarSweep 3s linear infinite;
+            background: conic-gradient(
+                from 0deg,
+                rgba(16,185,129,0.40) 0deg,
+                rgba(16,185,129,0.18) 20deg,
+                rgba(16,185,129,0.06) 40deg,
+                transparent 55deg
+            );
+            animation: radarSweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
             border-radius: 0 100% 0 0;
+            will-change: transform;
+        }
+        /* Afterglow trail — faint secondary cone behind the main sweep */
+        .ghost-radar-visual .radar-afterglow {
+            position: absolute;
+            width: 50%; height: 50%;
+            top: 50%; left: 50%;
+            transform-origin: 0 0;
+            background: conic-gradient(
+                from 0deg,
+                rgba(16,185,129,0.08) 0deg,
+                transparent 90deg
+            );
+            animation: radarSweep 4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+            animation-delay: -0.3s;
+            border-radius: 0 100% 0 0;
+            will-change: transform;
+            pointer-events: none;
         }
         @keyframes radarSweep {
             0%   { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .ghost-radar-visual.paused .radar-sweep {
+        .ghost-radar-visual.paused .radar-sweep,
+        .ghost-radar-visual.paused .radar-afterglow {
             animation-play-state: paused;
-            opacity: 0.3;
+            opacity: 0.2;
         }
         .ghost-radar-visual .radar-center-dot {
             position: absolute;
@@ -77,25 +104,64 @@ document.addEventListener('DOMContentLoaded', () => {
             border-radius: 50%;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            box-shadow: 0 0 10px rgba(16,185,129,0.7);
+            box-shadow: 0 0 8px rgba(16,185,129,0.6), 0 0 20px rgba(16,185,129,0.15);
             z-index: 3;
         }
-        /* Blips on radar */
+
+        /* ── Blips ─────────────────────────────────────── */
         .ghost-radar-visual .radar-blip {
             position: absolute;
             width: 6px; height: 6px;
             border-radius: 50%;
-            transform: translate(-50%, -50%);
+            transform: translate(-50%, -50%) scale(0);
             z-index: 2;
-            animation: blipPulse 2s ease-in-out infinite;
+            opacity: 0;
+            animation: blipEnter 0.5s ease-out forwards;
         }
-        .radar-blip.safe { background: #10b981; box-shadow: 0 0 6px rgba(16,185,129,0.6); }
-        .radar-blip.monitor { background: #f59e0b; box-shadow: 0 0 6px rgba(245,158,11,0.6); }
-        .radar-blip.threat { background: #ef4444; box-shadow: 0 0 6px rgba(239,68,68,0.6); }
-        .radar-blip.ghost-node { background: #8b5cf6; box-shadow: 0 0 8px rgba(139,92,246,0.7); width: 8px; height: 8px; }
-        @keyframes blipPulse {
-            0%, 100% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
-            50% { opacity: 0.6; transform: translate(-50%,-50%) scale(1.4); }
+        /* Entrance: fade-in + scale-up from nothing */
+        @keyframes blipEnter {
+            0%   { opacity: 0; transform: translate(-50%,-50%) scale(0); }
+            60%  { opacity: 1; transform: translate(-50%,-50%) scale(1.5); }
+            100% { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+        }
+        /* Idle pulse — subtle breathe for safe / monitor / ghost */
+        .radar-blip.safe {
+            background: #10b981;
+            box-shadow: 0 0 5px rgba(16,185,129,0.5);
+            animation: blipEnter 0.5s ease-out forwards, blipBreathe 3s ease-in-out 0.5s infinite;
+        }
+        .radar-blip.monitor {
+            background: #f59e0b;
+            box-shadow: 0 0 5px rgba(245,158,11,0.5);
+            animation: blipEnter 0.5s ease-out forwards, blipBreathe 3s ease-in-out 0.5s infinite;
+        }
+        .radar-blip.ghost-node {
+            background: #8b5cf6;
+            box-shadow: 0 0 6px rgba(139,92,246,0.6);
+            width: 7px; height: 7px;
+            animation: blipEnter 0.5s ease-out forwards, blipBreathe 3s ease-in-out 0.5s infinite;
+        }
+        /* Threat — aggressive red glow pulse */
+        .radar-blip.threat {
+            background: #ef4444;
+            box-shadow: 0 0 6px rgba(239,68,68,0.7), 0 0 14px rgba(239,68,68,0.3);
+            animation: blipEnter 0.5s ease-out forwards, threatGlow 1.4s ease-in-out 0.5s infinite;
+        }
+        @keyframes blipBreathe {
+            0%, 100% { opacity: 0.85; transform: translate(-50%,-50%) scale(1); }
+            50%      { opacity: 1;    transform: translate(-50%,-50%) scale(1.15); }
+        }
+        @keyframes threatGlow {
+            0%, 100% {
+                opacity: 1;
+                transform: translate(-50%,-50%) scale(1);
+                box-shadow: 0 0 6px rgba(239,68,68,0.7), 0 0 14px rgba(239,68,68,0.3);
+            }
+            50% {
+                opacity: 1;
+                transform: translate(-50%,-50%) scale(1.35);
+                box-shadow: 0 0 10px rgba(239,68,68,0.9), 0 0 22px rgba(239,68,68,0.45);
+            }
         }
 
         /* Scan status bar */
@@ -206,16 +272,20 @@ document.addEventListener('DOMContentLoaded', () => {
             font-size: 0.8rem; color: var(--text-muted); opacity: 0.7; max-width: 300px; margin: 0 auto;
         }
 
-        /* Device items (reuses threat-item styles from shield) */
+        /* Device items */
         .radar-device-item {
             background: rgba(0,0,0,0.2); border-radius: 8px; padding: 12px;
             display: flex; flex-direction: column;
             border-left: 4px solid var(--border);
-            transition: all 0.2s;
+            transition: background 0.25s, border-color 0.25s;
         }
         .radar-device-item.safe   { border-left-color: #10b981; }
         .radar-device-item.monitor { border-left-color: #f59e0b; }
-        .radar-device-item.threat  { border-left-color: #ef4444; }
+        .radar-device-item.threat  {
+            border-left-color: #ef4444;
+            background: rgba(239,68,68,0.05);
+            box-shadow: inset 0 0 20px rgba(239,68,68,0.04);
+        }
         .radar-device-item.ghost-node { border-left-color: #8b5cf6; }
         .radar-device-item .dev-top {
             display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;
@@ -236,7 +306,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         @media (max-width: 600px) {
-            .ghost-radar-visual { width: 180px; height: 180px; }
+            .ghost-radar-visual { width: 200px; height: 200px; }
             .radar-status-bar { flex-direction: column; gap: 8px; text-align: center; }
         }
     `;
@@ -292,6 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     <div class="radar-ring r3"></div>
                     <div class="radar-crosshair-h"></div>
                     <div class="radar-crosshair-v"></div>
+                    <div class="radar-afterglow"></div>
                     <div class="radar-sweep"></div>
                     <div class="radar-center-dot"></div>
                 </div>
@@ -402,7 +473,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!results || results.length === 0) return;
 
-            const cx = 110, cy = 110, maxR = 100; // center and max radius
+            const size = visual.offsetWidth || 220;
+            const cx = size / 2, cy = size / 2, maxR = (size / 2) - 10;
+
+            const cfg = window.ShieldConfig;
+            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
+            const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
 
             for (let i = 0; i < results.length; i++) {
                 const d = results[i];
@@ -419,10 +495,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const x = cx + dist * Math.cos(angle);
                 const y = cy + dist * Math.sin(angle);
 
-                const cfg = window.ShieldConfig;
-                const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
-                const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
-
                 const blip = document.createElement('div');
                 blip.className = 'radar-blip';
                 if (d.isGhostNode) {
@@ -436,6 +508,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 blip.style.left = x + 'px';
                 blip.style.top = y + 'px';
+                // Stagger entrance — each blip appears 80ms after the previous
+                blip.style.animationDelay = (i * 0.08) + 's';
+                if (d.isGhostNode || d.threatScore <= blockedAt) {
+                    // Safe/monitor/ghost: entrance + breathe (breathe starts after entrance)
+                    blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
+                } else {
+                    // Threat: entrance + glow (glow starts after entrance)
+                    blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
+                }
                 blip.title = this._esc(d.name || d.id || 'Unknown');
                 visual.appendChild(blip);
             }

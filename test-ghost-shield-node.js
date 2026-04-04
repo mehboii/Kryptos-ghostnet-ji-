@@ -294,21 +294,21 @@ if (si) {
     const safe = si.processSignal({ mac: 'A2:B3:C4:D5:E6:F7', rssi: -75, name: 'iPhone 15', hasBLE: true, hasWiFi: true });
     assert('safe device processed', safe !== null);
     assert('safe → type Smartphone', safe?.type === 'Smartphone', safe?.type);
-    assert('safe → threatLevel SAFE', safe?.threatLevel === 'SAFE');
+    assert('safe → threatLevel ALLOWED', safe?.threatLevel === 'ALLOWED');
     assert('safe → score low', safe?.threatScore < 30, `score: ${safe?.threatScore}`);
 
     // Threat device
     const threat = si.processSignal({ mac: '00:1A:2B:3C:4D:5E', rssi: -25, name: '', channels: [1, 6, 11] });
     assert('threat device processed', threat !== null);
     assert('threat → score > 60', threat?.threatScore > 60, `score: ${threat?.threatScore}`);
-    assert('threat → threatLevel THREAT', threat?.threatLevel === 'THREAT');
+    assert('threat → threatLevel WARNING', threat?.threatLevel === 'WARNING');
     assert('threat → MULTI_CHANNEL flag', threat?.interferenceFlags?.includes('MULTI_CHANNEL_BROADCAST'));
 
     // GhostNode
     const node = si.processSignal({ mac: '0xa752f1234567', rssi: -50, isGhostNode: true });
     assert('GhostNode → score = 0', node?.threatScore === 0);
     assert('GhostNode → type = "GhostNet Node"', node?.type === 'GhostNet Node');
-    assert('GhostNode → threatLevel SAFE', node?.threatLevel === 'SAFE');
+    assert('GhostNode → threatLevel ALLOWED', node?.threatLevel === 'ALLOWED');
 
     // Report
     const report = si.getSignalReport();
@@ -316,7 +316,7 @@ if (si) {
     assert('report sorted by RSSI desc', report[0].rssi >= report[1].rssi);
 
     // Overall threat
-    assert('getThreatLevel = DANGER', si.getThreatLevel() === 'DANGER');
+    assert('getThreatLevel = ELEVATED', si.getThreatLevel() === 'ELEVATED');
 
     // Interference
     assert('getInterference found', si.getInterference().length > 0);
