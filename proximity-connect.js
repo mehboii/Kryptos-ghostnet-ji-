@@ -88,8 +88,9 @@ class ProximityConnect {
 
             const SERVICE_UUID = '67686f73-746e-6574-2d6d-657368000000';
 
+            // scanMode 1 = LOW_LATENCY — continuous scan window for fastest discovery at range
             await BleClient.requestLEScan(
-                { services: [SERVICE_UUID], allowDuplicates: false },
+                { services: [SERVICE_UUID], allowDuplicates: false, scanMode: 1 },
                 (result) => {
                     // Deduplicate by deviceId
                     if (this._scanDevices.find(d => d.deviceId === result.device.deviceId)) return;
@@ -156,17 +157,19 @@ class ProximityConnect {
             });
             this._log('Connected to ' + deviceId);
 
-            // 2. Read peer identity
-            const peerIdBuf = await BLE.read(deviceId, SERVICE_UUID, CHAR_PEER_ID);
+            // 2. Read peer identity (with retry for range reliability)
+            const peerIdBuf = await this._bleRetry(
+                () => BLE.read(deviceId, SERVICE_UUID, CHAR_PEER_ID), 'Read peerId');
             const peerId = new TextDecoder().decode(peerIdBuf);
 
-            // 3. Read peer's public key
-            const peerKeyBuf = await BLE.read(deviceId, SERVICE_UUID, CHAR_PUB_KEY);
+            // 3. Read peer's public key (with retry)
+            const peerKeyBuf = await this._bleRetry(
+                () => BLE.read(deviceId, SERVICE_UUID, CHAR_PUB_KEY), 'Read pubKey');
             const peerKeyHex = this._bufToHex(peerKeyBuf);
 
             this._log(`Peer: ${peerId}, key: ${peerKeyHex.slice(0, 16)}...`);
 
-            // 4. Send our identity + ephemeral public key via DATA characteristic
+            // 4. Send our identity + ephemeral public key via DATA characteristic (with retry)
             const handshakePayload = JSON.stringify({
                 type: 'HANDSHAKE_INIT',
                 nodeId: this.localIdentity.nodeId,
@@ -174,7 +177,8 @@ class ProximityConnect {
                 ts: Date.now()
             });
             const payloadBytes = new TextEncoder().encode(handshakePayload);
-            await BLE.write(deviceId, SERVICE_UUID, CHAR_DATA, payloadBytes);
+            await this._bleRetry(
+                () => BLE.write(deviceId, SERVICE_UUID, CHAR_DATA, payloadBytes), 'Write handshake');
             this._log('Sent handshake init');
 
             // 5. Wait for handshake response (peer's ephemeral key)
@@ -215,7 +219,8 @@ class ProximityConnect {
                 data: this._bufToHex(encrypted),
                 salt: this._bufToHex(sessionSalt)
             });
-            await BLE.write(deviceId, SERVICE_UUID, CHAR_DATA, new TextEncoder().encode(challenge));
+            await this._bleRetry(
+                () => BLE.write(deviceId, SERVICE_UUID, CHAR_DATA, new TextEncoder().encode(challenge)), 'Write challenge');
             this._log('Sent challenge');
 
             // 10. Wait for challenge response
@@ -455,6 +460,21 @@ class ProximityConnect {
                 resolve(value);
             });
         });
+    }
+
+    // ── GATT retry — BLE reads/writes can fail at range ────────
+
+    async _bleRetry(fn, label, maxAttempts = 3) {
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return await fn();
+            } catch (e) {
+                this._log(`${label} attempt ${attempt}/${maxAttempts} failed: ${e.message}`);
+                if (attempt === maxAttempts) throw e;
+                // Brief pause before retry — BLE stack needs recovery time
+                await new Promise(r => setTimeout(r, 300 * attempt));
+            }
+        }
     }
 
     // ── Utilities ────────────────────────────────────────────────
