@@ -76,8 +76,9 @@ class GhostRadarEngine {
       await BleClient.initialize();
       this.permissionState.ble = 'granted';
       const devices = [];
+      // scanMode 1 = LOW_LATENCY — continuous scan for best device discovery at range
       await BleClient.requestLEScan(
-        { allowDuplicates: false },
+        { allowDuplicates: false, scanMode: 1 },
         (result) => {
           devices.push({
             id: result.device.deviceId,
