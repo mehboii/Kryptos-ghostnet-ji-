@@ -35,6 +35,8 @@
     "@capacitor/core": "^8.2.0",
     "@capacitor/network": "^8.0.1",
     "@capacitor/splash-screen": "^8.0.1",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
     "acorn": "^8.16.0",
     "argon2": "^0.44.0",
     "bcrypt": "^6.0.0",
