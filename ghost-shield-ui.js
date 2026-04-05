@@ -254,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
         /* Glow ring on threat-level escalation */
         .threat-score-badge.score-escalated::after {
             content: '';
-            position: absolute; inset: -3px;
+            position: absolute; top: -3px; right: -3px; bottom: -3px; left: -3px;
             border-radius: 20px;
             border: 2px solid currentColor;
             opacity: 0;

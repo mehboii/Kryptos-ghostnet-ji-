@@ -125,6 +125,12 @@
 }(typeof self !== 'undefined' ? self : this, function () {
     'use strict';
 
+    // ─── Polyfill: crypto.randomUUID (Safari <15.4, Firefox <95) ────────────
+    const _uuid = (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function')
+        ? () => _uuid()
+        : () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+
     // ─── Constants ────────────────────────────────────────────────────────────
     const STORAGE_KEY = 'ghost_chat_history';
     const MAX_BODY_BYTES = 65536;   // [FIX J] 64 KB hard ceiling
@@ -350,7 +356,7 @@
                 throw new Error(`Message too large (max ${MAX_BODY_BYTES} bytes).`);
             }
 
-            const msgId = crypto.randomUUID();
+            const msgId = _uuid();
             const ts = Date.now();
             const iv = crypto.getRandomValues(new Uint8Array(12));
 
@@ -404,7 +410,7 @@
             }
 
             const packet = {
-                id: crypto.randomUUID(),
+                id: _uuid(),
                 type: 'DELETE',
                 targetId: targetMsgId,
                 from: this.myIdentity.pub,

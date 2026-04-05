@@ -27,10 +27,30 @@ function _escapeJSString(str) {
     return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e');
 }
 
+/** Clipboard helper — falls back to execCommand for Safari iOS / older browsers */
+function _copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).catch(() => _copyFallback(text));
+    }
+    return _copyFallback(text);
+}
+function _copyFallback(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); } catch (_) {}
+    ta.remove();
+    return Promise.resolve();
+}
+
 /** Escape user-controlled strings before inserting into CSS.querySelector() calls. */
 function _escapeSelector(str) {
     if (typeof str !== 'string') return '';
-    return CSS.escape(str);
+    // Polyfill: CSS.escape (Firefox <49)
+    if (typeof CSS !== 'undefined' && CSS.escape) return CSS.escape(str);
+    return str.replace(/([^\w-])/g, '\\$1');
 }
 
 const IS_NATIVE = window.Capacitor?.isNativePlatform?.() ?? false;
@@ -312,10 +332,12 @@ const UI = {
     init: () => {
         console.log("SYSTEM: Booting GhostNet UI...");
 
-        // Prevent Railway cold starts (ping every 4 minutes)
+        // Prevent Railway cold starts (ping every 4 minutes) — skip when offline
         setInterval(() => {
-            fetch('https://ghostnet-ji-production.up.railway.app/health', { method: 'GET' })
-                .catch(() => {}) // silent fail
+            if (navigator.onLine) {
+                fetch('https://ghostnet-ji-production.up.railway.app/health', { method: 'GET' })
+                    .catch(() => {});
+            }
         }, 4 * 60 * 1000);
 
         // 0a. Load Identity from Storage FIRST
@@ -469,7 +491,7 @@ const UI = {
                 // Add a loading state so UI appears instantly while data loads in background
                 const loadingOverlay = document.createElement('div');
                 loadingOverlay.id = 'data-loading-overlay';
-                loadingOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.8);z-index:9999;display:flex;justify-content:center;align-items:center;backdrop-filter:blur(5px);';
+                loadingOverlay.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(10,15,30,0.8);z-index:9999;display:flex;justify-content:center;align-items:center;-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);';
                 loadingOverlay.innerHTML = '<div style="border:4px solid rgba(255,255,255,0.1);border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;animation:spin 1s linear infinite;"></div><style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>';
                 document.body.appendChild(loadingOverlay);
 
@@ -1497,10 +1519,12 @@ const UI = {
         }
         if (errEl) errEl.textContent = '';
 
-        // Ghost Card offline bypass: if the contact was QR-verified and we're offline,
-        // skip server validation entirely — the QR already proved identity
-        if (isGhostCardVerified && !navigator.onLine) {
-            console.log('[GhostCard] Offline + Ghost Card verified — skipping server validation');
+        // Ghost Card offline bypass: if the contact was QR-verified, skip server
+        // validation entirely — the QR already proved identity cryptographically.
+        // navigator.onLine is unreliable (reports true on WiFi-without-internet),
+        // so always take the offline path when Ghost Card is verified.
+        if (isGhostCardVerified) {
+            console.log('[GhostCard] Ghost Card verified — accepting contact directly (no server needed)');
             acceptContactOffline(name);
             return;
         }
@@ -1565,7 +1589,8 @@ const UI = {
             }
 
             // Node is valid — connect seamlessly
-            document.querySelector('.modal-overlay').remove();
+            const _overlay = document.querySelector('.modal-overlay');
+            if (_overlay) _overlay.remove();
 
             // Clear feed for new chat effect
             const feed = document.getElementById('chat-feed');
@@ -3194,12 +3219,7 @@ const UI = {
             showToast('GhostCode not ready yet');
             return;
         }
-        try {
-            navigator.clipboard.writeText(code);
-            showToast('GhostCode copied!');
-        } catch (e) {
-            console.error('Copy failed:', e);
-        }
+        _copyToClipboard(code).then(() => showToast('GhostCode copied!')).catch(e => console.error('Copy failed:', e));
     },
 
     /**
@@ -3217,12 +3237,7 @@ const UI = {
                 title: 'GhostNet'
             }).catch(() => {});
         } else {
-            try {
-                navigator.clipboard.writeText(code);
-                showToast('GhostCode copied — share it anywhere');
-            } catch (e) {
-                console.error('Share fallback failed:', e);
-            }
+            _copyToClipboard(code).then(() => showToast('GhostCode copied — share it anywhere')).catch(e => console.error('Share fallback failed:', e));
         }
     },
 
@@ -3399,7 +3414,7 @@ const UI = {
                 const copyBtn = document.createElement('button');
                 copyBtn.textContent = 'Copy ID';
                 copyBtn.className = 'btn-primary';
-                copyBtn.onclick = () => { if (navigator.clipboard) navigator.clipboard.writeText(nodeId); };
+                copyBtn.onclick = () => { _copyToClipboard(nodeId); };
                 card.appendChild(copyBtn);
                 const closeBtn = document.createElement('button');
                 closeBtn.textContent = 'Close';
@@ -3507,7 +3522,7 @@ const UI = {
             // Set up Modal with 3D animation
             const modal = document.createElement('div');
             modal.id = 'ghostcard-modal';
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(12px);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
+            modal.style.cssText = 'position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);z-index:99999;display:flex;align-items:center;justify-content:center;flex-direction:column;perspective:1000px;';
 
             const cardWrapper = document.createElement('div');
             cardWrapper.style.cssText = 'position:relative; transform-style:preserve-3d; will-change:transform; animation: ghostCardEntrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; overflow:hidden; border-radius:16px;';
@@ -3589,9 +3604,8 @@ const UI = {
                         const file = new File([blob], `ghostcard-${safeName}.png`, { type: 'image/png' });
                         if (navigator.canShare({ files: [file] })) navigator.share({ files: [file] });
                     });
-                } else if (navigator.clipboard) {
-                    navigator.clipboard.writeText(nodeId);
-                    alert("Node ID copied to share.");
+                } else {
+                    _copyToClipboard(nodeId).then(() => alert("Node ID copied to share."));
                 }
             };
             shareBtn.addEventListener('click', shareHandler);
