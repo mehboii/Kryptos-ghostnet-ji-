@@ -1459,7 +1459,8 @@ const UI = {
 
     submitNewChat: async () => {
         const name = document.getElementById('chat-name').value;
-        const pubKey = document.getElementById('chat-pubkey').value;
+        const pubKeyEl = document.getElementById('chat-pubkey');
+        const pubKey = pubKeyEl ? pubKeyEl.value : '';
         const errEl = document.getElementById('chat-new-error');
         const startBtn = document.getElementById('chat-start-btn');
 
@@ -1468,12 +1469,41 @@ const UI = {
             return;
         }
 
+        // Check if this contact was verified via Ghost Card QR scan
+        const isGhostCardVerified = pubKeyEl && pubKeyEl.dataset.ghostCardVerified === 'true';
+
+        // Helper: accept contact without server validation (offline / Ghost Card path)
+        const acceptContactOffline = (displayName) => {
+            const overlay = document.querySelector('.modal-overlay');
+            if (overlay) overlay.remove();
+
+            const feed = document.getElementById('chat-feed');
+            if (feed) {
+                feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${_escapeHTML(displayName)} Started (Offline) --</div>`;
+            }
+
+            if (window.app) {
+                window.app.chatTarget = pubKey;
+            }
+
+            UI.selectChat('new', displayName, pubKey);
+            console.log('[GhostCard] Contact added offline:', displayName, pubKey.slice(0, 10) + '...');
+        };
+
         // Show loading state
         if (startBtn) {
             startBtn.disabled = true;
             startBtn.textContent = 'VALIDATING...';
         }
         if (errEl) errEl.textContent = '';
+
+        // Ghost Card offline bypass: if the contact was QR-verified and we're offline,
+        // skip server validation entirely — the QR already proved identity
+        if (isGhostCardVerified && !navigator.onLine) {
+            console.log('[GhostCard] Offline + Ghost Card verified — skipping server validation');
+            acceptContactOffline(name);
+            return;
+        }
 
         // Silent backend validation
         const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
@@ -1486,6 +1516,12 @@ const UI = {
 
             if (!res.ok) {
                 console.error('Validation HTTP error:', res.status, res.statusText);
+                // Ghost Card fallback: accept even if server returns error
+                if (isGhostCardVerified) {
+                    console.log('[GhostCard] Server error but Ghost Card verified — accepting offline');
+                    acceptContactOffline(name);
+                    return;
+                }
                 if (errEl) errEl.textContent = `⚠ Validation failed (HTTP ${res.status}). Try again.`;
                 if (startBtn) {
                     startBtn.disabled = false;
@@ -1497,6 +1533,12 @@ const UI = {
             const contentType = res.headers.get('content-type') || '';
             if (!contentType.includes('application/json')) {
                 console.error('Validation returned non-JSON:', contentType);
+                // Ghost Card fallback: accept even if server returns bad data
+                if (isGhostCardVerified) {
+                    console.log('[GhostCard] Bad server response but Ghost Card verified — accepting offline');
+                    acceptContactOffline(name);
+                    return;
+                }
                 if (errEl) errEl.textContent = '⚠ Server returned invalid response. Please try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
@@ -1508,6 +1550,12 @@ const UI = {
             const data = await res.json();
 
             if (!data.valid) {
+                // Ghost Card fallback: node may not be registered on server yet
+                if (isGhostCardVerified) {
+                    console.log('[GhostCard] Node not on server but Ghost Card verified — accepting offline');
+                    acceptContactOffline(name);
+                    return;
+                }
                 if (errEl) errEl.textContent = '⚠ Node not found. Check the Node ID and try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
@@ -1534,6 +1582,12 @@ const UI = {
 
         } catch (e) {
             console.error('Node validation error:', e);
+            // Ghost Card fallback: network error (offline) but QR-verified
+            if (isGhostCardVerified) {
+                console.log('[GhostCard] Network error but Ghost Card verified — accepting offline');
+                acceptContactOffline(name);
+                return;
+            }
             if (errEl) errEl.textContent = '⚠ Could not verify node. Server may be offline.';
             if (startBtn) {
                 startBtn.disabled = false;
@@ -3843,6 +3897,8 @@ const UI = {
             const pkInput = document.getElementById('chat-pubkey');
             if (pkInput) {
                 pkInput.value = data.nodeId;
+                // Mark as Ghost Card verified — allows offline contact add
+                pkInput.dataset.ghostCardVerified = 'true';
                 const nameInput = document.getElementById('chat-name');
                 if (nameInput && data.name) nameInput.value = data.name;
             } else {
@@ -3851,7 +3907,11 @@ const UI = {
                 setTimeout(() => {
                     const pk = document.getElementById('chat-pubkey');
                     const nm = document.getElementById('chat-name');
-                    if (pk) pk.value = data.nodeId;
+                    if (pk) {
+                        pk.value = data.nodeId;
+                        // Mark as Ghost Card verified — allows offline contact add
+                        pk.dataset.ghostCardVerified = 'true';
+                    }
                     if (nm && data.name) nm.value = data.name;
                 }, 100);
             }
