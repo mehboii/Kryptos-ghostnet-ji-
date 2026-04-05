@@ -3,6 +3,16 @@
  * strictly real signals only.
  */
 
+// Polyfill: Promise.allSettled (Safari <13)
+if (typeof Promise.allSettled !== 'function') {
+  Promise.allSettled = function(promises) {
+    return Promise.all(promises.map(p => Promise.resolve(p).then(
+      value => ({ status: 'fulfilled', value }),
+      reason => ({ status: 'rejected', reason })
+    )));
+  };
+}
+
 class GhostRadarEngine {
   constructor() {
     this.results = [];
