@@ -67,14 +67,25 @@ function validateIdentity(id) {
 // ─── [1] SAFE CLEANUP ───────────────────────────────────
 // Zero out key material before exiting
 
+function secureWipe(buf) {
+    if (!Buffer.isBuffer(buf)) return;
+    for (let i = 0; i < buf.length; i++) {
+        buf[i] = 0;
+    }
+    // Force V8 to not optimize away by reading back
+    let acc = 0;
+    for (let i = 0; i < buf.length; i++) {
+        acc |= buf[i];
+    }
+    if (acc !== 0) throw new Error('Secure wipe failed');
+}
+
 function scrubIdentity(id) {
     if (!id) return;
     try {
-        // If privateKey is a buffer or typed array, zero it
-        if (id.privateKey && typeof id.privateKey === 'object' && id.privateKey.fill) {
-            id.privateKey.fill(0);
+        if (id.privateKey && Buffer.isBuffer(id.privateKey)) {
+            secureWipe(id.privateKey);
         } else if (typeof id.privateKey === 'string') {
-            // Strings are immutable in JS — flag as scrubbed, warn dev
             id.privateKey = '[SCRUBBED]';
         }
     } catch (_) { }

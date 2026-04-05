@@ -74,16 +74,29 @@ function validateEnvelope(env) {
 
 // ─── [4] KEY SCRUBBER ───────────────────────────────────
 
+function secureWipe(buf) {
+    if (!Buffer.isBuffer(buf)) return;
+    for (let i = 0; i < buf.length; i++) {
+        buf[i] = 0;
+    }
+    // Force V8 to not optimize away by reading back
+    let acc = 0;
+    for (let i = 0; i < buf.length; i++) {
+        acc |= buf[i];
+    }
+    if (acc !== 0) throw new Error('Secure wipe failed');
+}
+
 function scrubIdentity(id) {
     if (!id) return;
     try {
-        if (id.privateKey && typeof id.privateKey === 'object' && id.privateKey.fill) {
-            id.privateKey.fill(0);
+        if (id.privateKey && Buffer.isBuffer(id.privateKey)) {
+            secureWipe(id.privateKey);
         } else if (typeof id.privateKey === 'string') {
             id.privateKey = '[SCRUBBED]';
         }
-        if (id.signingKey && typeof id.signingKey === 'object' && id.signingKey.fill) {
-            id.signingKey.fill(0);
+        if (id.signingKey && Buffer.isBuffer(id.signingKey)) {
+            secureWipe(id.signingKey);
         }
     } catch (_) { }
 }

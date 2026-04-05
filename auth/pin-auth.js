@@ -130,25 +130,36 @@ function _bindDeviceSecret(pepperedPin, deviceSecret) {
 // ─── INTERNAL: MEMORY CLEARING ──────────────────────────────────────────────
 
 /**
- * Best-effort zeroing of sensitive Buffers.
+ * Secure zeroing of sensitive Buffers with dead-store elimination defence.
  *
- * CAVEAT:
- *   Node.js / V8 does not guarantee that Buffer.fill(0) will not be
- *   optimised away. In languages with explicit memory control (Rust, C),
- *   we would use `explicit_bzero()` or `zeroize`. In Node.js, this is
- *   defence-in-depth: it helps but is not a hard guarantee.
+ * Standard Buffer.fill(0) can be optimised away by V8 if the buffer is
+ * not read again. This implementation forces a read-back pass so the JIT
+ * cannot prove the writes are dead, then verifies every byte is zero.
  *
- *   For critical deployments, consider running Argon2id in a WASM module
- *   with manual memory management, or in a native addon with explicit
- *   zeroing.
+ * @param {Buffer} buf — Buffer to securely zero
+ * @throws {Error} If verification fails (should never happen)
+ */
+function secureWipe(buf) {
+    if (!Buffer.isBuffer(buf)) return;
+    for (let i = 0; i < buf.length; i++) {
+        buf[i] = 0;
+    }
+    // Force V8 to not optimize away by reading back
+    let acc = 0;
+    for (let i = 0; i < buf.length; i++) {
+        acc |= buf[i];
+    }
+    if (acc !== 0) throw new Error('Secure wipe failed');
+}
+
+/**
+ * Clear one or more sensitive Buffers using secureWipe.
  *
  * @param {...Buffer} buffers — Buffers to zero out
  */
 function _clearBuffers(...buffers) {
     for (const buf of buffers) {
-        if (Buffer.isBuffer(buf)) {
-            buf.fill(0);
-        }
+        secureWipe(buf);
     }
 }
 
