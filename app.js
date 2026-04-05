@@ -337,11 +337,26 @@ window.addEventListener('DOMContentLoaded', async () => {
             input.value = '';
 
             try {
+                // 1. Persist to server (server stores for offline delivery)
                 const result = await window.app.persistMessage(text, recipientNodeId, msgId);
                 if (result?.success) {
-                    log.info('Message sent and persisted.');
+                    log.info('Message persisted to server.');
+                }
+
+                // 2. Send encrypted via GhostChat mesh transport (E2E encrypted)
+                // [SEC FIX] Always prefer encrypted path when available.
+                // chatTarget is set to peer's publicKey by the UI when opening a chat.
+                if (window.app.chat && recipientNodeId !== 'broadcast') {
+                    try {
+                        await window.app.chat.sendMessage(text, recipientNodeId);
+                        log.info('Message sent via encrypted mesh.');
+                    } catch (encErr) {
+                        log.warn('Encrypted send failed, message still persisted to server:', encErr.message);
+                    }
                 } else if (result === null) {
+                    // No server persistence AND no encryption — last resort unencrypted mesh
                     if (window.app.mesh?.ws?.readyState === WebSocket.OPEN) {
+                        log.warn('Sending unencrypted fallback — no GhostChat session available.');
                         _safeSendWS(window.app.mesh.ws, {
                             type: 'message',
                             id: msgId,

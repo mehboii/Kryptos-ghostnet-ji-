@@ -2052,10 +2052,17 @@
                             await GhostIdentity.saveNewIdentity(_pendingIdentity, pin);
 
                             // --- Authenticate Node with Server (signed) ---
+                            // Capture private key before wiping, then destroy immediately after use
+                            const _authPk = _pendingIdentity.privateKey;
+                            const _authPub = _pendingIdentity.publicKey;
+                            const _authNodeId = _pendingIdentity.nodeId;
+                            // [SEC] Wipe raw private key from in-memory object — it's encrypted in storage now
+                            _pendingIdentity.privateKey = null;
+                            _pendingIdentity.mnemonic = null;
+
                             try {
-                                const _authNodeId = _pendingIdentity.nodeId;
                                 if (_authNodeId && _authNodeId !== 'null' && _authNodeId !== 'undefined') {
-                                    await _authenticateNode(_authNodeId, _pendingIdentity.privateKey, _pendingIdentity.publicKey);
+                                    await _authenticateNode(_authNodeId, _authPk, _authPub);
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
