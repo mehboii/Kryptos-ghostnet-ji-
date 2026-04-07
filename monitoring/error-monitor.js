@@ -143,15 +143,31 @@ export function trackWsError(err) {
 
 /**
  * Install global handlers for uncaughtException and unhandledRejection.
- * These do NOT exit the process — they record + alert + continue.
+ *
+ * After an uncaughtException, Node's process state is UNDEFINED — in-memory
+ * maps may be partially mutated, file writes may be half-flushed, and the
+ * event loop may be in an inconsistent state. Continuing risks routing
+ * messages to the wrong user or corrupting persisted data.
+ *
+ * Correct pattern: capture → give the captureException pipeline a brief
+ * moment to flush → exit non-zero so the supervisor (pm2) restarts cleanly.
  */
+let _shuttingDown = false;
+function _fatalShutdown(err, source) {
+    if (_shuttingDown) return;
+    _shuttingDown = true;
+    try { captureException(err, { source, fatal: true }); } catch (_) { }
+    // Allow up to 1s for the alert webhook / Sentry flush, then hard-exit.
+    setTimeout(() => process.exit(1), 1000).unref();
+}
+
 export function installProcessHandlers() {
     process.on('uncaughtException', (err) => {
-        captureException(err, { source: 'uncaughtException' });
+        _fatalShutdown(err, 'uncaughtException');
     });
     process.on('unhandledRejection', (reason) => {
         const err = reason instanceof Error ? reason : new Error(String(reason));
-        captureException(err, { source: 'unhandledRejection' });
+        _fatalShutdown(err, 'unhandledRejection');
     });
 }
 
