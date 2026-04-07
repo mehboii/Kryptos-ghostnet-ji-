@@ -93,6 +93,10 @@ import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
+import monitor from './monitoring/error-monitor.js';
+
+// Install global crash handlers as early as possible
+monitor.installProcessHandlers();
 // local inline middleware used instead of auth.middleware.js
 import {
     findById as findAuthUserById,
@@ -376,6 +380,9 @@ const app = express();
 app.set('trust proxy', 1); // Railway runs behind one reverse proxy — use count to prevent X-Forwarded-For spoofing
 
 // [33] Security headers — cross-origin policies disabled for API use
+// Error monitoring — must be early so it sees every request
+app.use(monitor.expressMiddleware());
+
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
@@ -429,6 +436,11 @@ app.get('/health', (req, res) => {
         queued: messageQueue.size,
         uptime: process.uptime()
     });
+});
+
+// Monitoring snapshot — rolling 5-minute window of crashes/errors/disconnects
+app.get('/health/metrics', (req, res) => {
+    res.json(monitor.getMetrics());
 });
 
 // [22] Global rate limit
@@ -1547,6 +1559,9 @@ app.get('/', (_req, res) => {
     res.sendFile(filePath);
 });
 
+// Express error handler — must be mounted after all routes
+app.use(monitor.expressErrorHandler());
+
 // ─── HTTP server ─────────────────────────────────────────────────────────────
 
 const server = app.listen(PORT, '0.0.0.0', () => {
@@ -1640,6 +1655,7 @@ wss.on('connection', (ws) => {
     // [08] ws._user is set by the upgrade handler — always authenticated
     let clientId = null;
     ws.isAlive = true;
+    monitor.trackWsConnect();
 
     // Track active connection by user ID
     if (ws._user && ws._user.id) {
@@ -1668,6 +1684,7 @@ wss.on('connection', (ws) => {
     // Prevent unhandled socket errors from crashing the connection
     ws.on('error', err => {
         console.error('[WS] Socket error:', err.message);
+        monitor.trackWsError(err);
     });
 
     ws.on('message', data => {
@@ -1871,6 +1888,7 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
+        monitor.trackWsDisconnect();
         // Clean clients map (merged from earlier close handler)
         if (ws._user && ws._user.id) clients.delete(ws._user.id);
 
