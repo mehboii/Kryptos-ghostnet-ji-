@@ -431,6 +431,7 @@ class GhostMesh {
                 this.wsReady = true;
                 this._connecting = false;
                 this._reconnectDelay = 3000; // reset backoff on success
+                this._reconnectAttempts = 0;  // reset attempt counter on success
 
                 safeSend(ws, JSON.stringify({
                     type: 'register',
@@ -462,7 +463,10 @@ class GhostMesh {
                 // Guard: only handle close for the current socket
                 if (this.ws !== ws) return;
 
-                console.warn('🔌 Mesh: WebSocket disconnected');
+                // Only log first 3 disconnects to avoid console flood
+                if (!this._reconnectAttempts || this._reconnectAttempts < 3) {
+                    console.warn('🔌 Mesh: WebSocket disconnected');
+                }
                 this.wsReady = false;
                 this._connecting = false;
                 this.ws = null;
@@ -484,7 +488,10 @@ class GhostMesh {
             };
 
             ws.onerror = () => {
-                console.warn('[GhostMesh] WebSocket error.'); // [S8] no raw event details
+                // Only log first 3 errors to avoid console flood
+                if (!this._reconnectAttempts || this._reconnectAttempts < 3) {
+                    console.warn('[GhostMesh] WebSocket error.'); // [S8] no raw event details
+                }
                 // onclose always fires after onerror — let onclose handle reconnect
                 // Do NOT schedule reconnect here to avoid double-reconnect race
             };
@@ -497,10 +504,13 @@ class GhostMesh {
         }
     }
 
-    /** Exponential backoff reconnect (3s → 6s → 12s → ... → 60s max) */
+    /** Exponential backoff reconnect (3s → 6s → 12s → ... → 120s max) */
     _scheduleReconnect() {
         if (this._destroyed) return;
         clearTimeout(this.reconnectTimer);
+
+        // Track consecutive failures for log suppression
+        this._reconnectAttempts = (this._reconnectAttempts || 0) + 1;
 
         // If the device is offline, don't spin — wait for the 'online' event
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -510,6 +520,7 @@ class GhostMesh {
                 this._onlineHandler = () => {
                     console.log('[GhostNet] Device back online — reconnecting immediately...');
                     this._reconnectDelay = 3000; // reset backoff on fresh online
+                    this._reconnectAttempts = 0;
                     this.connectWebSocket();
                 };
                 window.addEventListener('online', this._onlineHandler, { once: true });
@@ -518,9 +529,14 @@ class GhostMesh {
         }
 
         const delay = this._reconnectDelay;
-        console.log(`[GhostNet] WebSocket closed — reconnecting in ${delay / 1000}s...`);
+
+        // Suppress console spam: log first 3 attempts, then every 5th
+        if (this._reconnectAttempts <= 3 || this._reconnectAttempts % 5 === 0) {
+            console.log(`[GhostNet] WebSocket reconnecting in ${delay / 1000}s... (attempt ${this._reconnectAttempts})`);
+        }
+
         this.reconnectTimer = setTimeout(() => this.connectWebSocket(), delay);
-        this._reconnectDelay = Math.min(this._reconnectDelay * 2, 60000); // cap at 60s
+        this._reconnectDelay = Math.min(this._reconnectDelay * 2, 120000); // cap at 120s
     }
 
     handleWSMessage(msg) {
