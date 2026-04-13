@@ -411,12 +411,14 @@ class GhostMesh {
         }
 
         try {
-            // [SEC FIX H1] Token sent as post-connect message, NOT in URL query string.
-            // URL query params leak into server logs, browser history, proxy logs, and Referer headers.
+            // The server's upgrade handler requires the JWT token in the URL query
+            // string for authentication during the WebSocket handshake.
+            // Without it, the server immediately destroys the socket.
             const base = this.buildWsUrl();
+            const wsUrl = `${base}?token=${encodeURIComponent(token)}`;
             console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`);
 
-            const ws = new WebSocket(base);
+            const ws = new WebSocket(wsUrl);
             this.ws = ws;
 
             ws.onopen = () => {
@@ -424,9 +426,6 @@ class GhostMesh {
                 if (this.ws !== ws) return;
 
                 console.log('✅ Mesh: WebSocket connected');
-
-                // Authenticate first, then register
-                safeSend(ws, JSON.stringify({ type: 'auth', token }));
 
                 this.wsReady = true;
                 this._connecting = false;
