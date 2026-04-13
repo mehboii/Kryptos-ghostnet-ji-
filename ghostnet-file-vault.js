@@ -339,22 +339,26 @@
         async getOrGenerateKey() {
             if (this.key) return this.key;
 
-            if (!_hasToken()) {
-                console.warn('[Vault] No auth token — skipping vault key sync');
-                throw new Error('Authenticated session required for vault access.');
+            // When no auth token exists (offline / pre-login), skip server sync
+            // and fall through to local key fallback instead of throwing.
+            const hasAuth = _hasToken();
+            if (!hasAuth) {
+                console.warn('[Vault] No auth token — skipping vault key sync, using local key fallback');
             }
 
             let serverKeyData = null;
-            try {
-                const response = await fetch(`${VAULT_API}/keys`, {
-                    headers: _secureHeaders()
-                });
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.keyData) serverKeyData = data.keyData;
+            if (hasAuth) {
+                try {
+                    const response = await fetch(`${VAULT_API}/keys`, {
+                        headers: _secureHeaders()
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.keyData) serverKeyData = data.keyData;
+                    }
+                } catch (e) {
+                    console.warn('Could not fetch vault key from server', e);
                 }
-            } catch (e) {
-                console.warn('Could not fetch vault key from server', e);
             }
 
             if (window.UI && window.UI.promptVaultKeyRecovery && !isVaultUnlocked()) {
@@ -571,8 +575,13 @@
     // ─── Upload ───────────────────────────────────────────────────────────────
 
     async function uploadFile(file, onProgress) {
+        // Explicit offline check — give clear feedback instead of auth errors
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            throw new Error('You are offline. File uploads require a network connection.');
+        }
+
         const owner = getOwner();
-        if (!owner) throw new Error('Not authenticated.');
+        if (!owner) throw new Error('Not authenticated. Please log in first.');
 
         // [FIX F] Size enforced inside encryptFile().
         if (onProgress) onProgress({ stage: 'encrypting', percent: 0 });
