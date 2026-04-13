@@ -501,6 +501,22 @@ class GhostMesh {
     _scheduleReconnect() {
         if (this._destroyed) return;
         clearTimeout(this.reconnectTimer);
+
+        // If the device is offline, don't spin — wait for the 'online' event
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+            console.log('[GhostNet] Device offline — pausing reconnect until connectivity returns.');
+            this.onStatusChange({ state: 'offline', transport: 'ws' });
+            if (!this._onlineHandler) {
+                this._onlineHandler = () => {
+                    console.log('[GhostNet] Device back online — reconnecting immediately...');
+                    this._reconnectDelay = 3000; // reset backoff on fresh online
+                    this.connectWebSocket();
+                };
+                window.addEventListener('online', this._onlineHandler, { once: true });
+            }
+            return;
+        }
+
         const delay = this._reconnectDelay;
         console.log(`[GhostNet] WebSocket closed — reconnecting in ${delay / 1000}s...`);
         this.reconnectTimer = setTimeout(() => this.connectWebSocket(), delay);

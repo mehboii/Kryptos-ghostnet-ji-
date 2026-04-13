@@ -1529,14 +1529,23 @@ const UI = {
             return;
         }
 
-        // Silent backend validation
+        // Silent backend validation with timeout for offline resilience
         const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+        const VALIDATE_TIMEOUT_MS = 8000; // 8s timeout — don't hang forever offline
+
         try {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
+
+            // AbortController for fetch timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
+
             const res = await fetch(validateUrl, {
-                headers: getAuthHeaders()
+                headers: getAuthHeaders(),
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
 
             if (!res.ok) {
                 console.error('Validation HTTP error:', res.status, res.statusText);
@@ -1613,10 +1622,40 @@ const UI = {
                 acceptContactOffline(name);
                 return;
             }
-            if (errEl) errEl.textContent = '⚠ Could not verify node. Server may be offline.';
-            if (startBtn) {
-                startBtn.disabled = false;
-                startBtn.textContent = 'START SESSION';
+
+            // ── OFFLINE FALLBACK for all contacts ──
+            // If the server is unreachable (network error / timeout), offer the
+            // user the option to add the contact anyway.  The node ID is still
+            // cryptographically valid — server validation is a secondary check.
+            const isNetworkError = e.name === 'AbortError' || e.name === 'TypeError' || !navigator.onLine;
+            if (isNetworkError) {
+                if (errEl) {
+                    errEl.innerHTML = '';
+                    const warnText = document.createElement('span');
+                    warnText.textContent = '⚠ Server unreachable. ';
+                    errEl.appendChild(warnText);
+
+                    const offlineBtn = document.createElement('button');
+                    offlineBtn.textContent = 'Add Contact Offline';
+                    offlineBtn.style.cssText = 'background:rgba(0,240,255,0.15);color:#00f0ff;border:1px solid rgba(0,240,255,0.4);border-radius:8px;padding:4px 12px;cursor:pointer;font-size:0.8rem;margin-left:6px;';
+                    const offlineHandler = () => {
+                        console.log('[Offline] User accepted contact without server validation');
+                        acceptContactOffline(name);
+                    };
+                    offlineBtn.addEventListener('click', offlineHandler);
+                    offlineBtn.addEventListener('touchend', (ev) => { ev.preventDefault(); offlineHandler(); });
+                    errEl.appendChild(offlineBtn);
+                }
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'START SESSION';
+                }
+            } else {
+                if (errEl) errEl.textContent = '⚠ Could not verify node. Please try again.';
+                if (startBtn) {
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'START SESSION';
+                }
             }
         }
     },
