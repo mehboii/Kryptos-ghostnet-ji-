@@ -2007,12 +2007,13 @@ const UI = {
         const el = document.getElementById('wallet');
         if (!el) return;
 
+        const createSvgUri = (svg) => "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
         const CRYPTO_LOGOS = {
-            'ETH': 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',
-            'BTC': 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',
-            'SOL': 'https://assets.coingecko.com/coins/images/4128/small/solana.png',
-            'USDT': 'https://assets.coingecko.com/coins/images/325/small/Tether.png',
-            'AHT': 'https://assets.coingecko.com/coins/images/279/small/ethereum.png'
+            'ETH': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#627EEA"/><path d="M15.8 4v8.5L9 15.6l6.8-11.6zM16.2 4l6.8 11.6-6.8-3.1V4zM9 16.6l6.8 4v7.4L9 16.6zm7.2 11.4v-7.4l6.8-4-6.8 11.4z" fill="#FFF" opacity=".6"/><path d="M15.8 12.5v4.5L9 15.6l6.8-3.1zM16.2 12.5l6.8 3.1-6.8 1.4v-4.5z" fill="#FFF"/></svg>'),
+            'BTC': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#F7931A"/><path d="M21.7 15.6c.5-3.3-1.9-5-5-5.6V7h-2.1v2.9h-2.1V7h-2v3H8v2h2.5c.6 0 .9.3.9.7v8.9c0 .4-.3.7-.9.7H8v2h2.5v3h2v-3h2.1v3h2.1v-3c3.6 0 6.6-1.5 7-5 .3-2.1-.9-3.4-2.4-4 1-.3 2.1-1.2 2.4-3zm-4.7 5.8c-1.3 0-4.3-.8-4.3-.8v-3s3 .8 4.3.8c1.3 0 2 1.4 0 3zm.6-4.5c-1.1 0-3.6-.8-3.6-.8v-2.7s2.5.6 3.6.8c1.1.2 1.6 1.4 0 2.7z" fill="#FFF"/></svg>'),
+            'SOL': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#000"/><path d="M7.4 22.4l3.1-3.1 14.1.1-3.1 3.1zM24.6 12.7l-3.1 3.1-14.1-.1 3.1-3.1zM7.4 9.6l3.1-3.1 14.1.1-3.1 3.1z" fill="#14F195"/></svg>'),
+            'USDT': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path d="M17.4 13.9v8.7h-2.8v-8.7c-3.5-.2-6.1-1.3-6.1-2.6s2.6-2.4 6.1-2.6V6h2.8v2.7c3.5.2 6.1 1.3 6.1 2.6s-2.6 2.4-6.1 2.6zm-1.4-4.2c-3.1 0-5.1.8-5.1 1.6 0 .8 2 1.6 5.1 1.6 3 0 5.1-.8 5.1-1.6 0-.8-2-1.6-5.1-1.6z" fill="#FFF"/></svg>'),
+            'AHT': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#3b82f6"/><path d="M16 6l8 14H8z" fill="#FFF"/><polygon points="16,12 20,6 12,6" fill="#FFF" opacity=".6"/></svg>')
         };
 
         const CRYPTO_META = {
