@@ -1494,8 +1494,20 @@ app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
     stream.pipe(res);
 });
 
-app.get('/vault/files/:owner', requireAuth, async (_req, res) => {
-    res.json({ files: [] });
+app.get('/vault/files/:owner', requireAuth, async (req, res) => {
+    if (req.user.id !== req.params.owner && req.params.owner !== 'me') {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+    const userFiles = fileMeta.filter(f => f.owner === req.user.id && !f.deleted).map(f => ({
+        fileId: f.fileId,
+        fileName: f.fileName,
+        fileSize: f.fileSize,
+        originalSize: f.originalSize,
+        uploadedAt: f.uploadedAt,
+        iv: f.iv || null,
+        authTag: f.authTag || null
+    }));
+    res.json({ files: userFiles });
 });
 
 app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
@@ -1503,13 +1515,32 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
     try { fileId = validateFileId(req.params.fileId); }
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
 
+    const record = fileMeta.find(f => f.fileId === fileId && !f.deleted);
+    if (!record) return res.status(404).json({ error: 'File not found' });
+    
+    if (record.owner !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+    const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
+    if (!fs.existsSync(filePath)) return res.json({ valid: false, hashMatch: false, error: 'File data missing' });
+
     try {
-        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/verify/${encodeURIComponent(fileId)}`, {
-            headers: { 'Authorization': req.headers.authorization || '', 'X-Auth-Token': req.headers['x-auth-token'] || '' }
+        const fileHash = await new Promise((resolve, reject) => {
+            const hash = crypto.createHash('sha256');
+            const stream = fs.createReadStream(filePath);
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('end', () => resolve(hash.digest('hex')));
+            stream.on('error', reject);
         });
-        res.status(proxyRes.status).json(await proxyRes.json());
-    } catch (_) {
-        res.status(502).json({ error: 'Vault service unavailable' }); // [32]
+
+        const hashMatch = (fileHash === record.fileHash);
+        res.json({
+            valid: hashMatch,
+            hashMatch: hashMatch,
+            fileSize: fs.statSync(filePath).size,
+            originalSize: record.originalSize
+        });
+    } catch(e) {
+        res.status(500).json({ error: 'Verification failed' });
     }
 });
 
@@ -1519,7 +1550,6 @@ app.get('/vault/keys', requireAuth, (req, res) => {
     if (keyData) {
         res.json({ success: true, keyData: keyData });
     } else {
-        // [Resilience] Return 200 with success: false instead of 404 to avoid "Route Not Found" ambiguity
         res.json({ success: false, error: 'Vault key not found' });
     }
 });
@@ -1540,16 +1570,24 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]
     try { fileId = validateFileId(req.params.fileId); }
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
 
-    try {
-        // [19] Do NOT forward req.body — vault authenticates deletion via its own mechanism
-        const proxyRes = await fetch(`${VAULT_ORIGIN}/vault/file/${encodeURIComponent(fileId)}`, {
-            method: 'DELETE',
-            headers: { 'content-type': 'application/json', 'Authorization': req.headers.authorization || '', 'X-Auth-Token': req.headers['x-auth-token'] || '' },
-        });
-        res.status(proxyRes.status).json(await proxyRes.json());
-    } catch (_) {
-        res.status(502).json({ error: 'Vault service unavailable' }); // [32]
+    const record = fileMeta.find(f => f.fileId === fileId && !f.deleted);
+    if (!record) return res.status(404).json({ error: 'File not found' });
+
+    if (record.owner !== req.user.id) return res.status(403).json({ error: 'Access denied' });
+
+    record.deleted = true;
+    saveMeta();
+
+    const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
+    if (fs.existsSync(filePath)) {
+        try {
+            fs.unlinkSync(filePath);
+        } catch(e) {
+            console.error('Failed to delete physical file:', e);
+        }
     }
+
+    res.json({ success: true });
 });
 
 // Explicit root
