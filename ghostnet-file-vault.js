@@ -906,9 +906,13 @@
         }
 
         if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            console.error('[Vault] Delete error:', err.error || response.status);
-            throw new Error('Delete failed. Please try again.');
+            if (response.status === 404) {
+                console.warn('[Vault] File not found on server, processing local cleanup.');
+            } else {
+                const err = await response.json().catch(() => ({}));
+                console.error('[Vault] Delete error:', err.error || response.status);
+                throw new Error('Delete failed. Please try again.');
+            }
         }
 
         await removeKey(fileId);
