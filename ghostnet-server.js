@@ -1571,7 +1571,11 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
 
     const record = fileMeta.find(f => f.fileId === fileId && !f.deleted);
-    if (!record) return res.status(404).json({ error: 'File not found' });
+    if (!record) {
+        // Return 200 instead of 404 to prevent browser console network errors
+        // when the client attempts to delete an already-deleted file.
+        return res.status(200).json({ success: true, warning: 'File already deleted or not found' });
+    }
 
     if (record.owner !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
