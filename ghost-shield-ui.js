@@ -419,12 +419,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.GhostShield.disableAll();
             } else {
                 window.GhostShield.enableAll();
+                if (typeof GhostAnalytics !== 'undefined') {
+                    GhostAnalytics.trackEvent('shield', 'activated');
+                    GhostAnalytics.trackFeature('shield:all');
+                }
             }
             this.updateView();
         },
 
         activateLevel(lvl) {
             window.GhostShield.enable(lvl);
+            if (typeof GhostAnalytics !== 'undefined') {
+                GhostAnalytics.trackEvent('shield', 'activated');
+                GhostAnalytics.trackFeature(`shield:level${lvl}`);
+            }
             this.updateView();
         },
 

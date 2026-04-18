@@ -458,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
         async manualScan() {
             const radar = window.GhostRadar;
             if (!radar || radar.scanning) return;
+            if (typeof GhostAnalytics !== 'undefined') GhostAnalytics.trackFeature('radar:scan');
             await radar.startScan();
         },
 
