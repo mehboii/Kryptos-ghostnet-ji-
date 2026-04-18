@@ -94,6 +94,7 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
 import monitor from './monitoring/error-monitor.js';
+import * as analytics from './analytics.js';
 
 // Install global crash handlers as early as possible
 monitor.installProcessHandlers();
@@ -729,6 +730,7 @@ function requireAuth(req, res, next) {
         decoded.id = decoded.id || decoded.userId;
         if (!decoded.id) return res.status(401).json({ error: 'Invalid token: missing user identifier' });
         req.user = decoded;
+        analytics.trackActiveUser(decoded.id).catch(() => {});
         next();
     } catch (_) {
         res.status(401).json({ error: 'Invalid or expired token' });
@@ -1303,6 +1305,8 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     }
 
     res.json({ success: true, message: { id: msg.id, convoId: convo.id, timestamp: msg.timestamp } });
+    analytics.trackEvent('message', 'sent').catch(() => {});
+    analytics.trackFeature('chat').catch(() => {});
 });
 
 // ─── CONVERSATIONS ───────────────────────────────────────────────────────────
@@ -1601,6 +1605,60 @@ app.get('/', (_req, res) => {
     res.sendFile(filePath);
 });
 
+// ─── ANALYTICS (privacy-respecting, self-hosted) ────────────────────────────
+
+const analyticsEventLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many analytics events' },
+});
+
+app.post('/analytics/event', requireAuth, analyticsEventLimiter, async (req, res) => {
+    const sessionId = req.user.id;
+    const { category, action, feature } = req.body || {};
+
+    try {
+        await analytics.trackActiveUser(sessionId);
+
+        if (feature && typeof feature === 'string') {
+            await analytics.trackFeature(feature.slice(0, 64));
+        }
+        if (category && action && typeof category === 'string' && typeof action === 'string') {
+            await analytics.trackEvent(category.slice(0, 64), action.slice(0, 64));
+        }
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('Analytics event error:', err.message);
+        res.status(500).json({ error: 'Analytics write failed' });
+    }
+});
+
+const ANALYTICS_SECRET = process.env.ANALYTICS_ADMIN_SECRET || null;
+
+app.get('/analytics/dashboard', requireAuth, async (req, res) => {
+    if (ANALYTICS_SECRET) {
+        const provided = req.headers['x-analytics-secret'] || '';
+        if (provided !== ANALYTICS_SECRET) {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
+    }
+
+    const days = Math.min(parseInt(req.query.days, 10) || 30, 90);
+    try {
+        const data = await analytics.getDashboard(days);
+        res.json(data);
+    } catch (err) {
+        console.error('Analytics dashboard error:', err.message);
+        res.status(500).json({ error: 'Analytics read failed' });
+    }
+});
+
+app.get('/analytics', requireAuth, (_req, res) => {
+    res.sendFile(path.join(__dirname, 'analytics-dashboard.html'));
+});
+
 // Express error handler — must be mounted after all routes
 app.use(monitor.expressErrorHandler());
 
@@ -1608,6 +1666,7 @@ app.use(monitor.expressErrorHandler());
 
 const server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`🟢 GhostNet Server on port ${PORT} [${GHOSTNET_MODE}]`);
+    analytics.init().catch(err => console.error('Analytics init failed:', err.message));
 });
 
 // ─── WebSocket setup ──────────────────────────────────────────────────────────

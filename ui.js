@@ -82,6 +82,61 @@ window.AppState = {
 // --- CONSTANTS ---
 const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
 
+// ── PRIVACY-RESPECTING ANALYTICS ─────────────────────────────────────────
+const GhostAnalytics = (() => {
+    let queue = [];
+    let flushTimer = null;
+
+    function send(payload) {
+        const token = (() => {
+            try {
+                const raw = sessionStorage.getItem('ghostnet_token')
+                          || localStorage.getItem('ghostnet_token')
+                          || localStorage.getItem('ghostnet_jwt');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return parsed?.token || raw;
+            } catch { return raw; }
+        })();
+        if (!token) return;
+
+        queue.push(payload);
+        if (!flushTimer) {
+            flushTimer = setTimeout(flush, 5000);
+        }
+    }
+
+    function flush() {
+        flushTimer = null;
+        if (!queue.length) return;
+        const batch = queue.splice(0, queue.length);
+        const token = (() => {
+            try {
+                const raw = sessionStorage.getItem('ghostnet_token')
+                          || localStorage.getItem('ghostnet_token')
+                          || localStorage.getItem('ghostnet_jwt');
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                return parsed?.token || raw;
+            } catch { return raw; }
+        })();
+        if (!token) return;
+        for (const payload of batch) {
+            fetch(`${BACKEND_URL}/analytics/event`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify(payload),
+            }).catch(() => {});
+        }
+    }
+
+    return {
+        trackFeature(feature) { send({ feature }); },
+        trackEvent(category, action) { send({ category, action }); },
+        trackView(view) { send({ feature: `view:${view}` }); },
+    };
+})();
+
 // ── AUTH TOKEN HELPERS ─────────────────────────────────────────────────────
 // Guard flag: once clearSession fires, block all further calls in this page load
 let _authRedirectFired = false;
@@ -546,6 +601,8 @@ const UI = {
     },
 
     navigate: (target) => {
+        GhostAnalytics.trackView(target);
+
         // Sidebar buttons
         document.querySelectorAll('.nav-btn').forEach(b => {
             if (b.id !== 'theme-toggle') {
@@ -2870,6 +2927,7 @@ const UI = {
                 });
 
                 console.log(' Vault upload complete:', result);
+                GhostAnalytics.trackFeature('vault:upload');
             } catch (err) {
                 console.error(' Vault upload failed:', err);
                 if (stageEl) stageEl.textContent = ' Upload Failed';
