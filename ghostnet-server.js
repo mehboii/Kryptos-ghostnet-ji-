@@ -95,6 +95,10 @@ import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
 import monitor from './monitoring/error-monitor.js';
 import * as analytics from './analytics.js';
+import { healthCheck as dbHealthCheck, checkMigrationsRan } from './db/client.js';
+import * as messageStore from './db/messageStore.js';
+import * as nodeStore from './db/nodeStore.js';
+import { startCleanupCron } from './db/cleanup.js';
 
 // Install global crash handlers as early as possible
 monitor.installProcessHandlers();
@@ -808,6 +812,8 @@ app.post('/register-node', requireAuth, (req, res) => { // [01]
     };
 
     saveNodeRegistry();
+    nodeStore.upsertNode(nodeId, { displayName, ownerId: req.user.id, publicKey, avatar }).catch(err =>
+        console.error('[DB] upsertNode failed:', err.message));
     res.json({ success: true });
 });
 
@@ -1208,6 +1214,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
                 lastSeen: Date.now(),
             };
             saveNodeRegistry();
+            nodeStore.upsertNode(receiverId, { displayName: user?.username || receiverId.slice(0, 10), ownerId: user?.id || receiverId }).catch(() => {});
         }
     }
 
@@ -1221,6 +1228,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
             lastSeen: Date.now(),
         };
         saveNodeRegistry();
+        nodeStore.upsertNode(senderId, { displayName: contactName || senderId.slice(0, 10), ownerId: req.user.id }).catch(() => {});
     }
 
     let convo = conversations.find(c =>
@@ -1268,6 +1276,9 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     }
     messages.push(msg);
     scheduleWrite(MESSAGES_FILE, messages); // [12]
+    // Persist to Postgres (fire-and-forget — JSON is still authoritative during migration)
+    messageStore.storeMessage(msg.id, convo.id, receiverId, senderId, content).catch(err =>
+        console.error('[DB] storeMessage failed:', err.message));
 
     // Real-time delivery
     const targetWs = activeConnections.get(receiverId);
@@ -1285,6 +1296,7 @@ app.post('/message', requireAuth, (req, res) => { // [02]
         });
         msg.delivered = true;
         scheduleWrite(MESSAGES_FILE, messages); // [12]
+        messageStore.markDelivered(msg.id).catch(() => {});
 
         // Send delivery receipt to sender if they have a WS
         if (senderWs) {
@@ -1664,9 +1676,20 @@ app.use(monitor.expressErrorHandler());
 
 // ─── HTTP server ─────────────────────────────────────────────────────────────
 
-const server = app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🟢 GhostNet Server on port ${PORT} [${GHOSTNET_MODE}]`);
     analytics.init().catch(err => console.error('Analytics init failed:', err.message));
+
+    // Postgres startup checks
+    if (process.env.DATABASE_URL) {
+        const healthy = await dbHealthCheck();
+        if (healthy) {
+            const migrated = await checkMigrationsRan();
+            if (migrated) startCleanupCron(7);
+        }
+    } else {
+        console.warn('[DB] DATABASE_URL not set — running in JSON-only mode.');
+    }
 });
 
 // ─── WebSocket setup ──────────────────────────────────────────────────────────
@@ -1725,6 +1748,7 @@ function deliverPendingMessages(nodeId, ws) {
     );
     if (!pending.length) return;
 
+    const deliveredIds = [];
     pending.forEach(m => {
         safeSend(ws, {
             type: 'CHAT_MESSAGE',
@@ -1737,9 +1761,11 @@ function deliverPendingMessages(nodeId, ws) {
             timestamp: m.timestamp,
         });
         m.delivered = true;
+        deliveredIds.push(m.id);
     });
 
     scheduleWrite(MESSAGES_FILE, messages); // [12]
+    if (deliveredIds.length) messageStore.markMultipleDelivered(deliveredIds).catch(() => {});
 
     conversations.filter(c => c?.participants?.includes(nodeId)).forEach(c => {
         const otherId = c.participants.find(p => p !== nodeId) || nodeId;
@@ -1765,6 +1791,7 @@ wss.on('connection', (ws) => {
         // Deliver any transient pending messages stored in the pendingMessages object
         if (pendingMessages[ws._user.id] && pendingMessages[ws._user.id].length > 0) {
             const msgs = pendingMessages[ws._user.id];
+            const wsDeliveredIds = [];
             msgs.forEach(m => {
                 safeSend(ws, {
                     type: 'CHAT_MESSAGE', id: m.id, convoId: m.convoId,
@@ -1773,9 +1800,11 @@ wss.on('connection', (ws) => {
                     timestamp: m.timestamp,
                 });
                 m.delivered = true;
+                wsDeliveredIds.push(m.id);
             });
             pendingMessages[ws._user.id] = [];
             scheduleWrite(MESSAGES_FILE, messages);
+            if (wsDeliveredIds.length) messageStore.markMultipleDelivered(wsDeliveredIds).catch(() => {});
         }
     }
 
@@ -1863,8 +1892,10 @@ wss.on('connection', (ws) => {
                             registeredAt: Date.now(),
                             lastSeen: Date.now(),
                         };
+                        nodeStore.upsertNode(clientId, { displayName: clientId.slice(0, 10), ownerId: ws._user.id }).catch(() => {});
                     } else {
                         registeredNodes[clientId].lastSeen = Date.now();
+                        nodeStore.updateLastSeen(clientId).catch(() => {});
                     }
                     saveNodeRegistry();
 
@@ -1975,6 +2006,9 @@ wss.on('connection', (ws) => {
                     };
                     messages.push(newMsg);
                     scheduleWrite(MESSAGES_FILE, messages); // [12]
+                    messageStore.storeMessage(newMsg.id, convo.id, safeTarget, senderId, content).then(() => {
+                        if (wsDelivered) messageStore.markDelivered(newMsg.id).catch(() => {});
+                    }).catch(err => console.error('[DB] WS storeMessage failed:', err.message));
                     break;
                 }
 
