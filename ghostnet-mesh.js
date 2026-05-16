@@ -147,6 +147,10 @@ class GhostMesh {
             bytes: 0,
             startTime: Date.now()
         };
+
+        // [Step 2] Mesh Hardening
+        this.merkleLedger = typeof MerkleLedgerSync !== 'undefined' ? new MerkleLedgerSync() : null;
+        this.zeroRouteQueue = typeof ZeroRouteQueue !== 'undefined' ? new ZeroRouteQueue() : null;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -335,10 +339,18 @@ class GhostMesh {
             ts: Date.now()
         };
 
+        if (this.merkleLedger) this.merkleLedger.addMessage(payload);
+
         if (peer?.transport === 'ble' && peer.connected && peer.writeChar) {
             await this._bleSend(peer, payload); // [S12]
         } else if (this.ws && this.wsReady) {
             safeSend(this.ws, JSON.stringify(payload));
+        } else if (this.zeroRouteQueue && message.recipientPubKey) {
+            await this.zeroRouteQueue.enqueue(
+                validId, message.recipientPubKey,
+                typeof message === 'string' ? message : JSON.stringify(message),
+                payload.id
+            );
         }
     }
 
@@ -582,6 +594,7 @@ class GhostMesh {
                 const fromId = this.validatePeerId(msg.from); // [S9]
                 if (!fromId || fromId === this.identity.id) break;
                 if (this.peers.has(fromId)) this.peers.get(fromId).lastSeen = Date.now();
+                if (this.merkleLedger) this.merkleLedger.addMessage(msg);
                 this.onMessage(msg.data || msg.content || msg, fromId, 'ws');
 
                 // [S6] Relay only if hops < our MAX_HOPS constant — never msg.maxHops
