@@ -36,6 +36,12 @@
     const VALID_SIGNAL_TYPES = new Set(['offer', 'answer', 'candidate']); // [3] whitelist
     const MAX_SDP_LENGTH = 8192;   // [7] SDP size cap — realistic SDPs are <4KB
     const MAX_PEER_ID_LENGTH = 128;    // [3] peer ID length cap
+    const DEFAULT_STUN_SERVERS = [
+        'stun:stun.l.google.com:19302',
+        'stun:stun.cloudflare.com:3478',
+        'stun:global.stun.twilio.com:3478',
+    ];
+    const TURN_RELAY_QUOTA = { free: 25, stealth: 60, ghost: 120, phantom: 300 };
 
     // ─── [1] REAL AES-GCM STREAM ENCRYPTION ────────────
     // Generates a fresh AES-256-GCM key per call.
@@ -169,6 +175,14 @@
         return video;
     }
 
+    function getTierName() {
+        const raw = window.AppState?.subscriptionTier
+            || window.AppState?.shieldTier
+            || window.app?.subscriptionTier
+            || 'free';
+        return String(raw).toLowerCase();
+    }
+
     // ─── MAIN CLASS ─────────────────────────────────────
 
     class GhostWebRTC {
@@ -188,19 +202,26 @@
             this.activeCalls = new Map();
             this.callKeys = new Map();         // [1] per-call encryption keys
             this.localStream = null;
+            this.relayUsage = { windowStart: Date.now(), count: 0 };
+            const processEnv = (typeof globalThis !== 'undefined'
+                && globalThis.process
+                && globalThis.process.env
+                && typeof globalThis.process.env === 'object')
+                ? globalThis.process.env
+                : {};
 
             // [4] Add TURN servers to prevent real IP exposure
             // Replace TURN credentials with your own server in production
             this.rtcConfig = {
                 iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
+                    ...DEFAULT_STUN_SERVERS.map(url => ({ urls: url })),
                     {
                         urls: 'turn:turn.yourserver.com:3478',  // [4] TURN — replace with your server
-                        username: process?.env?.TURN_USERNAME || '',
-                        credential: process?.env?.TURN_CREDENTIAL || ''
+                        username: processEnv.TURN_USERNAME || '',
+                        credential: processEnv.TURN_CREDENTIAL || ''
                     }
                 ],
-                iceTransportPolicy: 'relay',   // [4] force TURN relay — hides real IP
+                iceTransportPolicy: 'all',
                 encodedInsertableStreams: true
             };
 
@@ -222,6 +243,45 @@
                 this.localStream.getTracks().forEach(track => track.stop());
                 this.localStream = null;
             }
+        }
+
+        _relayQuota() {
+            const tier = getTierName();
+            return TURN_RELAY_QUOTA[tier] || TURN_RELAY_QUOTA.free;
+        }
+
+        _consumeRelayQuota() {
+            const now = Date.now();
+            if (now - this.relayUsage.windowStart > 60 * 60 * 1000) {
+                this.relayUsage.windowStart = now;
+                this.relayUsage.count = 0;
+            }
+            this.relayUsage.count += 1;
+            return this.relayUsage.count <= this._relayQuota();
+        }
+
+        async _enforceRelayQuota(pc, peerId) {
+            if (!pc?.getStats) return;
+            try {
+                const stats = await pc.getStats();
+                let relayed = false;
+                stats.forEach(report => {
+                    if (report.type !== 'candidate-pair' || !report.selected) return;
+                    const local = stats.get(report.localCandidateId);
+                    const remote = stats.get(report.remoteCandidateId);
+                    if (local?.candidateType === 'relay' || remote?.candidateType === 'relay') {
+                        relayed = true;
+                    }
+                });
+                if (relayed && !this._consumeRelayQuota()) {
+                    console.warn('[GhostWebRTC] TURN relay quota exceeded for current tier');
+                    this.closePeerConnection(peerId);
+                }
+            } catch (_) { }
+        }
+
+        attemptUpnpPortMap() {
+            throw new Error('UPnP is disabled in GhostNet by policy');
         }
 
         // [6] Clean up a single peer connection fully
@@ -290,6 +350,9 @@
 
             // [6] Monitor connection state — clean up on failure
             pc.oniceconnectionstatechange = () => {
+                if (['connected', 'completed'].includes(pc.iceConnectionState)) {
+                    this._enforceRelayQuota(pc, targetPeerId);
+                }
                 if (['failed', 'disconnected', 'closed'].includes(pc.iceConnectionState)) {
                     console.warn(`[GhostWebRTC] Connection to ${targetPeerId} ${pc.iceConnectionState} — cleaning up`);
                     this.closePeerConnection(targetPeerId);
@@ -343,6 +406,9 @@
 
             // [6] Monitor connection state
             pc.oniceconnectionstatechange = () => {
+                if (['connected', 'completed'].includes(pc.iceConnectionState)) {
+                    this._enforceRelayQuota(pc, fromPeerId);
+                }
                 if (['failed', 'disconnected', 'closed'].includes(pc.iceConnectionState)) {
                     console.warn(`[GhostWebRTC] Connection from ${fromPeerId} ${pc.iceConnectionState} — cleaning up`);
                     this.closePeerConnection(fromPeerId);
