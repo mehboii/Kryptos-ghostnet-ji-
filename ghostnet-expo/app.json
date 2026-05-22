@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "GhostNet",
+    "slug": "ghostnet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/ghostnet-logo.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ghostnet.app"
+    },
+    "android": {
+      "package": "com.ghostnet.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/ghostnet-logo.png",
+        "backgroundColor": "#0b0e14"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/ghostnet-logo.png"
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/ghostnet-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0b0e14",
+          "dark": {
+            "image": "./assets/ghostnet-logo.png",
+            "backgroundColor": "#0b0e14"
+          }
+        }
+      ]
+    ]
+  }
+}
