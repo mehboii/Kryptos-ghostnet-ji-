@@ -1,257 +1,326 @@
 import * as dgram from 'node:dgram';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { blake3 } from '@noble/hashes/blake3.js';
+import type { SignedEndpoint, HolePunchResult, NatType, EncryptedPayload } from './types.js';
 
-const PUNCH_WINDOW_MS = 2000;
-const PUNCH_INTERVAL_MS = 100;
-const PUNCH_MAX_ATTEMPTS = 20;
-const NONCE_BYTES = 16;
-export const MAX_PUNCH_PACKET_SIZE = 1024;
+const PUNCH_CIPHER = 'aes-256-gcm';
+const PUNCH_IV_BYTES = 12;
+const PUNCH_TAG_BYTES = 16;
 
-export interface PeerEndpoint {
-  ip: string;
-  port: number;
-}
+const PUNCH_INTERVAL_MS = 500;
+const PUNCH_MIN_INTERVAL_MS = 200;
+const PUNCH_MAX_ATTEMPTS = 5;
+const PUNCH_TIMEOUT_MS = 15000;
+const CHALLENGE_TIMEOUT_MS = 5000;
+const KEEPALIVE_MS = 15000;
+const IDLE_TIMEOUT_MS = 60000;
+const TIMESTAMP_WINDOW_MS = 30000;
+const MAX_PORT_CHANGES = 3;
+const MAX_NONCES = 5000;
 
-export interface PunchConfig {
-  localPort: number;
-  peer: PeerEndpoint;
-  coordinationSource: 'verified_signal' | 'relay' | 'unknown';
-  expectedNodeId: string;
-}
-
-export type PunchState = 'idle' | 'punching' | 'established' | 'failed' | 'rejected';
-
-export interface PunchResult {
-  state: PunchState;
-  peer: PeerEndpoint;
-  localPort: number;
-  nonce: string;
-  peerNonce?: string;
-  rttMs?: number;
-  securityFlags: string[];
-}
-
-export interface HolePunchEvents {
-  'punch:start': [config: PunchConfig];
-  'punch:established': [result: PunchResult];
-  'punch:failed': [result: PunchResult];
-  'punch:security': [flag: { type: string; detail: string }];
+export interface HolePuncherEvents {
+  'punch:started': [peer: string];
+  'punch:attempt': [attempt: number, port: number];
+  'punch:received': [from: string];
+  'punch:authenticated': [nodeId: string];
+  'punch:established': [result: HolePunchResult];
+  'punch:failed': [result: HolePunchResult];
+  'punch:fallback': [reason: string];
+  'punch:suspicious': [detail: string];
 }
 
 interface PunchPacket {
-  type: 'punch' | 'ack';
-  nonce: string;
-  peerNonce?: string;
+  type: 'punch' | 'ack' | 'challenge' | 'challenge_response';
   nodeId: string;
+  nonce: string;
   timestamp: number;
+  signature: string;
+  challengeNonce?: string;
+  challengeSignature?: string;
 }
 
-function isPrivateIp(ip: string): boolean {
-  const p = ip.split('.').map(Number);
-  if (p.length !== 4) return false;
-  if (p[0] === 10) return true;
-  if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true;
-  if (p[0] === 192 && p[1] === 168) return true;
-  if (p[0] === 127) return true;
-  return false;
-}
-
-export class HolePuncher extends EventEmitter<HolePunchEvents> {
+export class HolePuncher extends EventEmitter<HolePuncherEvents> {
   private readonly nodeId: string;
-  private activePunches = new Map<string, { timer: ReturnType<typeof setInterval>; socket: dgram.Socket }>();
+  private readonly privateKey: Uint8Array;
+  private readonly publicKey: Uint8Array;
+  private knownPeers = new Map<string, Uint8Array>();
+  private dhCache = new Map<string, Buffer>();
+  private seenNonces = new Set<string>();
+  private activeSocket: dgram.Socket | null = null;
+  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 
-  constructor(nodeId: string) {
+  constructor(nodeId: string, privateKey: Uint8Array) {
     super();
     this.nodeId = nodeId;
+    this.privateKey = privateKey;
+    this.publicKey = ed25519.getPublicKey(privateKey);
+  }
+
+  /** Register a peer's public key for verification. */
+  addPeer(nodeId: string, publicKey: Uint8Array): void {
+    this.knownPeers.set(nodeId, publicKey);
   }
 
   /**
-   * Initiate UDP hole punching to a peer.
-   * Both sides must call this simultaneously for NAT traversal to succeed.
-   *
-   * Security checks performed:
-   * - Reject private/loopback IPs as peer endpoints
-   * - Reject unverified coordination sources
-   * - Nonce exchange to prevent replay and MITM
-   * - Timestamp validation (±5s window)
-   * - Verify nodeId in punch response matches expected
+   * Attempt UDP hole punch to a peer.
+   * DEFENSE 5: Only accepts SignedEndpoint — type system prevents unsigned endpoints.
    */
-  punch(config: PunchConfig): Promise<PunchResult> {
+  async punch(peerEndpoint: SignedEndpoint, ownNatType: NatType = 'unknown', peerNatType: NatType = 'unknown'): Promise<HolePunchResult> {
+    const start = Date.now();
+    const peerKey = `${peerEndpoint.ip}:${peerEndpoint.port}`;
+
+    // DEFENSE 1: Verify Ed25519 signature on peer endpoint
+    if (!this.verifyEndpointSignature(peerEndpoint)) {
+      this.emit('punch:suspicious', 'invalid_endpoint_signature');
+      return this.fail('invalid_endpoint_signature', ownNatType, start);
+    }
+
+    this.emit('punch:started', peerKey);
+
+    // Step 3: NAT compatibility
+    if (ownNatType === 'symmetric' && peerNatType === 'symmetric') {
+      this.emit('punch:fallback', 'both_symmetric');
+      return this.fail('both_symmetric_nat', ownNatType, start, 'turn_fallback');
+    }
+
+    const peerPubKey = this.knownPeers.get(peerEndpoint.nodeId);
+    if (!peerPubKey) {
+      return this.fail('unknown_peer', ownNatType, start);
+    }
+
+    // Step 4: Punch sequence with port changes
+    for (let portChange = 0; portChange <= MAX_PORT_CHANGES; portChange++) {
+      const result = await this.attemptPunch(peerEndpoint, peerPubKey, ownNatType, start, portChange);
+      if (result.success) return result;
+      if (Date.now() - start > PUNCH_TIMEOUT_MS) break;
+    }
+
+    // Symmetric NAT: port prediction attempt
+    if (ownNatType === 'symmetric' || peerNatType === 'symmetric') {
+      for (let predict = 1; predict <= 3; predict++) {
+        const predicted: SignedEndpoint = {
+          ...peerEndpoint,
+          port: peerEndpoint.port + predict,
+        };
+        const result = await this.attemptPunch(predicted, peerPubKey, ownNatType, start, 0);
+        if (result.success) {
+          result.method = 'port_prediction';
+          return result;
+        }
+      }
+    }
+
+    this.emit('punch:fallback', 'all_attempts_exhausted');
+    return this.fail('all_attempts_exhausted', ownNatType, start, 'turn_fallback');
+  }
+
+  /** Close active socket and cleanup. */
+  close(): void {
+    if (this.keepaliveTimer) { clearInterval(this.keepaliveTimer); this.keepaliveTimer = null; }
+    if (this.activeSocket) { try { this.activeSocket.close(); } catch {} this.activeSocket = null; }
+    for (const secret of this.dhCache.values()) secret.fill(0);
+    this.dhCache.clear();
+    this.seenNonces.clear();
+  }
+
+  private async attemptPunch(
+    peer: SignedEndpoint, peerPubKey: Uint8Array, natType: NatType, startTime: number, portOffset: number,
+  ): Promise<HolePunchResult> {
     return new Promise((resolve) => {
-      const flags: string[] = [];
-      const peerKey = `${config.peer.ip}:${config.peer.port}`;
-
-      // Security: reject private IPs (attacker-controlled coordination server redirect)
-      if (isPrivateIp(config.peer.ip)) {
-        flags.push('private_ip_rejected');
-        this.emitSecurity('private_ip_rejected', `Peer endpoint ${peerKey} is a private IP`);
-        resolve(this.failResult(config, flags));
-        return;
-      }
-
-      // Security: flag unverified coordination sources
-      if (config.coordinationSource === 'unknown') {
-        flags.push('unverified_coordination');
-        this.emitSecurity('unverified_coordination', 'Peer endpoint came from unverified source');
-        resolve(this.failResult(config, flags));
-        return;
-      }
-
-      if (config.coordinationSource === 'relay') {
-        flags.push('relay_coordination');
-      }
-
-      const nonce = randomBytes(NONCE_BYTES).toString('hex');
       const socket = dgram.createSocket('udp4');
       let attempts = 0;
-      let established = false;
+      let done = false;
+      let interval = PUNCH_INTERVAL_MS;
 
-      const cleanup = () => {
-        if (this.activePunches.has(peerKey)) {
-          const entry = this.activePunches.get(peerKey)!;
-          clearInterval(entry.timer);
-          this.activePunches.delete(peerKey);
-        }
-        try { socket.close(); } catch {}
+      const finish = (result: HolePunchResult) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        clearInterval(punchTimer);
+        if (!result.success) { try { socket.close(); } catch {} }
+        resolve(result);
       };
 
-      // Timeout: if not established within window, fail
       const timeout = setTimeout(() => {
-        if (!established) {
-          cleanup();
-          flags.push('timeout');
-          const result = this.failResult(config, flags);
-          this.emit('punch:failed', result);
-          resolve(result);
-        }
-      }, PUNCH_WINDOW_MS);
+        finish(this.fail('timeout', natType, startTime));
+      }, Math.min(PUNCH_TIMEOUT_MS - (Date.now() - startTime), 5000));
 
       socket.on('message', (msg, rinfo) => {
-        if (established) return;
+        if (done) return;
+        this.emit('punch:received', peer.nodeId);
 
-        if (msg.length > MAX_PUNCH_PACKET_SIZE) {
-          flags.push('oversized_packet');
-          this.emitSecurity('oversized_packet', `Packet size ${msg.length} exceeds limit ${MAX_PUNCH_PACKET_SIZE}`);
-          return;
-        }
-
-        // Security: verify packet came from expected peer IP
-        if (rinfo.address !== config.peer.ip) {
-          flags.push('unexpected_source_ip');
-          this.emitSecurity('unexpected_source_ip', `Expected ${config.peer.ip}, got ${rinfo.address}`);
-          return; // Drop packet, don't establish
-        }
-
-        let packet: PunchPacket;
-        try {
-          packet = JSON.parse(msg.toString('utf8'));
-        } catch {
-          flags.push('malformed_packet');
-          return;
-        }
-
-        // Security: verify nodeId matches expected
-        if (packet.nodeId !== config.expectedNodeId) {
-          flags.push('nodeId_mismatch');
-          this.emitSecurity('nodeId_mismatch', `Expected ${config.expectedNodeId}, got ${packet.nodeId}`);
-          return;
-        }
-
-        // Security: timestamp freshness (±5s window)
-        if (Math.abs(Date.now() - packet.timestamp) > 5000) {
-          flags.push('stale_timestamp');
-          this.emitSecurity('stale_timestamp', 'Punch packet timestamp outside ±5s window');
+        const packet = this.decryptAndVerify(msg, peerPubKey, peer.nodeId);
+        if (!packet) {
+          this.emit('punch:suspicious', 'undecryptable_packet');
           return;
         }
 
         if (packet.type === 'punch') {
-          // Send ACK with both nonces
-          const ack: PunchPacket = {
-            type: 'ack',
-            nonce,
-            peerNonce: packet.nonce,
-            nodeId: this.nodeId,
-            timestamp: Date.now(),
-          };
-          socket.send(JSON.stringify(ack), config.peer.port, config.peer.ip);
+          const ackPacket = this.buildPacket('ack');
+          socket.send(this.signAndEncrypt(ackPacket, peerPubKey), peer.port, peer.ip);
         }
 
-        if (packet.type === 'ack' && packet.peerNonce === nonce) {
-          established = true;
-          clearTimeout(timeout);
-          cleanup();
-
-          const result: PunchResult = {
-            state: 'established',
-            peer: config.peer,
-            localPort: config.localPort,
-            nonce,
-            peerNonce: packet.nonce,
-            securityFlags: flags,
-          };
-          this.emit('punch:established', result);
-          resolve(result);
-        }
-      });
-
-      socket.on('error', () => {
-        if (!established) {
-          established = true;
-          clearTimeout(timeout);
-          cleanup();
-          flags.push('socket_error');
-          resolve(this.failResult(config, flags));
+        if (packet.type === 'ack') {
+          this.emit('punch:authenticated', peer.nodeId);
+          // Step 5: Post-punch challenge
+          this.doChallenge(socket, peer, peerPubKey).then((verified) => {
+            if (!verified) {
+              this.emit('punch:suspicious', 'challenge_failed');
+              finish(this.fail('challenge_failed', natType, startTime));
+              return;
+            }
+            this.activeSocket = socket;
+            this.startKeepalive(socket, peer, peerPubKey);
+            finish({
+              success: true,
+              socket,
+              peerEndpoint: { ip: peer.ip, port: peer.port },
+              peerNodeId: peer.nodeId,
+              natType,
+              punchAttempts: attempts,
+              totalTime: Date.now() - startTime,
+              method: 'direct_punch',
+            });
+          });
         }
       });
 
-      socket.bind(config.localPort, () => {
-        const interval = setInterval(() => {
-          if (established || attempts >= PUNCH_MAX_ATTEMPTS) {
-            clearInterval(interval);
-            return;
-          }
+      socket.on('error', () => finish(this.fail('socket_error', natType, startTime)));
+
+      socket.bind(0, () => {
+        const punchTimer = setInterval(() => {
+          if (done || attempts >= PUNCH_MAX_ATTEMPTS) { clearInterval(punchTimer); return; }
           attempts++;
-          const packet: PunchPacket = {
-            type: 'punch',
-            nonce,
-            nodeId: this.nodeId,
-            timestamp: Date.now(),
-          };
-          socket.send(JSON.stringify(packet), config.peer.port, config.peer.ip);
-        }, PUNCH_INTERVAL_MS);
-
-        this.activePunches.set(peerKey, { timer: interval, socket });
-        this.emit('punch:start', config);
+          this.emit('punch:attempt', attempts, (socket.address() as any).port);
+          const packet = this.buildPacket('punch');
+          socket.send(this.signAndEncrypt(packet, peerPubKey), peer.port, peer.ip);
+          if (interval > PUNCH_MIN_INTERVAL_MS) interval = Math.max(PUNCH_MIN_INTERVAL_MS, interval - 100);
+        }, interval);
       });
     });
   }
 
-  /** Cancel all active hole punch attempts. */
-  cancelAll(): void {
-    for (const [key, entry] of this.activePunches) {
-      clearInterval(entry.timer);
-      try { entry.socket.close(); } catch {}
-      this.activePunches.delete(key);
+  private async doChallenge(socket: dgram.Socket, peer: SignedEndpoint, peerPubKey: Uint8Array): Promise<boolean> {
+    return new Promise((resolve) => {
+      const challengeNonce = randomBytes(32).toString('hex');
+      const packet = this.buildPacket('challenge');
+      (packet as any).challengeNonce = challengeNonce;
+      socket.send(this.signAndEncrypt(packet, peerPubKey), peer.port, peer.ip);
+
+      const timer = setTimeout(() => resolve(false), CHALLENGE_TIMEOUT_MS);
+
+      const handler = (msg: Buffer) => {
+        const resp = this.decryptAndVerify(msg, peerPubKey, peer.nodeId);
+        if (!resp || resp.type !== 'challenge_response') return;
+        clearTimeout(timer);
+        socket.removeListener('message', handler);
+
+        if (!resp.challengeSignature) { resolve(false); return; }
+        try {
+          const sigBytes = hexToBytes(resp.challengeSignature);
+          const nonceBytes = new TextEncoder().encode(challengeNonce);
+          resolve(ed25519.verify(sigBytes, nonceBytes, peerPubKey));
+        } catch {
+          resolve(false);
+        }
+      };
+      socket.on('message', handler);
+    });
+  }
+
+  private buildPacket(type: PunchPacket['type']): PunchPacket {
+    const nonce = randomBytes(32).toString('hex');
+    const timestamp = Date.now();
+    const sigPayload = `${this.nodeId}:${nonce}:${timestamp}:${type}`;
+    const signature = bytesToHex(ed25519.sign(new TextEncoder().encode(sigPayload), this.privateKey));
+    return { type, nodeId: this.nodeId, nonce, timestamp, signature };
+  }
+
+  private deriveSharedSecret(peerEdPubKey: Uint8Array): Buffer {
+    const cacheKey = bytesToHex(peerEdPubKey);
+    const cached = this.dhCache.get(cacheKey);
+    if (cached) return cached;
+
+    const myX25519Priv = ed25519.utils.toMontgomerySecret(this.privateKey);
+    const peerX25519Pub = ed25519.utils.toMontgomery(peerEdPubKey);
+    const shared = x25519.getSharedSecret(myX25519Priv, peerX25519Pub);
+    const secret = Buffer.from(blake3(shared, { dkLen: 32 }));
+    this.dhCache.set(cacheKey, secret);
+    return secret;
+  }
+
+  private signAndEncrypt(packet: PunchPacket, peerPubKey: Uint8Array): Buffer {
+    const json = Buffer.from(JSON.stringify(packet), 'utf8');
+    const sharedKey = this.deriveSharedSecret(peerPubKey);
+    const iv = randomBytes(PUNCH_IV_BYTES);
+    const cipher = createCipheriv(PUNCH_CIPHER, sharedKey, iv);
+    const encrypted = Buffer.concat([cipher.update(json), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([iv, tag, encrypted]);
+  }
+
+  private decryptAndVerify(data: Buffer, peerPubKey: Uint8Array, expectedNodeId: string): PunchPacket | null {
+    if (data.length < PUNCH_IV_BYTES + PUNCH_TAG_BYTES + 1) return null;
+
+    let packet: PunchPacket;
+    try {
+      const sharedKey = this.deriveSharedSecret(peerPubKey);
+      const iv = data.subarray(0, PUNCH_IV_BYTES);
+      const tag = data.subarray(PUNCH_IV_BYTES, PUNCH_IV_BYTES + PUNCH_TAG_BYTES);
+      const ciphertext = data.subarray(PUNCH_IV_BYTES + PUNCH_TAG_BYTES);
+      const decipher = createDecipheriv(PUNCH_CIPHER, sharedKey, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      packet = JSON.parse(decrypted.toString('utf8'));
+    } catch { return null; }
+
+    if (packet.nodeId !== expectedNodeId) return null;
+    if (Math.abs(Date.now() - packet.timestamp) > TIMESTAMP_WINDOW_MS) return null;
+    if (this.seenNonces.has(packet.nonce)) return null;
+
+    const sigPayload = `${packet.nodeId}:${packet.nonce}:${packet.timestamp}:${packet.type}`;
+    try {
+      const valid = ed25519.verify(hexToBytes(packet.signature), new TextEncoder().encode(sigPayload), peerPubKey);
+      if (!valid) return null;
+    } catch { return null; }
+
+    this.seenNonces.add(packet.nonce);
+    if (this.seenNonces.size > MAX_NONCES) {
+      const first = this.seenNonces.values().next().value!;
+      this.seenNonces.delete(first);
     }
+
+    return packet;
   }
 
-  /** Number of active punch attempts. */
-  get activeCount(): number {
-    return this.activePunches.size;
+  private verifyEndpointSignature(ep: SignedEndpoint): boolean {
+    const peerPubKey = this.knownPeers.get(ep.nodeId);
+    if (!peerPubKey) return false;
+    if (Math.abs(Date.now() - ep.timestamp) > TIMESTAMP_WINDOW_MS) return false;
+    const payload = `${ep.nodeId}:${ep.ip}:${ep.port}:${ep.timestamp}`;
+    try {
+      return ed25519.verify(hexToBytes(ep.signature), new TextEncoder().encode(payload), peerPubKey);
+    } catch { return false; }
   }
 
-  private failResult(config: PunchConfig, flags: string[]): PunchResult {
-    return {
-      state: 'rejected',
-      peer: config.peer,
-      localPort: config.localPort,
-      nonce: '',
-      securityFlags: flags,
-    };
+  private startKeepalive(socket: dgram.Socket, peer: SignedEndpoint, peerPubKey: Uint8Array): void {
+    let lastActivity = Date.now();
+    socket.on('message', () => { lastActivity = Date.now(); });
+    this.keepaliveTimer = setInterval(() => {
+      if (Date.now() - lastActivity > IDLE_TIMEOUT_MS) {
+        this.emit('punch:failed', this.fail('idle_timeout', 'unknown', lastActivity));
+        this.close();
+        return;
+      }
+      const ping = this.buildPacket('punch');
+      socket.send(this.signAndEncrypt(ping, peerPubKey), peer.port, peer.ip);
+    }, KEEPALIVE_MS);
   }
 
-  private emitSecurity(type: string, detail: string): void {
-    this.emit('punch:security', { type, detail });
+  private fail(reason: string, natType: NatType, start: number, method: HolePunchResult['method'] = 'direct_punch'): HolePunchResult {
+    return { success: false, reason, natType, punchAttempts: 0, totalTime: Date.now() - start, method };
   }
 }
