@@ -93,6 +93,7 @@ export interface DhtConfig {
   refreshIntervalMs: number;
   powDifficulty: number;
   maxEntriesPerIp: number;
+  maxGlobalPerPrefix: number;
   lookupTimeoutMs: number;
 }
 
@@ -106,5 +107,6 @@ export const DEFAULT_DHT_CONFIG: DhtConfig = {
   refreshIntervalMs: 3_600_000,
   powDifficulty: 16,
   maxEntriesPerIp: 3,
+  maxGlobalPerPrefix: 10,
   lookupTimeoutMs: 10_000,
 };
