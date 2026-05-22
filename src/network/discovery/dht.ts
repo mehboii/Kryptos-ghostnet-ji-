@@ -16,6 +16,9 @@ const MAX_MESSAGE_SIZE = 4096;
 const NONCE_WINDOW_MS = 30_000;
 const MAX_NONCES = 10_000;
 const TOKEN_TTL_MS = 300_000;
+const MAX_STORAGE_ENTRIES = 1_000;
+const STORAGE_TTL_MS = 3_600_000;
+const MAX_STORE_VALUE_BYTES = 1024;
 
 export interface DhtNodeEvents {
   'dht:peer_found': [nodeId: string, endpoint: PeerEndpoint];
@@ -48,11 +51,13 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
     target: string;
     closest: KBucketEntry[];
     queried: Set<string>;
+    sent: Set<string>;
     resolve: (entries: KBucketEntry[]) => void;
     timer: ReturnType<typeof setTimeout>;
   }>();
   private readonly storage = new Map<string, { value: string; nodeId: string; timestamp: number }>();
   private readonly tokens = new Map<string, { token: string; createdAt: number }>();
+  private readonly pendingPings = new Map<string, (alive: boolean) => void>();
   private refreshTimer: ReturnType<typeof setInterval> | null = null;
   private pingTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -65,7 +70,7 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
     this.buckets = new KBucketManager(nodeId, this.config);
 
     this.buckets.on('bucket:ping', (oldest, candidate) => {
-      this.sendPing(oldest.endpoint).then(alive => {
+      this.sendPing(oldest.endpoint, oldest.nodeId).then(alive => {
         if (!alive) {
           this.buckets.remove(oldest.nodeId);
           this.buckets.addOrUpdate(candidate.nodeId, candidate.publicKey, candidate.endpoint);
@@ -155,15 +160,18 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
         }
       }, this.config.lookupTimeoutMs);
 
+      const sent = new Set<string>();
       this.pendingLookups.set(lookupId, {
         target: targetId,
         closest: [...initial],
         queried: new Set(),
+        sent,
         resolve,
         timer,
       });
 
       for (const entry of initial) {
+        sent.add(entry.nodeId);
         this.sendFindNode(entry.endpoint, targetId, lookupId);
       }
     });
@@ -197,6 +205,7 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
     if (this.pingTimer) { clearInterval(this.pingTimer); this.pingTimer = null; }
     for (const lookup of this.pendingLookups.values()) clearTimeout(lookup.timer);
     this.pendingLookups.clear();
+    this.pendingPings.clear();
     this.seenNonces.clear();
     this.storage.clear();
     this.tokens.clear();
@@ -261,6 +270,11 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
 
   private handlePong(msg: DhtMessage): void {
     this.buckets.markAlive(msg.nodeId);
+    const resolve = this.pendingPings.get(msg.nodeId);
+    if (resolve) {
+      this.pendingPings.delete(msg.nodeId);
+      resolve(true);
+    }
   }
 
   private handleFindNode(msg: DhtMessage, rinfo: dgram.RemoteInfo): void {
@@ -320,6 +334,7 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
 
     for (const [lookupId, lookup] of this.pendingLookups) {
       if (lookup.target !== msg.target) continue;
+      if (!lookup.sent.has(msg.nodeId)) continue;
       lookup.queried.add(msg.nodeId);
 
       const newClosest = this.buckets.closest(lookup.target, this.config.k);
@@ -334,8 +349,9 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
         return;
       }
 
-      const unqueried = newClosest.filter(n => !lookup.queried.has(n.nodeId));
+      const unqueried = newClosest.filter(n => !lookup.sent.has(n.nodeId));
       for (const entry of unqueried.slice(0, this.config.alpha)) {
+        lookup.sent.add(entry.nodeId);
         this.sendFindNode(entry.endpoint, lookup.target, lookupId);
       }
     }
@@ -346,6 +362,10 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
 
     let pow: ProofOfWork;
     try { pow = JSON.parse(msg.proofOfWork); } catch { return; }
+    if (pow.difficulty < this.config.powDifficulty) {
+      this.emit('dht:sybil_rejected', msg.nodeId, 'insufficient_pow_difficulty');
+      return;
+    }
     if (!verifyPoW(msg.nodeId, pow)) {
       this.emit('dht:sybil_rejected', msg.nodeId, 'invalid_store_pow');
       return;
@@ -354,7 +374,19 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
     const token = this.tokens.get(rinfo.address);
     if (!token || token.token !== msg.token || Date.now() - token.createdAt > TOKEN_TTL_MS) return;
 
+    if (Buffer.byteLength(msg.value, 'utf8') > MAX_STORE_VALUE_BYTES) return;
+
+    this.evictExpiredStorage();
+    if (this.storage.size >= MAX_STORAGE_ENTRIES) return;
+
     this.storage.set(msg.key, { value: msg.value, nodeId: msg.nodeId, timestamp: msg.timestamp });
+  }
+
+  private evictExpiredStorage(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.storage) {
+      if (now - entry.timestamp > STORAGE_TTL_MS) this.storage.delete(key);
+    }
   }
 
   private sendMessage(fields: Partial<DhtMessage>, ip: string, port: number): void {
@@ -384,10 +416,21 @@ export class DhtNode extends EventEmitter<DhtNodeEvents> {
     this.sendMessage({ type: 'store', key, value }, endpoint.ip, endpoint.port);
   }
 
-  private async sendPing(endpoint: PeerEndpoint): Promise<boolean> {
+  private async sendPing(endpoint: PeerEndpoint, targetNodeId?: string): Promise<boolean> {
     return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        if (targetNodeId) this.pendingPings.delete(targetNodeId);
+        resolve(false);
+      }, 5000);
+
+      if (targetNodeId) {
+        this.pendingPings.set(targetNodeId, (alive) => {
+          clearTimeout(timer);
+          resolve(alive);
+        });
+      }
+
       this.sendMessage({ type: 'ping' }, endpoint.ip, endpoint.port);
-      setTimeout(() => resolve(false), 5000);
     });
   }
 

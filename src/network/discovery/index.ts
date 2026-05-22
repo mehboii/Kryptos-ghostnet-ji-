@@ -13,6 +13,9 @@ import type {
 } from './types.js';
 import { DEFAULT_DHT_CONFIG } from './types.js';
 
+const MAX_ENDPOINTS_PER_PEER = 5;
+const MAX_DISCOVERED_PEERS = 2_000;
+
 export interface PeerDiscoveryEvents {
   'discovery:peer_found': [peer: DiscoveryPeer];
   'discovery:peer_verified': [nodeId: string];
@@ -310,10 +313,14 @@ export class PeerDiscovery extends EventEmitter<PeerDiscoveryEvents> {
       const hasEndpoint = existing.endpoints.some(
         e => e.ip === endpoint.ip && e.port === endpoint.port,
       );
-      if (!hasEndpoint) existing.endpoints.push(endpoint);
+      if (!hasEndpoint && existing.endpoints.length < MAX_ENDPOINTS_PER_PEER) {
+        existing.endpoints.push(endpoint);
+      }
       existing.lastVerified = Date.now();
       return;
     }
+
+    if (this.discoveredPeers.size >= MAX_DISCOVERED_PEERS) return;
 
     const peer: DiscoveryPeer = {
       nodeId, publicKey,

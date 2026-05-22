@@ -76,6 +76,24 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
 
     const existing = bucket.find(e => e.nodeId === nodeId);
     if (existing) {
+      if (existing.endpoint.ip !== endpoint.ip) {
+        const newPrefix = this.extractPrefix(endpoint.ip);
+        const prefixInBucket = bucket.filter(e => e.nodeId !== nodeId && e.ipPrefix === newPrefix).length;
+        if (prefixInBucket >= this.config.maxIpPrefixPerBucket) {
+          this.emit('bucket:eclipse_blocked', nodeId, newPrefix);
+          return false;
+        }
+        const newGlobalCount = this.globalIpCount.get(endpoint.ip) ?? 0;
+        if (newGlobalCount >= this.config.maxEntriesPerIp) {
+          this.emit('bucket:sybil_blocked', nodeId, 'ip_quota_exceeded');
+          return false;
+        }
+        this.trackIp(existing.endpoint.ip, -1);
+        this.trackPrefix(existing.ipPrefix, -1);
+        this.trackIp(endpoint.ip, 1);
+        this.trackPrefix(newPrefix, 1);
+        existing.ipPrefix = newPrefix;
+      }
       existing.lastSeen = Date.now();
       existing.endpoint = endpoint;
       existing.failCount = 0;
@@ -95,6 +113,12 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
       return false;
     }
 
+    const globalPrefixCount = this.ipPrefixCount.get(ipPrefix) ?? 0;
+    if (globalPrefixCount >= this.config.maxGlobalPerPrefix) {
+      this.emit('bucket:eclipse_blocked', nodeId, ipPrefix);
+      return false;
+    }
+
     const entry: KBucketEntry = {
       nodeId, publicKey, endpoint,
       lastSeen: Date.now(), lastPonged: 0, failCount: 0,
@@ -104,6 +128,7 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
     if (bucket.length < this.config.k) {
       bucket.push(entry);
       this.trackIp(globalIp, 1);
+      this.trackPrefix(ipPrefix, 1);
       this.emit('bucket:added', entry);
       return true;
     }
@@ -113,6 +138,7 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
       this.evict(idx, stale);
       bucket.push(entry);
       this.trackIp(globalIp, 1);
+      this.trackPrefix(ipPrefix, 1);
       this.emit('bucket:added', entry);
       return true;
     }
@@ -173,6 +199,7 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
     const entry = bucket[pos];
     bucket.splice(pos, 1);
     this.trackIp(entry.endpoint.ip, -1);
+    this.trackPrefix(entry.ipPrefix, -1);
     this.emit('bucket:evicted', entry);
     return true;
   }
@@ -216,6 +243,7 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
     if (pos !== -1) {
       bucket.splice(pos, 1);
       this.trackIp(entry.endpoint.ip, -1);
+      this.trackPrefix(entry.ipPrefix, -1);
       this.emit('bucket:evicted', entry);
     }
   }
@@ -225,6 +253,13 @@ export class KBucketManager extends EventEmitter<KBucketEvents> {
     const next = current + delta;
     if (next <= 0) this.globalIpCount.delete(ip);
     else this.globalIpCount.set(ip, next);
+  }
+
+  private trackPrefix(prefix: string, delta: number): void {
+    const current = this.ipPrefixCount.get(prefix) ?? 0;
+    const next = current + delta;
+    if (next <= 0) this.ipPrefixCount.delete(prefix);
+    else this.ipPrefixCount.set(prefix, next);
   }
 
   /** /16 prefix for IPv4 eclipse defense. */

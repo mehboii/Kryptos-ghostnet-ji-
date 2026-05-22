@@ -299,6 +299,13 @@ export class MdnsDiscovery extends EventEmitter<MdnsDiscoveryEvents> {
 
   private checkRate(ip: string): boolean {
     const now = Date.now();
+
+    if (this.ipRateMap.size > 500) {
+      for (const [k, v] of this.ipRateMap) {
+        if (now - v.windowStart > RATE_WINDOW_MS) this.ipRateMap.delete(k);
+      }
+    }
+
     const entry = this.ipRateMap.get(ip);
     if (!entry || now - entry.windowStart > RATE_WINDOW_MS) {
       this.ipRateMap.set(ip, { count: 1, windowStart: now });
