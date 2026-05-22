@@ -33,6 +33,7 @@ class ProximityConnect {
         this.bleClient = null;
         this._listeners = {};
         this._scanDevices = [];
+        this._scanScheduler = null;
     }
 
     // ── Events ──────────────────────────────────────────────────
@@ -107,9 +108,17 @@ class ProximityConnect {
                 }
             );
 
-            // Scan for 10 seconds then stop
-            await new Promise(r => setTimeout(r, 10000));
+            // Adaptive scan duration: uses scheduler interval or default 10s
+            const scanDuration = this._scanScheduler
+                ? Math.min(this._scanScheduler._currentInterval, 10000)
+                : 10000;
+            await new Promise(r => setTimeout(r, scanDuration));
             await BleClient.stopLEScan();
+
+            // Report results to adaptive scheduler for backoff calculation
+            if (this._scanScheduler) {
+                this._scanScheduler.reportScanResult(this._scanDevices.length);
+            }
 
             if (this._scanDevices.length === 0) {
                 this._setState('idle');
@@ -131,7 +140,24 @@ class ProximityConnect {
         if (this.bleClient) {
             try { this.bleClient.stopLEScan(); } catch (_) {}
         }
+        if (this._scanScheduler) {
+            this._scanScheduler.stop();
+            this._scanScheduler = null;
+        }
         if (this.state === 'scanning') this._setState('idle');
+    }
+
+    startAdaptiveScan() {
+        if (typeof AdaptiveScanScheduler === 'undefined') {
+            this._log('AdaptiveScanScheduler not loaded — falling back to single scan');
+            return this.startScan();
+        }
+        this._scanScheduler = new AdaptiveScanScheduler(() => this.startScan());
+        this._scanScheduler.on('intervalChange', ({ interval, reason }) => {
+            this._emit('scanIntervalChange', { interval, reason });
+        });
+        this._scanScheduler.start();
+        this._log('Adaptive scan started (10s → 30s → 3m backoff)');
     }
 
     // ── Connect + Handshake ─────────────────────────────────────

@@ -55,7 +55,9 @@ const _ALLOWED_MESH_TYPES = new Set([
     // server/control types already used by GhostMesh
     'HELLO', 'MESH_HELLO', 'welcome',
     'PEER_JOIN', 'PEER_LEAVE', 'MESH_MSG',
-    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK', 'receipt'
+    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK', 'receipt',
+    'SECURE_ENDPOINT_ANNOUNCE', 'SECURE_ENDPOINT_QUERY',
+    'SECURE_PUNCH', 'SECURE_CHALLENGE_RESPONSE'
 ]);
 
 function _sanitizeMeshMessage(raw) {
@@ -132,6 +134,7 @@ class GhostMesh {
         this.onPeerJoin = () => { };
         this.onPeerLeave = () => { };
         this.onMessage = () => { };
+        this.onSecureMessage = () => { };
         this.onMeshUpdate = () => { };
         this.onStatusChange = () => { };
 
@@ -147,6 +150,10 @@ class GhostMesh {
             bytes: 0,
             startTime: Date.now()
         };
+
+        // [Step 2] Mesh Hardening
+        this.merkleLedger = typeof MerkleLedgerSync !== 'undefined' ? new MerkleLedgerSync() : null;
+        this.zeroRouteQueue = typeof ZeroRouteQueue !== 'undefined' ? new ZeroRouteQueue() : null;
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -335,11 +342,41 @@ class GhostMesh {
             ts: Date.now()
         };
 
+        if (this.merkleLedger) this.merkleLedger.addMessage(payload);
+
         if (peer?.transport === 'ble' && peer.connected && peer.writeChar) {
             await this._bleSend(peer, payload); // [S12]
         } else if (this.ws && this.wsReady) {
             safeSend(this.ws, JSON.stringify(payload));
+        } else if (this.zeroRouteQueue && message.recipientPubKey) {
+            await this.zeroRouteQueue.enqueue(
+                validId, message.recipientPubKey,
+                typeof message === 'string' ? message : JSON.stringify(message),
+                payload.id
+            );
         }
+    }
+
+    reportInboundAnomaly(source, reason, details = {}) {
+        if (window.SignalIntelligence?.flagInboundAnomaly) {
+            window.SignalIntelligence.flagInboundAnomaly(source, reason, details);
+        }
+    }
+
+    /** Additive secure control plane for NAT/auth handshakes. */
+    sendControl(message) {
+        if (!message || typeof message !== 'object' || typeof message.type !== 'string') {
+            return false;
+        }
+        if (this.ws && this.wsReady) {
+            try {
+                safeSend(this.ws, JSON.stringify(message));
+                return true;
+            } catch (_) {
+                return false;
+            }
+        }
+        return false;
     }
 
     getPeers() {
@@ -582,12 +619,28 @@ class GhostMesh {
                 const fromId = this.validatePeerId(msg.from); // [S9]
                 if (!fromId || fromId === this.identity.id) break;
                 if (this.peers.has(fromId)) this.peers.get(fromId).lastSeen = Date.now();
+                if (this.merkleLedger) this.merkleLedger.addMessage(msg);
                 this.onMessage(msg.data || msg.content || msg, fromId, 'ws');
 
                 // [S6] Relay only if hops < our MAX_HOPS constant — never msg.maxHops
                 const hops = typeof msg.hops === 'number' ? msg.hops : 0;
                 if (hops < this.MAX_HOPS) {
                     this.relayToBLE({ ...msg, hops: hops + 1, maxHops: this.MAX_HOPS });
+                }
+                break;
+            }
+
+            case 'SECURE_ENDPOINT_ANNOUNCE':
+            case 'SECURE_ENDPOINT_QUERY':
+            case 'SECURE_PUNCH':
+            case 'SECURE_CHALLENGE_RESPONSE': {
+                if ((msg.type === 'SECURE_PUNCH' || msg.type === 'SECURE_CHALLENGE_RESPONSE') &&
+                    (!msg.signature || !msg.signingPublicKey)) {
+                    this.reportInboundAnomaly('ws', 'missing_signature', { type: msg.type });
+                    break;
+                }
+                if (typeof this.onSecureMessage === 'function') {
+                    this.onSecureMessage(msg, 'ws');
                 }
                 break;
             }
@@ -775,7 +828,21 @@ class GhostMesh {
                         const msg = JSON.parse(val);
                         const fromId = this.validatePeerId(msg.from); // [S9]
                         if (!fromId || fromId === this.identity.id) return;
-                        this.onMessage(msg.data || msg, fromId, 'ble');
+                        if ((msg.type === 'SECURE_PUNCH' || msg.type === 'SECURE_CHALLENGE_RESPONSE') &&
+                            (!msg.signature || !msg.signingPublicKey)) {
+                            this.reportInboundAnomaly('ble', 'missing_signature', { type: msg.type, from: fromId });
+                            return;
+                        }
+                        if (msg.type === 'SECURE_ENDPOINT_ANNOUNCE' ||
+                            msg.type === 'SECURE_ENDPOINT_QUERY' ||
+                            msg.type === 'SECURE_PUNCH' ||
+                            msg.type === 'SECURE_CHALLENGE_RESPONSE') {
+                            if (typeof this.onSecureMessage === 'function') {
+                                this.onSecureMessage(msg, 'ble');
+                            }
+                        } else {
+                            this.onMessage(msg.data || msg, fromId, 'ble');
+                        }
 
                         // [S6] Hard hop cap — ignore msg.maxHops
                         const hops = typeof msg.hops === 'number' ? msg.hops : 0;
