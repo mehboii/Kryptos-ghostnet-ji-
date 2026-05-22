@@ -1,6 +1,11 @@
 import * as dgram from 'node:dgram';
 import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { hexToBytes } from '@noble/hashes/utils.js';
+import { SequenceStore } from './sequenceStore.js';
+import { ReplayAttackError, StaleMessageError, FutureMessageError } from './replayErrors.js';
+import { MAX_MESSAGE_AGE_MS, MAX_CLOCK_SKEW_MS } from './constants.js';
 import type { TurnAllocation, EncryptedPayload, RelayStats, RelayTier } from './types.js';
 
 const ALLOCATE_TIMEOUT_MS = 8000;
@@ -26,6 +31,7 @@ export interface TurnClientEvents {
   'relay:failed': [error: string];
   'relay:quota_warning': [used: number, limit: number];
   'relay:quota_exceeded': [];
+  'relay:replay_rejected': [nodeId: string, error: ReplayAttackError | StaleMessageError | FutureMessageError];
 }
 
 interface PendingAck {
@@ -43,8 +49,9 @@ export class TurnClient extends EventEmitter<TurnClientEvents> {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private coverTimer: ReturnType<typeof setInterval> | null = null;
   private blacklistedServers = new Set<string>();
+  private knownPeers = new Map<string, Uint8Array>();
   private pendingAcks = new Map<number, PendingAck>();
-  private lastSeqSeen = new Map<string, number>();
+  private sequenceStore: SequenceStore;
   private incomingQueue: EncryptedPayload[] = [];
   private receiveResolve: ((v: IteratorResult<Buffer>) => void) | null = null;
   private closed = false;
@@ -60,11 +67,12 @@ export class TurnClient extends EventEmitter<TurnClientEvents> {
 
   private quotaWindowStart = Date.now();
 
-  constructor(tier: RelayTier = 'ghost') {
+  constructor(tier: RelayTier = 'ghost', sequenceStorePath?: string) {
     super();
     this.tier = tier;
     this.quota = TIER_QUOTAS[tier];
     this.stats.quotaLimit = this.quota.bytes;
+    this.sequenceStore = new SequenceStore(sequenceStorePath);
   }
 
   /** Allocate a TURN relay. Returns the allocation details. */
@@ -190,6 +198,11 @@ export class TurnClient extends EventEmitter<TurnClientEvents> {
 
   get isAllocated(): boolean { return this.allocation !== null; }
 
+  /** Register a peer's public key for relay verification. */
+  addKnownPeer(nodeId: string, publicKey: Uint8Array): void {
+    this.knownPeers.set(nodeId, publicKey);
+  }
+
   /** Blacklist a relay server after repeated failures. */
   blacklistServer(server: string): void {
     this.blacklistedServers.add(server);
@@ -202,6 +215,7 @@ export class TurnClient extends EventEmitter<TurnClientEvents> {
     if (this.coverTimer) { clearInterval(this.coverTimer); this.coverTimer = null; }
     for (const ack of this.pendingAcks.values()) clearTimeout(ack.timer);
     this.pendingAcks.clear();
+    this.sequenceStore.destroy();
     if (this.socket) { try { this.socket.close(); } catch {} this.socket = null; }
     this.allocation = null;
   }
@@ -215,24 +229,52 @@ export class TurnClient extends EventEmitter<TurnClientEvents> {
 
     const data = msg.subarray(CHANNEL_HEADER, CHANNEL_HEADER + len);
 
-    // ACK handling
     if (data.length === 4 && data.toString('utf8').startsWith('ACK:')) {
       return;
     }
 
     try {
-      const payload: EncryptedPayload = JSON.parse(data.toString('utf8'));
+      const parsed = JSON.parse(data.toString('utf8'));
 
-      // Replay check: monotonic sequence
-      const peerKey = 'relay';
-      const lastSeq = this.lastSeqSeen.get(peerKey) ?? -1;
-      if (payload.sequenceNumber <= lastSeq) return;
+      // ── Layer 0: Ed25519 verification BEFORE any processing ──
+      if (!parsed.signature || !parsed.nodeId) return;
+      const peerPubKey = this.knownPeers.get(parsed.nodeId);
+      if (!peerPubKey) return;
 
-      // Timestamp check
-      if (Math.abs(Date.now() - payload.timestamp) > 30000) return;
+      const ciphertextStr = typeof parsed.ciphertext === 'string' ? parsed.ciphertext : JSON.stringify(parsed.ciphertext);
+      const sigPayload = `${parsed.nodeId}:${parsed.timestamp}:${parsed.sequenceNumber}:${ciphertextStr}`;
+      try {
+        const valid = ed25519.verify(hexToBytes(parsed.signature), new TextEncoder().encode(sigPayload), peerPubKey);
+        if (!valid) return;
+      } catch { return; }
 
-      this.lastSeqSeen.set(peerKey, payload.sequenceNumber);
-      this.stats.bytesRelayed += payload.ciphertext.length;
+      // ── Layer 1: Timestamp validation ──
+      const now = Date.now();
+      const msgAge = now - parsed.timestamp;
+
+      if (msgAge > MAX_MESSAGE_AGE_MS) {
+        this.emit('relay:replay_rejected', parsed.nodeId, new StaleMessageError(parsed.nodeId, msgAge));
+        return;
+      }
+      if (msgAge < -MAX_CLOCK_SKEW_MS) {
+        this.emit('relay:replay_rejected', parsed.nodeId, new FutureMessageError(parsed.nodeId, Math.abs(msgAge)));
+        return;
+      }
+
+      // ── Layer 2: Per-peer monotonic sequence check (persistent) ──
+      const peerRecord = this.sequenceStore.get(parsed.nodeId);
+      const lastSeq = peerRecord?.lastSequence ?? -1;
+
+      if (parsed.sequenceNumber <= lastSeq) {
+        this.emit('relay:replay_rejected', parsed.nodeId, new ReplayAttackError(parsed.nodeId, parsed.sequenceNumber, lastSeq));
+        return;
+      }
+
+      // Both layers passed — accept and persist
+      this.sequenceStore.update(parsed.nodeId, parsed.sequenceNumber);
+
+      const payload: EncryptedPayload = parsed;
+      this.stats.bytesRelayed += (payload.ciphertext as any).length ?? 0;
       this.stats.packetsRelayed++;
 
       if (this.receiveResolve) {
@@ -248,11 +290,15 @@ export class TurnClient extends EventEmitter<TurnClientEvents> {
   }
 
   private padPayload(payload: EncryptedPayload): Buffer {
-    const json = JSON.stringify({
-      ...payload,
+    const envelope: Record<string, unknown> = {
       ciphertext: payload.ciphertext.toString('base64'),
       nonce: payload.nonce.toString('base64'),
-    });
+      sequenceNumber: payload.sequenceNumber,
+      timestamp: payload.timestamp,
+      paddedSize: payload.paddedSize,
+    };
+    if (payload.nodeId) envelope.nodeId = payload.nodeId;
+    const json = JSON.stringify(envelope);
     const buf = Buffer.from(json, 'utf8');
     const target = payload.paddedSize;
     if (buf.length >= target) return buf;

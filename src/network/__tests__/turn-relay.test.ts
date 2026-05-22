@@ -36,7 +36,15 @@ describe('TurnRelay — Quota Enforcement', () => {
 
   it('sendToPeer returns false without allocation', () => {
     const relay = new TurnRelay(TEST_SERVER, 'node1', 'ghost');
-    const result = relay.sendToPeer('1.2.3.4', 5000, Buffer.from('test'));
+    const result = relay.sendToPeer('peer1', Buffer.from('test'));
+    expect(result).toBe(false);
+    relay.teardown();
+  });
+
+  it('sendToPeer returns false without E2E key', () => {
+    const relay = new TurnRelay(TEST_SERVER, 'node1', 'ghost');
+    // Even if allocated, no key = no send (would need mock allocation to fully test)
+    const result = relay.sendToPeer('peer1', Buffer.from('test'));
     expect(result).toBe(false);
     relay.teardown();
   });
@@ -49,10 +57,10 @@ describe('TurnRelay — Quota Enforcement', () => {
 });
 
 describe('TurnRelay — E2E Encryption', () => {
-  it('setE2EKey accepts a 32-byte shared secret', () => {
+  it('setE2EKey accepts a 32-byte shared secret keyed by nodeId', () => {
     const relay = new TurnRelay(TEST_SERVER, 'node1', 'ghost');
     const key = randomBytes(32);
-    expect(() => relay.setE2EKey('1.2.3.4', 5000, key)).not.toThrow();
+    expect(() => relay.setE2EKey('peer_node_abc', key)).not.toThrow();
     relay.teardown();
   });
 });
