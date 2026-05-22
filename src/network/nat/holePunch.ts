@@ -1,9 +1,14 @@
 import * as dgram from 'node:dgram';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { ed25519 } from '@noble/curves/ed25519.js';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import { blake3 } from '@noble/hashes/blake3.js';
 import type { SignedEndpoint, HolePunchResult, NatType, EncryptedPayload } from './types.js';
+
+const PUNCH_CIPHER = 'aes-256-gcm';
+const PUNCH_IV_BYTES = 12;
+const PUNCH_TAG_BYTES = 16;
 
 const PUNCH_INTERVAL_MS = 500;
 const PUNCH_MIN_INTERVAL_MS = 200;
@@ -42,6 +47,7 @@ export class HolePuncher extends EventEmitter<HolePuncherEvents> {
   private readonly privateKey: Uint8Array;
   private readonly publicKey: Uint8Array;
   private knownPeers = new Map<string, Uint8Array>();
+  private dhCache = new Map<string, Buffer>();
   private seenNonces = new Set<string>();
   private activeSocket: dgram.Socket | null = null;
   private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
@@ -115,6 +121,8 @@ export class HolePuncher extends EventEmitter<HolePuncherEvents> {
   close(): void {
     if (this.keepaliveTimer) { clearInterval(this.keepaliveTimer); this.keepaliveTimer = null; }
     if (this.activeSocket) { try { this.activeSocket.close(); } catch {} this.activeSocket = null; }
+    for (const secret of this.dhCache.values()) secret.fill(0);
+    this.dhCache.clear();
     this.seenNonces.clear();
   }
 
@@ -142,7 +150,7 @@ export class HolePuncher extends EventEmitter<HolePuncherEvents> {
 
       socket.on('message', (msg, rinfo) => {
         if (done) return;
-        this.emit('punch:received', `${rinfo.address}:${rinfo.port}`);
+        this.emit('punch:received', peer.nodeId);
 
         const packet = this.decryptAndVerify(msg, peerPubKey, peer.nodeId);
         if (!packet) {
@@ -231,16 +239,42 @@ export class HolePuncher extends EventEmitter<HolePuncherEvents> {
     return { type, nodeId: this.nodeId, nonce, timestamp, signature };
   }
 
-  private signAndEncrypt(packet: PunchPacket, _peerPubKey: Uint8Array): Buffer {
-    // DEFENSE 4: In production, encrypt with peer's X25519 derived key.
-    // Here we sign the JSON — encryption requires a shared secret established via X25519 DH.
-    return Buffer.from(JSON.stringify(packet), 'utf8');
+  private deriveSharedSecret(peerEdPubKey: Uint8Array): Buffer {
+    const cacheKey = bytesToHex(peerEdPubKey);
+    const cached = this.dhCache.get(cacheKey);
+    if (cached) return cached;
+
+    const myX25519Priv = ed25519.utils.toMontgomerySecret(this.privateKey);
+    const peerX25519Pub = ed25519.utils.toMontgomery(peerEdPubKey);
+    const shared = x25519.getSharedSecret(myX25519Priv, peerX25519Pub);
+    const secret = Buffer.from(blake3(shared, { dkLen: 32 }));
+    this.dhCache.set(cacheKey, secret);
+    return secret;
+  }
+
+  private signAndEncrypt(packet: PunchPacket, peerPubKey: Uint8Array): Buffer {
+    const json = Buffer.from(JSON.stringify(packet), 'utf8');
+    const sharedKey = this.deriveSharedSecret(peerPubKey);
+    const iv = randomBytes(PUNCH_IV_BYTES);
+    const cipher = createCipheriv(PUNCH_CIPHER, sharedKey, iv);
+    const encrypted = Buffer.concat([cipher.update(json), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([iv, tag, encrypted]);
   }
 
   private decryptAndVerify(data: Buffer, peerPubKey: Uint8Array, expectedNodeId: string): PunchPacket | null {
+    if (data.length < PUNCH_IV_BYTES + PUNCH_TAG_BYTES + 1) return null;
+
     let packet: PunchPacket;
     try {
-      packet = JSON.parse(data.toString('utf8'));
+      const sharedKey = this.deriveSharedSecret(peerPubKey);
+      const iv = data.subarray(0, PUNCH_IV_BYTES);
+      const tag = data.subarray(PUNCH_IV_BYTES, PUNCH_IV_BYTES + PUNCH_TAG_BYTES);
+      const ciphertext = data.subarray(PUNCH_IV_BYTES + PUNCH_TAG_BYTES);
+      const decipher = createDecipheriv(PUNCH_CIPHER, sharedKey, iv);
+      decipher.setAuthTag(tag);
+      const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
+      packet = JSON.parse(decrypted.toString('utf8'));
     } catch { return null; }
 
     if (packet.nodeId !== expectedNodeId) return null;
@@ -265,6 +299,7 @@ export class HolePuncher extends EventEmitter<HolePuncherEvents> {
   private verifyEndpointSignature(ep: SignedEndpoint): boolean {
     const peerPubKey = this.knownPeers.get(ep.nodeId);
     if (!peerPubKey) return false;
+    if (Math.abs(Date.now() - ep.timestamp) > TIMESTAMP_WINDOW_MS) return false;
     const payload = `${ep.nodeId}:${ep.ip}:${ep.port}:${ep.timestamp}`;
     try {
       return ed25519.verify(hexToBytes(ep.signature), new TextEncoder().encode(payload), peerPubKey);

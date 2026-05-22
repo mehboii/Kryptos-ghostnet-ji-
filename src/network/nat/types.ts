@@ -47,6 +47,7 @@ export interface EncryptedPayload {
   sequenceNumber: number;
   timestamp: number;
   paddedSize: PaddedSize;
+  nodeId?: string;
 }
 
 export interface RelayStats {

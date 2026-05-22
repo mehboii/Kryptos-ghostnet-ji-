@@ -1,6 +1,12 @@
 import { EventEmitter } from 'node:events';
-import { ed25519 } from '@noble/curves/ed25519.js';
+import { randomBytes, createCipheriv, createDecipheriv } from 'node:crypto';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
+import { blake3 } from '@noble/hashes/blake3.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
+
+const E2E_CIPHER = 'aes-256-gcm';
+const E2E_IV_BYTES = 12;
+const E2E_TAG_BYTES = 16;
 import { StunClient } from './stun.js';
 import { StunValidator } from './stunValidator.js';
 import { TurnClient } from './turn.js';
@@ -40,15 +46,17 @@ export class NatTraversal extends EventEmitter<NatTraversalEvents> {
   readonly puncher: HolePuncher;
   readonly auth: PacketAuthenticator;
 
+  private readonly turnServers: { host: string; port: number }[];
   private activeConnections = new Map<string, ManagedConnection>();
   private ownNatType: NatType = 'unknown';
 
-  constructor(nodeId: string, privateKey: Uint8Array, options?: { relayTier?: RelayTier }) {
+  constructor(nodeId: string, privateKey: Uint8Array, options?: { relayTier?: RelayTier; turnServers?: { host: string; port: number }[] }) {
     super();
     this.nodeId = nodeId;
     this.privateKey = privateKey;
     this.publicKey = ed25519.getPublicKey(privateKey);
 
+    this.turnServers = options?.turnServers ?? [{ host: 'turn.ghostnet.local', port: 3478 }];
     this.stun = new StunClient();
     this.validator = new StunValidator();
     this.turn = new TurnClient(options?.relayTier ?? 'ghost');
@@ -59,10 +67,16 @@ export class NatTraversal extends EventEmitter<NatTraversalEvents> {
     this.turn.on('relay:quota_exceeded', () => this.emit('quota:exceeded'));
   }
 
-  /** Register a peer for future connections. */
+  /** Register a peer for future connections. Verifies nodeId === BLAKE3(publicKey). */
   addPeer(nodeId: string, publicKey: Uint8Array): void {
+    const expected = bytesToHex(blake3(publicKey));
+    if (nodeId !== expected) {
+      this.emit('security:violation', 'nodeId does not match BLAKE3(publicKey)');
+      return;
+    }
     this.puncher.addPeer(nodeId, publicKey);
     this.auth.addKnownPeer(nodeId, publicKey);
+    this.turn.addKnownPeer(nodeId, publicKey);
   }
 
   /**
@@ -87,14 +101,14 @@ export class NatTraversal extends EventEmitter<NatTraversalEvents> {
 
     // Step 2+3: Hole punch if STUN succeeded and not both symmetric
     if (validation?.valid) {
-      this.emit('connection:punching', `${peerSignedEndpoint.ip}:${peerSignedEndpoint.port}`);
+      this.emit('connection:punching', peerNodeId);
       const punchResult = await this.puncher.punch(peerSignedEndpoint, this.ownNatType);
 
       if (punchResult.success && punchResult.socket) {
         this.emit('connection:direct', peerNodeId);
         const conn = new ManagedConnection(
           'direct', peerNodeId, punchResult.socket, this.auth,
-          this.nodeId, this.privateKey,
+          this.nodeId, this.privateKey, peerPublicKey,
           peerSignedEndpoint.ip, peerSignedEndpoint.port,
         );
         this.activeConnections.set(peerNodeId, conn);
@@ -105,12 +119,12 @@ export class NatTraversal extends EventEmitter<NatTraversalEvents> {
 
     // Step 4: TURN relay fallback
     try {
-      await this.turn.allocateRelay({ host: peerSignedEndpoint.ip, port: 3478 });
+      await this.turn.allocateRelay(this.turnServers[0]);
       this.emit('connection:relayed', peerNodeId);
 
       const conn = new ManagedConnection(
         'relay', peerNodeId, null, this.auth,
-        this.nodeId, this.privateKey,
+        this.nodeId, this.privateKey, peerPublicKey,
         peerSignedEndpoint.ip, peerSignedEndpoint.port,
         this.turn,
       );
@@ -183,7 +197,7 @@ export class NatTraversal extends EventEmitter<NatTraversalEvents> {
       const oldConn = this.activeConnections.get(peerNodeId);
       const newConn = new ManagedConnection(
         'direct', peerNodeId, result.socket, this.auth,
-        this.nodeId, this.privateKey,
+        this.nodeId, this.privateKey, peerPublicKey,
         peerEndpoint.ip, peerEndpoint.port,
       );
       this.activeConnections.set(peerNodeId, newConn);
@@ -201,6 +215,8 @@ class ManagedConnection implements Connection {
   private readonly authenticator: PacketAuthenticator;
   private readonly nodeId: string;
   private readonly privateKey: Uint8Array;
+  private readonly peerPublicKey: Uint8Array;
+  private readonly sharedSecret: Buffer;
   private readonly peerIp: string;
   private readonly peerPort: number;
   private readonly turnClient: TurnClient | null;
@@ -212,7 +228,7 @@ class ManagedConnection implements Connection {
   constructor(
     method: ConnectionMethod, peerNodeId: string,
     socket: import('node:dgram').Socket | null, auth: PacketAuthenticator,
-    nodeId: string, privateKey: Uint8Array,
+    nodeId: string, privateKey: Uint8Array, peerPublicKey: Uint8Array,
     peerIp: string, peerPort: number,
     turn?: TurnClient,
   ) {
@@ -223,14 +239,22 @@ class ManagedConnection implements Connection {
     this.authenticator = auth;
     this.nodeId = nodeId;
     this.privateKey = privateKey;
+    this.peerPublicKey = peerPublicKey;
     this.peerIp = peerIp;
     this.peerPort = peerPort;
     this.turnClient = turn ?? null;
 
+    const myX25519Priv = ed25519.utils.toMontgomerySecret(privateKey);
+    const peerX25519Pub = ed25519.utils.toMontgomery(peerPublicKey);
+    const raw = x25519.getSharedSecret(myX25519Priv, peerX25519Pub);
+    this.sharedSecret = Buffer.from(blake3(raw, { dkLen: 32 }));
+
     if (socket) {
       socket.on('message', (msg) => {
-        const result = this.authenticator.authenticate(msg, peerNodeId);
-        if (!result.valid) return; // Silent drop
+        const decrypted = this.e2eDecrypt(msg);
+        if (!decrypted) return;
+        const result = this.authenticator.authenticate(decrypted, peerNodeId);
+        if (!result.valid) return;
         const data = Buffer.from(JSON.stringify(result.data));
         if (this.waitResolve) {
           const resolve = this.waitResolve;
@@ -247,11 +271,11 @@ class ManagedConnection implements Connection {
     if (this.closed) throw new Error('Connection closed');
 
     const timestamp = Date.now();
-    const nonce = require('node:crypto').randomBytes(16).toString('hex');
+    const nonce = randomBytes(16).toString('hex');
     const sigPayload = `${this.nodeId}:${timestamp}:${nonce}:${JSON.stringify(data.toString('base64'))}`;
     const signature = bytesToHex(ed25519.sign(new TextEncoder().encode(sigPayload), this.privateKey));
 
-    const packet = Buffer.from(JSON.stringify({
+    const innerPacket = Buffer.from(JSON.stringify({
       nodeId: this.nodeId,
       signature,
       timestamp,
@@ -259,16 +283,19 @@ class ManagedConnection implements Connection {
       data: data.toString('base64'),
     }));
 
+    const encrypted = this.e2eEncrypt(innerPacket);
+
     if (this.method === 'direct' && this.socket) {
-      this.socket.send(packet, this.peerPort, this.peerIp);
+      this.socket.send(encrypted, this.peerPort, this.peerIp);
     } else if (this.method === 'relay' && this.turnClient) {
       const payload: EncryptedPayload = {
-        ciphertext: packet,
+        ciphertext: encrypted,
         nonce: Buffer.from(nonce, 'hex'),
         signature,
         sequenceNumber: this.seqNumber++,
         timestamp,
-        paddedSize: this.selectPadSize(packet.length),
+        paddedSize: this.selectPadSize(encrypted.length),
+        nodeId: this.nodeId,
       };
       this.turnClient.sendViaRelay(payload);
     }
@@ -286,7 +313,30 @@ class ManagedConnection implements Connection {
 
   close(): void {
     this.closed = true;
+    this.sharedSecret.fill(0);
     if (this.socket) { try { this.socket.close(); } catch {} this.socket = null; }
+  }
+
+  private e2eEncrypt(plaintext: Buffer): Buffer {
+    const iv = randomBytes(E2E_IV_BYTES);
+    const cipher = createCipheriv(E2E_CIPHER, this.sharedSecret, iv);
+    const encrypted = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    return Buffer.concat([iv, tag, encrypted]);
+  }
+
+  private e2eDecrypt(ciphertext: Buffer): Buffer | null {
+    if (ciphertext.length < E2E_IV_BYTES + E2E_TAG_BYTES + 1) return null;
+    try {
+      const iv = ciphertext.subarray(0, E2E_IV_BYTES);
+      const tag = ciphertext.subarray(E2E_IV_BYTES, E2E_IV_BYTES + E2E_TAG_BYTES);
+      const data = ciphertext.subarray(E2E_IV_BYTES + E2E_TAG_BYTES);
+      const decipher = createDecipheriv(E2E_CIPHER, this.sharedSecret, iv);
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(data), decipher.final()]);
+    } catch {
+      return null;
+    }
   }
 
   private selectPadSize(len: number): 512 | 1024 | 2048 | 4096 {
@@ -302,4 +352,7 @@ export { StunValidator } from './stunValidator.js';
 export { TurnClient } from './turn.js';
 export { HolePuncher } from './holePunch.js';
 export { PacketAuthenticator } from './packetAuth.js';
+export { SequenceStore } from './sequenceStore.js';
+export { ReplayAttackError, StaleMessageError, FutureMessageError } from './replayErrors.js';
+export * from './constants.js';
 export type * from './types.js';

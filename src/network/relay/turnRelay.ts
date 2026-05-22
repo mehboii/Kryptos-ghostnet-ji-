@@ -130,7 +130,7 @@ export class TurnRelay extends EventEmitter<TurnRelayEvents> {
     });
   }
 
-  sendToPeer(peerIp: string, peerPort: number, plaintext: Buffer): boolean {
+  sendToPeer(peerNodeId: string, plaintext: Buffer): boolean {
     if (!this.socket || !this.allocation) return false;
 
     this.resetQuotaCountersIfNeeded();
@@ -139,10 +139,10 @@ export class TurnRelay extends EventEmitter<TurnRelayEvents> {
       return false;
     }
 
-    const peerKey = `${peerIp}:${peerPort}`;
-    const e2eKey = this.e2eKeys.get(peerKey);
-    const payload = e2eKey ? this.encrypt(plaintext, e2eKey) : plaintext;
+    const e2eKey = this.e2eKeys.get(peerNodeId);
+    if (!e2eKey) return false;
 
+    const payload = this.encrypt(plaintext, e2eKey);
     const channelData = this.buildChannelData(this.allocation.channelId, payload);
     this.socket.send(channelData, this.server.port, this.server.host);
 
@@ -151,8 +151,8 @@ export class TurnRelay extends EventEmitter<TurnRelayEvents> {
     return true;
   }
 
-  setE2EKey(peerIp: string, peerPort: number, sharedSecret: Buffer): void {
-    this.e2eKeys.set(`${peerIp}:${peerPort}`, sharedSecret);
+  setE2EKey(peerNodeId: string, sharedSecret: Buffer): void {
+    this.e2eKeys.set(peerNodeId, sharedSecret);
   }
 
   getStats(): Readonly<RelayStats> {
@@ -192,19 +192,16 @@ export class TurnRelay extends EventEmitter<TurnRelayEvents> {
 
     let payload = msg.subarray(CHANNEL_HEADER_SIZE, CHANNEL_HEADER_SIZE + length);
 
-    for (const [peerKey, key] of this.e2eKeys) {
+    for (const [nodeId, key] of this.e2eKeys) {
       const decrypted = this.decrypt(payload, key);
       if (decrypted) {
-        payload = decrypted;
-        const [ip, portStr] = peerKey.split(':');
-        this.stats.bytesReceived += payload.length;
-        this.emit('relay:data', payload, { ip, port: Number(portStr) });
+        this.stats.bytesReceived += decrypted.length;
+        this.emit('relay:data', decrypted, { ip: nodeId, port: 0 });
         return;
       }
     }
 
-    this.stats.bytesReceived += payload.length;
-    this.emit('relay:data', payload, { ip: 'unknown', port: 0 });
+    // No matching key — silent drop. Never emit unencrypted data.
   }
 
   private encrypt(plaintext: Buffer, key: Buffer): Buffer {
