@@ -63,7 +63,7 @@ export class IPv4Extractor extends EventEmitter<IPv4ExtractorEvents> {
 
   /**
    * Run the full extraction pipeline for a TCP socket or UDP remote info.
-   * Returns null if the observed endpoint could not be extracted.
+   * Returns null on silent drop (failed auth, bad endpoint, or unverified handshake).
    */
   processConnection(
     socket: TcpSocket | RemoteInfo,
@@ -74,6 +74,10 @@ export class IPv4Extractor extends EventEmitter<IPv4ExtractorEvents> {
     if (!observed) return null;
 
     const claimed = this.handshake.parse(handshakeMessage);
+
+    // Silent drop: unverified handshake → no error response, no registration
+    if (!claimed.verified) return null;
+
     const reconciled = this.reconciliation.reconcile(observed, claimed);
     const record = this.privacy.apply(reconciled, tier ?? this.defaultTier);
     this.registry.addPeer(record);

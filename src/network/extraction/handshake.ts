@@ -22,7 +22,12 @@ export interface ClaimedEndpoint {
 }
 
 export class HandshakeParser {
-  /** Parse a raw handshake from Buffer or plain object and verify it. */
+  /**
+   * Parse a raw handshake from Buffer or plain object and verify it.
+   *
+   * Auth order per spec: signature FIRST → nodeId → freshness → schema.
+   * No field inspection leaks info before the signature is proven valid.
+   */
   parse(input: Buffer | HandshakeMessage): ClaimedEndpoint {
     const msg = Buffer.isBuffer(input)
       ? (JSON.parse(input.toString('utf8')) as HandshakeMessage)
@@ -36,24 +41,32 @@ export class HandshakeParser {
       verified: false,
     };
 
-    if (!this.isFresh(msg.timestamp)) return result;
-    if (!this.isValidIpFormat(msg.claimedLanIp) || !this.isValidIpFormat(msg.claimedPublicIp)) return result;
-
+    // Step 1: Decode keys (prerequisite for sig check)
     const pubKeyBytes = this.decodeKey(msg.publicKey);
     if (!pubKeyBytes) return result;
-
-    if (!this.verifyNodeId(msg.nodeId, pubKeyBytes)) return result;
-
-    const payload = this.buildPayload(msg);
     const sigBytes = this.decodeKey(msg.signature);
     if (!sigBytes) return result;
 
+    // Step 2: Ed25519 signature — MUST be first real check (spec requirement)
+    const payload = this.buildPayload(msg);
+    let sigValid = false;
     try {
-      result.verified = ed25519.verify(sigBytes, payload, pubKeyBytes);
+      sigValid = ed25519.verify(sigBytes, payload, pubKeyBytes);
     } catch {
-      // malformed sig — verified stays false
+      return result;
     }
+    if (!sigValid) return result;
 
+    // Step 3: Verify nodeId === BLAKE3(publicKey)
+    if (!this.verifyNodeId(msg.nodeId, pubKeyBytes)) return result;
+
+    // Step 4: Timestamp freshness (replay protection)
+    if (!this.isFresh(msg.timestamp)) return result;
+
+    // Step 5: Schema validation (IP format)
+    if (!this.isValidIpFormat(msg.claimedLanIp) || !this.isValidIpFormat(msg.claimedPublicIp)) return result;
+
+    result.verified = true;
     return result;
   }
 
