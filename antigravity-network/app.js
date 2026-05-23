@@ -238,7 +238,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.warn("⚠️ GhostMesh not loaded, using direct WebSocket fallback");
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
+            const wsToken = sessionStorage.getItem('ghost_token') || localStorage.getItem('ghost_token') || '';
+            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws?token=${encodeURIComponent(wsToken)}`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
                 ws.send(JSON.stringify({ type: 'HELLO', id: myId }));

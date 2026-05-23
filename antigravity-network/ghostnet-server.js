@@ -1,14 +1,60 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
+import jwt from 'jsonwebtoken';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 8080;
+const PORT = process.env.GHOSTNET_SERVER_PORT || 8080;
+
+const JWT_SECRET = process.env.AUTH_JWT_SECRET || '';
+
+function authenticateToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.userId = decoded.userId;
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+}
+
+const MAX_MESSAGES = 10_000;
+const MAX_MESSAGE_LENGTH = 4096;
+
+let _dbWriteTimer = null;
+let _convosWriteTimer = null;
+let _usersWriteTimer = null;
+
+function debouncedWriteDb() {
+    if (_dbWriteTimer) return;
+    _dbWriteTimer = setTimeout(() => {
+        _dbWriteTimer = null;
+        fs.writeFile(DB_FILE, JSON.stringify(messages.slice(-MAX_MESSAGES), null, 2), () => {});
+    }, 1000);
+}
+function debouncedWriteConvos() {
+    if (_convosWriteTimer) return;
+    _convosWriteTimer = setTimeout(() => {
+        _convosWriteTimer = null;
+        fs.writeFile(CONVOS_FILE, JSON.stringify(conversations, null, 2), () => {});
+    }, 1000);
+}
+function debouncedWriteUsers() {
+    if (_usersWriteTimer) return;
+    _usersWriteTimer = setTimeout(() => {
+        _usersWriteTimer = null;
+        fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2), () => {});
+    }, 1000);
+}
 
 // 🟢 HARD STORAGE (MINIMAL)
 // STEP 1 — message DB
@@ -18,8 +64,23 @@ if (!fs.existsSync(DB)) {
     fs.writeFileSync(DB, "[]");
 }
 
-app.use(express.static('.'));
-app.use(express.json());
+const BLOCKED_FILES = new Set([
+    '/messages.json', '/users.json', '/conversations.json',
+    '/package.json', '/package-lock.json',
+    '/.env', '/.gitignore',
+    '/ghostnet-server.js',
+]);
+app.use((req, res, next) => {
+    if (BLOCKED_FILES.has(req.path.toLowerCase())) {
+        return res.status(404).end();
+    }
+    if (req.path.endsWith('.env') || req.path.endsWith('.key') || req.path.endsWith('.pem')) {
+        return res.status(404).end();
+    }
+    next();
+});
+app.use(express.static(__dirname));
+app.use(express.json({ limit: '16kb' }));
 
 // Initialize messages store
 const DB_FILE = path.join(__dirname, 'messages.json');
@@ -94,29 +155,29 @@ app.post("/create-user", (req, res) => {
     }
 
     const newUser = {
-        id: "user_" + Date.now(),
+        id: "user_" + crypto.randomUUID(),
         username: clean,
         avatar: avatar || null
     };
 
     users.push(newUser);
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    debouncedWriteUsers();
 
     res.json({ success: true, user: newUser });
 });
 
-app.get("/user/:id", (req, res) => {
+app.get("/user/:id", authenticateToken, (req, res) => {
     try {
         const user = users.find(u => u.id === req.params.id);
         if (user) res.json(user);
         else res.status(404).json({ error: "User not found" });
     } catch (e) {
-        res.status(500).json({ error: "DB Error" });
+        res.status(500).json({ error: "Internal error" });
     }
 });
 
-app.get("/users", (req, res) => {
-    res.json(users);
+app.get("/users", authenticateToken, (req, res) => {
+    res.json(users.map(u => ({ id: u.id, username: u.username, avatar: u.avatar })));
 });
 
 // Routes
@@ -124,8 +185,8 @@ app.get('/status', (req, res) => {
     res.json({ status: "ok" });
 });
 
-app.get('/conversations', (req, res) => {
-    const { userId } = req.query;
+app.get('/conversations', authenticateToken, (req, res) => {
+    const userId = req.userId;
     if (!userId) return res.status(400).json({ error: "userId required" });
 
     const userConvos = conversations.filter(c => c.participants.includes(userId));
@@ -144,12 +205,20 @@ app.get('/conversations', (req, res) => {
 });
 
 // Save Message (Local JSON)
-app.post('/message', (req, res) => {
-    const { senderId, receiverId, content, contactName } = req.body;
-    console.log(`📨 POST /message — from: ${senderId}, to: ${receiverId}, name: ${contactName || '(none)'}`);
+app.post('/message', authenticateToken, (req, res) => {
+    const senderId = req.userId;
+    const { receiverId, content, contactName } = req.body;
 
-    if (!senderId || !receiverId || !content) {
+    if (!receiverId || !content) {
         return res.status(400).json({ error: "Missing fields" });
+    }
+
+    if (typeof content !== 'string' || content.length > MAX_MESSAGE_LENGTH) {
+        return res.status(400).json({ error: "Invalid or oversized content" });
+    }
+
+    if (typeof receiverId !== 'string' || receiverId.length > 128) {
+        return res.status(400).json({ error: "Invalid receiverId" });
     }
 
     // Auto-create or update conversation
@@ -159,24 +228,25 @@ app.post('/message', (req, res) => {
 
     if (!convo) {
         convo = {
-            id: "convo_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+            id: "convo_" + crypto.randomUUID(),
             participants: [senderId, receiverId],
-            contactName: contactName || null,
-            lastMessage: content,
+            contactName: (typeof contactName === 'string' && contactName.length <= 64) ? contactName : null,
+            lastMessage: content.slice(0, 200),
             updated: Date.now()
         };
         conversations.push(convo);
     } else {
-        convo.lastMessage = content;
+        convo.lastMessage = content.slice(0, 200);
         convo.updated = Date.now();
-        // Update contactName if provided and not already set
-        if (contactName && !convo.contactName) convo.contactName = contactName;
+        if (contactName && typeof contactName === 'string' && contactName.length <= 64 && !convo.contactName) {
+            convo.contactName = contactName;
+        }
     }
 
-    fs.writeFileSync(CONVOS_FILE, JSON.stringify(conversations, null, 2));
+    debouncedWriteConvos();
 
     const msg = {
-        id: "msg_" + Date.now(),
+        id: "msg_" + crypto.randomUUID(),
         convoId: convo.id,
         senderId,
         content,
@@ -184,15 +254,16 @@ app.post('/message', (req, res) => {
     };
 
     messages.push(msg);
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify(messages, null, 2));
-    } catch (e) { console.error("Save Error", e); }
+    if (messages.length > MAX_MESSAGES) {
+        messages = messages.slice(-MAX_MESSAGES);
+    }
+    debouncedWriteDb();
 
-    // Broadcast logic (Real-time)
-    if (typeof wss !== 'undefined') {
-        wss.clients.forEach(c => {
-            if (c.readyState === 1) c.send(JSON.stringify({ type: 'MSG', ...msg }));
-        });
+    // Broadcast to authenticated WS clients only
+    for (const [, peer] of meshPeers) {
+        if (peer.ws.readyState === 1) {
+            peer.ws.send(JSON.stringify({ type: 'MSG', ...msg }));
+        }
     }
 
     res.json({ success: true, message: msg, convo });
@@ -204,73 +275,84 @@ app.get('/', (req, res) => {
 });
 
 // STEP 3 — HISTORY API
-app.get("/history", (req, res) => {
+app.get("/history", authenticateToken, (req, res) => {
     try {
-        const all = JSON.parse(fs.readFileSync(DB));
         const { convoId } = req.query;
-        if (convoId) {
-            res.json(all.filter(m => m.convoId === convoId));
-        } else {
-            res.json(all);
+        if (!convoId || typeof convoId !== 'string') {
+            return res.status(400).json({ error: "convoId required" });
         }
+        const convo = conversations.find(c => c.id === convoId);
+        if (!convo || !convo.participants.includes(req.userId)) {
+            return res.status(403).json({ error: "Access denied" });
+        }
+        res.json(messages.filter(m => m.convoId === convoId));
     } catch (e) {
         res.json([]);
     }
 });
 
 // Start
-const server = app.listen(8080, "0.0.0.0", () => {
-    console.log("GhostNet Local Server running on port 8080");
+const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`GhostNet Local Server running on port ${PORT}`);
 });
 
 // WebSocket Upgrade Handling (Proper Separation)
 const wss = new WebSocketServer({ noServer: true });
 
 server.on("upgrade", (req, socket, head) => {
-    // Handle both /ws (new standard) and root (legacy fallback) if needed? 
-    // User requested "ws://localhost:8080/ws". So we check for "/ws".
-    // But app.js uses `ws://${window.location.host}` which is root "/".
-    // I MUST UPDATE APP.JS TO USE /ws if I restrict it here.
-    // Or I accept "/" here too.
-    // User instructions: "Change frontend WS URL to ... /ws. Then change server to ... checking /ws".
-    // I will check for "/ws" AND "/" to cover both bases during transition or just "/ws" if strict.
-    // I'll be permissive: `req.url === '/ws' || req.url === '/'` ?
-    // But Express handles "/" for HTTP. WS upgrade is separate.
-    // I'll stick to user instructions: check "/ws" logic.
-    // I'll assume I will update app.js next.
-    if (req.url === "/ws" || req.url === "/") {
-        wss.handleUpgrade(req, socket, head, ws => {
-            wss.emit("connection", ws, req);
-        });
-    } else {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const pathname = url.pathname;
+    if (pathname !== "/ws" && pathname !== "/") {
         socket.destroy();
+        return;
     }
+    const token = url.searchParams.get('token');
+    if (!token) {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+    }
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.authenticatedUserId = decoded.userId;
+    } catch {
+        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+        socket.destroy();
+        return;
+    }
+    wss.handleUpgrade(req, socket, head, ws => {
+        ws.authenticatedUserId = req.authenticatedUserId;
+        wss.emit("connection", ws, req);
+    });
 });
 // Track connected mesh peers
 const meshPeers = new Map(); // peerId -> { id, ws, capabilities, lastSeen }
 
-wss.on("connection", (ws) => {
+const MAX_WS_MESSAGE_SIZE = 8192;
+
+wss.on("connection", (ws, req) => {
+    const authenticatedUserId = ws.authenticatedUserId;
     let clientId = null;
-    console.log("WS client connected");
 
     ws.on("message", data => {
         try {
-            const msg = JSON.parse(data.toString());
+            const raw = data.toString();
+            if (raw.length > MAX_WS_MESSAGE_SIZE) return;
+
+            const msg = JSON.parse(raw);
+            if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
 
             switch (msg.type) {
                 case 'HELLO':
-                case 'MESH_HELLO':
-                    // Register this peer
-                    clientId = msg.id || msg.nodeId;
+                case 'MESH_HELLO': {
+                    clientId = authenticatedUserId;
                     meshPeers.set(clientId, {
                         id: clientId,
                         ws: ws,
                         capabilities: msg.capabilities || {},
                         lastSeen: Date.now()
                     });
-                    console.log(`🕸️ Mesh peer joined: ${clientId} (total: ${meshPeers.size})`);
 
-                    // Send full peer list to the new peer
                     const peerList = [];
                     for (const [id, peer] of meshPeers) {
                         if (id !== clientId) {
@@ -279,48 +361,45 @@ wss.on("connection", (ws) => {
                     }
                     ws.send(JSON.stringify({ type: 'MESH_PEERS', peers: peerList }));
 
-                    // Broadcast PEER_JOIN to all OTHER peers
-                    wss.clients.forEach(c => {
-                        if (c.readyState === 1 && c !== ws) {
-                            c.send(JSON.stringify({ type: 'PEER_JOIN', id: clientId, capabilities: msg.capabilities }));
+                    for (const [id, peer] of meshPeers) {
+                        if (id !== clientId && peer.ws.readyState === 1) {
+                            peer.ws.send(JSON.stringify({ type: 'PEER_JOIN', id: clientId, capabilities: msg.capabilities }));
                         }
-                    });
+                    }
                     break;
+                }
 
                 case 'HEARTBEAT':
-                    // Update lastSeen
                     if (clientId && meshPeers.has(clientId)) {
                         meshPeers.get(clientId).lastSeen = Date.now();
                     }
                     break;
 
                 default:
-                    // Broadcast all other messages to other clients
-                    wss.clients.forEach(c => {
-                        if (c.readyState === 1 && c !== ws) {
-                            c.send(JSON.stringify(msg));
+                    msg.from = authenticatedUserId;
+                    const outbound = JSON.stringify(msg);
+                    for (const [id, peer] of meshPeers) {
+                        if (id !== clientId && peer.ws.readyState === 1) {
+                            peer.ws.send(outbound);
                         }
-                    });
+                    }
                     break;
             }
-        } catch (e) { console.error("WS msg error:", e); }
+        } catch { /* malformed message — silently drop */ }
     });
 
     ws.on("close", () => {
         if (clientId) {
-            console.log(`🕸️ Mesh peer left: ${clientId} (total: ${meshPeers.size - 1})`);
             meshPeers.delete(clientId);
-
-            // Broadcast PEER_LEAVE
-            wss.clients.forEach(c => {
-                if (c.readyState === 1) {
-                    c.send(JSON.stringify({ type: 'PEER_LEAVE', id: clientId }));
+            for (const [, peer] of meshPeers) {
+                if (peer.ws.readyState === 1) {
+                    peer.ws.send(JSON.stringify({ type: 'PEER_LEAVE', id: clientId }));
                 }
-            });
+            }
         }
     });
 
-    ws.send(JSON.stringify({ type: "welcome" }));
+    ws.send(JSON.stringify({ type: "welcome", userId: authenticatedUserId }));
 });
 
 // Clean stale peers every 30 seconds

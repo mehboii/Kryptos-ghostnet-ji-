@@ -28,6 +28,8 @@ const CHAR_PEER_ID = "67686f73-746e-6574-2d69-640000000000"; // "ghostnet-id"
 const CHAR_PUB_KEY = "67686f73-746e-6574-2d6b-657900000000"; // "ghostnet-key"
 const CHAR_DATA = "67686f73-746e-6574-2d64-617461000000"; // "ghostnet-data"
 
+const MAX_BLE_PAYLOAD = 4096;
+
 export default class GhostBLE {
     constructor(identity) {
         this.identity = identity; // { nodeId, publicKey, privateKey }
@@ -40,12 +42,31 @@ export default class GhostBLE {
         this.isScanning = false;
 
         // Event Handlers
-        this.onMessage = (msg, from) => console.log('BLE Recv:', msg, from);
-        this.onPeer = (peer) => console.log('BLE Peer:', peer);
+        this.onMessage = (msg, from) => {};
+        this.onPeer = (peer) => {};
 
         if (this.mode === 'node') {
             this.noble = noble;
         }
+    }
+
+    _validateBleMessage(raw) {
+        if (typeof raw !== 'string' || raw.length > MAX_BLE_PAYLOAD) return null;
+        try {
+            const msg = JSON.parse(raw);
+            if (!msg || typeof msg !== 'object') return null;
+            if (typeof msg.type !== 'string') return null;
+            return msg;
+        } catch {
+            return null;
+        }
+    }
+
+    _verifyPeerIdentity(peerId, peerKeyHex) {
+        if (!peerId || typeof peerId !== 'string' || peerId.length > 128) return false;
+        if (!peerKeyHex || typeof peerKeyHex !== 'string') return false;
+        if (!/^[0-9a-f]+$/i.test(peerKeyHex)) return false;
+        return true;
     }
 
     async init() {
@@ -125,9 +146,13 @@ export default class GhostBLE {
         const peerId = new TextDecoder().decode(peerIdVal);
 
         const peerKeyVal = await charKey.readValue();
-        const peerKey = this._bufToHex(peerKeyVal); // Assuming hex string or raw bytes
+        const peerKey = this._bufToHex(peerKeyVal);
 
-        console.log(`GhostBLE: Connected to ${peerId}`);
+        if (!this._verifyPeerIdentity(peerId, peerKey)) {
+            console.warn(`GhostBLE: Peer identity verification failed — disconnecting`);
+            device.gatt.disconnect();
+            return;
+        }
 
         const peer = {
             id: peerId,
@@ -135,7 +160,8 @@ export default class GhostBLE {
             device: device,
             server: server,
             transport: 'ble',
-            writeChar: charData
+            writeChar: charData,
+            verified: false
         };
 
         this.peers.set(peerId, peer);
@@ -145,7 +171,8 @@ export default class GhostBLE {
         await charData.startNotifications();
         charData.addEventListener('characteristicvaluechanged', (event) => {
             const val = new TextDecoder().decode(event.target.value);
-            this.onMessage(JSON.parse(val), peerId);
+            const msg = this._validateBleMessage(val);
+            if (msg) this.onMessage(msg, peerId);
         });
     }
 
@@ -209,29 +236,36 @@ export default class GhostBLE {
                         });
 
                         if (charData && charId && charKey) {
-                            console.log(`GhostBLE: Characteristics Found for ${peerId}`);
-                            // Read ID
                             charId.read((err, data) => {
+                                if (err) return;
                                 const idStr = data.toString('utf-8');
-                                // Store peer
-                                this.peers.set(idStr, {
-                                    id: idStr,
-                                    peripheral: peripheral,
-                                    writeChar: charData,
-                                    transport: 'ble'
-                                });
-                                console.log(`GhostBLE: Fully Connected to ${idStr}`);
 
-                                // Subscribe
-                                charData.subscribe(err => {
-                                    if (err) console.error("Subscribe error:", err);
-                                });
-                                charData.on('data', (data, isNotification) => {
-                                    const msg = data.toString('utf-8');
-                                    try {
-                                        this.onMessage(JSON.parse(msg), idStr);
-                                    } catch (e) { }
-                                });
+                                charKey.read((err, keyData) => {
+                                    const keyHex = keyData ? this._bufToHex(keyData) : '';
+                                    if (!this._verifyPeerIdentity(idStr, keyHex)) {
+                                        console.warn(`GhostBLE: Peer identity verification failed for ${peerId}`);
+                                        peripheral.disconnect();
+                                        return;
+                                    }
+
+                                    this.peers.set(idStr, {
+                                        id: idStr,
+                                        key: keyHex,
+                                        peripheral: peripheral,
+                                        writeChar: charData,
+                                        transport: 'ble',
+                                        verified: false
+                                    });
+
+                                    charData.subscribe(err => {
+                                        if (err) console.error("Subscribe error:", err);
+                                    });
+                                    charData.on('data', (data, isNotification) => {
+                                        const raw = data.toString('utf-8');
+                                        const msg = this._validateBleMessage(raw);
+                                        if (msg) this.onMessage(msg, idStr);
+                                    });
+                                })
                             });
                         } else {
                             console.warn(`Missing characteristics on ${peerId}`);
@@ -250,6 +284,7 @@ export default class GhostBLE {
         if (!peer) throw new Error("Peer not connected");
 
         const dataStr = JSON.stringify(payload);
+        if (dataStr.length > MAX_BLE_PAYLOAD) throw new Error("Payload too large for BLE");
         const dataBytes = new TextEncoder().encode(dataStr);
 
         if (this.mode === 'browser') {
