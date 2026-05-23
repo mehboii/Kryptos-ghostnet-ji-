@@ -24,18 +24,28 @@
             setInterval(() => this.prunePeers(), this.PRUNE_TIMEOUT);
         }
 
+        _validatePeerId(peerId) {
+            return typeof peerId === 'string' && peerId.length > 0 && peerId.length <= 128;
+        }
+
         addPeer(peerId, meta = {}) {
+            if (!this._validatePeerId(peerId)) return;
             if (peerId === this.myPeerId) return;
+
+            if (this.knownPeers.size >= this.MAX_PEERS && !this.knownPeers.has(peerId)) {
+                return;
+            }
 
             if (!this.knownPeers.has(peerId)) {
                 this.knownPeers.set(peerId, {
                     id: peerId,
                     address: meta.address || null,
+                    publicKey: meta.publicKey || null,
                     firstSeen: Date.now(),
                     lastSeen: Date.now(),
-                    isConnected: meta.isConnected || false
+                    isConnected: meta.isConnected || false,
+                    verified: false
                 });
-                console.log(`[Discovery] New Peer Discovered: ${peerId}`);
                 if (this.chat && this.chat.peers.size < 5) {
                     // Try connect
                 }
@@ -56,12 +66,11 @@
         async exchangePeers() {
             const allPeers = Array.from(this.knownPeers.values());
             const subset = allPeers
-                .filter(p => p.isConnected)
+                .filter(p => p.isConnected && p.verified)
                 .sort(() => 0.5 - Math.random())
                 .slice(0, 5)
                 .map(p => ({
                     id: p.id,
-                    address: p.address,
                 }));
 
             if (subset.length === 0) return;

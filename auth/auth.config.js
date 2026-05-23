@@ -11,10 +11,18 @@
 
 import crypto from 'crypto';
 
-// In production, set AUTH_JWT_SECRET via environment variable.
-// The fallback generates a random secret per process start (safe for dev).
-const JWT_SECRET = process.env.AUTH_JWT_SECRET
-    || crypto.randomBytes(64).toString('hex');
+const _envSecret = process.env.AUTH_JWT_SECRET;
+const _isPlaceholder = !_envSecret || _envSecret.startsWith('CHANGE_ME');
+if (_isPlaceholder && process.env.NODE_ENV === 'production') {
+    console.error('FATAL: AUTH_JWT_SECRET is not set or is a placeholder. Refusing to start in production.');
+    process.exit(1);
+}
+if (_isPlaceholder) {
+    console.warn('⚠️  AUTH_JWT_SECRET not configured — using ephemeral random secret (dev only). Sessions will not survive restarts.');
+}
+const JWT_SECRET = _isPlaceholder
+    ? crypto.randomBytes(64).toString('hex')
+    : _envSecret;
 
 const JWT_EXPIRES_IN = process.env.AUTH_JWT_EXPIRES_IN || '24h';
 
