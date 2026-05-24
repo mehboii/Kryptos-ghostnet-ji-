@@ -191,21 +191,19 @@ class GhostMesh {
     /** Send a message to all connected peers via all transports */
     async broadcast(message) {
         let encryptedData;
-        let broadcastKeyHex;
         let ivHex;
         try {
-            const aesKey = await crypto.subtle.generateKey(
-                { name: 'AES-GCM', length: 256 }, true, ['encrypt']
-            );
+            if (!this._broadcastKey) {
+                this._broadcastKey = await crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                );
+            }
             const iv = crypto.getRandomValues(new Uint8Array(12));
             const plainBytes = new TextEncoder().encode(JSON.stringify(message));
             const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, aesKey, plainBytes
+                { name: 'AES-GCM', iv }, this._broadcastKey, plainBytes
             );
-            const rawKey = await crypto.subtle.exportKey('raw', aesKey);
             encryptedData = Array.from(new Uint8Array(cipherBuf));
-            broadcastKeyHex = Array.from(new Uint8Array(rawKey))
-                .map(b => b.toString(16).padStart(2, '0')).join('');
             ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
         } catch (e) {
             console.error('Broadcast encryption failed:', e);
@@ -216,7 +214,7 @@ class GhostMesh {
             type: 'MESH_MSG',
             id: crypto.randomUUID(),
             from: this.identity.id,
-            enc: { data: encryptedData, key: broadcastKeyHex, iv: ivHex },
+            enc: { data: encryptedData, iv: ivHex },
             ts: Date.now(),
             hops: 0,
             maxHops: 5
@@ -238,17 +236,14 @@ class GhostMesh {
         }
     }
 
-    /** Decrypt an encrypted mesh message envelope */
+    /** Decrypt an encrypted mesh message envelope using session broadcast key */
     async _decryptMeshPayload(enc) {
-        if (!enc || !enc.data || !enc.key || !enc.iv) return null;
+        if (!enc || !enc.data || !enc.iv) return null;
+        if (!this._broadcastKey) return null;
         try {
-            const keyBytes = new Uint8Array(enc.key.match(/.{1,2}/g).map(b => parseInt(b, 16)));
             const ivBytes = new Uint8Array(enc.iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
-            const aesKey = await crypto.subtle.importKey(
-                'raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']
-            );
             const decrypted = await crypto.subtle.decrypt(
-                { name: 'AES-GCM', iv: ivBytes }, aesKey, new Uint8Array(enc.data)
+                { name: 'AES-GCM', iv: ivBytes }, this._broadcastKey, new Uint8Array(enc.data)
             );
             return JSON.parse(new TextDecoder().decode(decrypted));
         } catch {
@@ -262,18 +257,20 @@ class GhostMesh {
 
         let encryptedData;
         try {
-            const aesKey = await crypto.subtle.generateKey(
-                { name: 'AES-GCM', length: 256 }, true, ['encrypt']
-            );
+            if (!this._peerKeys) this._peerKeys = new Map();
+            if (!this._peerKeys.has(peerId)) {
+                this._peerKeys.set(peerId, await crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                ));
+            }
+            const peerKey = this._peerKeys.get(peerId);
             const iv = crypto.getRandomValues(new Uint8Array(12));
             const plainBytes = new TextEncoder().encode(JSON.stringify(message));
             const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, aesKey, plainBytes
+                { name: 'AES-GCM', iv }, peerKey, plainBytes
             );
-            const rawKey = await crypto.subtle.exportKey('raw', aesKey);
             encryptedData = {
                 data: Array.from(new Uint8Array(cipherBuf)),
-                key: Array.from(new Uint8Array(rawKey)).map(b => b.toString(16).padStart(2, '0')).join(''),
                 iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('')
             };
         } catch (e) {

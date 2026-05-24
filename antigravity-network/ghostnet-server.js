@@ -12,7 +12,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.GHOSTNET_SERVER_PORT || 8080;
 
-const JWT_SECRET = process.env.AUTH_JWT_SECRET || '';
+const JWT_SECRET = process.env.AUTH_JWT_SECRET;
+if (!JWT_SECRET) {
+    console.error('FATAL: AUTH_JWT_SECRET environment variable is required. Refusing to start.');
+    process.exit(1);
+}
 
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
@@ -29,6 +33,23 @@ function authenticateToken(req, res, next) {
 
 const MAX_MESSAGES = 10_000;
 const MAX_MESSAGE_LENGTH = 4096;
+
+const _createUserBuckets = new Map();
+function createUserRateLimit(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress;
+    const now = Date.now();
+    const bucket = _createUserBuckets.get(ip) || { count: 0, resetAt: now + 600000 };
+    if (now > bucket.resetAt) {
+        bucket.count = 0;
+        bucket.resetAt = now + 600000;
+    }
+    bucket.count++;
+    _createUserBuckets.set(ip, bucket);
+    if (bucket.count > 5) {
+        return res.status(429).json({ error: 'Too many requests. Try again later.' });
+    }
+    next();
+}
 
 let _dbWriteTimer = null;
 let _convosWriteTimer = null;
@@ -130,7 +151,7 @@ try {
 
 // --- API: USER MANAGEMENT ---
 
-app.post("/create-user", (req, res) => {
+app.post("/create-user", createUserRateLimit, (req, res) => {
     const { username, avatar } = req.body;
 
     if (!username) {
@@ -236,7 +257,7 @@ app.post('/message', authenticateToken, (req, res) => {
         };
         conversations.push(convo);
     } else {
-        convo.lastMessage = content.slice(0, 200);
+        convo.lastMessage = '[encrypted]';
         convo.updated = Date.now();
         if (contactName && typeof contactName === 'string' && contactName.length <= 64 && !convo.contactName) {
             convo.contactName = contactName;

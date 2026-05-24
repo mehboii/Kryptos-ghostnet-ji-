@@ -35,7 +35,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // --- 1. IDENTITY ---
     let myId = localStorage.getItem('ghostnet_user_id');
     if (!myId) {
-        myId = "user_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        myId = "user_" + crypto.randomUUID();
         localStorage.setItem('ghostnet_user_id', myId);
     }
 
@@ -57,21 +57,32 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log("🆔 Identity:", myId);
 
     // --- 2. HTTP PERSISTENCE (always works) ---
+    if (!window.app._storageKey) {
+        const storedKey = sessionStorage.getItem('ghostnet_storage_key');
+        if (storedKey) {
+            const keyBytes = new Uint8Array(JSON.parse(storedKey));
+            window.app._storageKey = await crypto.subtle.importKey(
+                'raw', keyBytes, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']
+            );
+        } else {
+            window.app._storageKey = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
+            );
+            const exported = await crypto.subtle.exportKey('raw', window.app._storageKey);
+            sessionStorage.setItem('ghostnet_storage_key', JSON.stringify(Array.from(new Uint8Array(exported))));
+        }
+    }
+
     window.app._encryptForStorage = async (text) => {
         try {
-            const key = await crypto.subtle.generateKey(
-                { name: 'AES-GCM', length: 256 }, true, ['encrypt']
-            );
             const iv = crypto.getRandomValues(new Uint8Array(12));
             const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, key, new TextEncoder().encode(text)
+                { name: 'AES-GCM', iv }, window.app._storageKey, new TextEncoder().encode(text)
             );
-            const rawKey = await crypto.subtle.exportKey('raw', key);
             return JSON.stringify({
                 enc: true,
                 iv: Array.from(iv),
-                data: Array.from(new Uint8Array(cipherBuf)),
-                k: Array.from(new Uint8Array(rawKey))
+                data: Array.from(new Uint8Array(cipherBuf))
             });
         } catch (e) {
             return text;
@@ -267,10 +278,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
             ws.onmessage = (event) => {
                 try {
-                    const msg = JSON.parse(event.data);
+                    const raw = event.data;
+                    if (typeof raw !== 'string' || raw.length > 65536) return;
+                    const msg = JSON.parse(raw);
+                    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+                    const allowedTypes = new Set(['PEER_JOIN', 'PEER_LEAVE', 'MESH_PEERS', 'welcome', 'HEARTBEAT']);
+                    if (!allowedTypes.has(msg.type)) return;
                     if (msg.type === 'PEER_JOIN') {
+                        if (typeof msg.id !== 'string' || msg.id.length > 128) return;
                         if (window.AppState) {
-                            window.AppState.peers.push({ id: msg.id, type: 'Wi-Fi', latency: 5 });
+                            window.AppState.peers.push({ id: String(msg.id), type: 'Wi-Fi', latency: 5 });
                             window.dispatchEvent(new Event("app:state"));
                         }
                     }

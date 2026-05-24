@@ -132,21 +132,22 @@
             let isBroadcast = (receiverPubKeyHex === "broadcast");
 
             if (isBroadcast) {
-                const broadcastAESKey = await subtle.generateKey(
-                    { name: "AES-GCM", length: 256 },
-                    true,
-                    ["encrypt"]
-                );
+                if (!this._broadcastKey) {
+                    this._broadcastKey = await subtle.generateKey(
+                        { name: "AES-GCM", length: 256 },
+                        false,
+                        ["encrypt", "decrypt"]
+                    );
+                }
                 const iv = _getRandomValues(12);
                 ivHex = this._arrayBufferToHex(iv);
                 const cipherBuffer = await subtle.encrypt(
                     { name: "AES-GCM", iv: iv },
-                    broadcastAESKey,
+                    this._broadcastKey,
                     payloadBytes
                 );
                 encryptedPayloadHex = this._arrayBufferToHex(cipherBuffer);
-                const rawKey = await subtle.exportKey("raw", broadcastAESKey);
-                encryptedKeyHex = this._arrayBufferToHex(rawKey);
+                encryptedKeyHex = null;
             } else {
                 const ephemeralKeyPair = await subtle.generateKey(
                     { name: "ECDH", namedCurve: "P-256" },
@@ -253,15 +254,11 @@
         async decryptEnvelope(envelope) {
             try {
                 if (envelope.to === "broadcast") {
-                    if (!envelope.encryptedKey || !envelope.iv) return null;
-                    const rawKeyBuf = this._hexToArrayBuffer(envelope.encryptedKey);
-                    const broadcastKey = await subtle.importKey(
-                        "raw", rawKeyBuf, { name: "AES-GCM" }, false, ["decrypt"]
-                    );
+                    if (!this._broadcastKey || !envelope.iv) return null;
                     const iv = this._hexToArrayBuffer(envelope.iv);
                     const payloadBuf = this._hexToArrayBuffer(envelope.payload);
                     const decrypted = await subtle.decrypt(
-                        { name: "AES-GCM", iv: iv }, broadcastKey, payloadBuf
+                        { name: "AES-GCM", iv: iv }, this._broadcastKey, payloadBuf
                     );
                     const str = new TextDecoder().decode(decrypted);
                     try { return JSON.parse(str); } catch (e) { return str; }
