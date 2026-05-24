@@ -33,8 +33,16 @@ function authenticateToken(req, res, next) {
 
 const MAX_MESSAGES = 10_000;
 const MAX_MESSAGE_LENGTH = 4096;
+// [DAST-14] Message TTL — auto-purge messages older than 30 days
+const MESSAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const _createUserBuckets = new Map();
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, bucket] of _createUserBuckets) {
+        if (now > bucket.resetAt) _createUserBuckets.delete(ip);
+    }
+}, 120000);
 function createUserRateLimit(req, res, next) {
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
@@ -85,17 +93,11 @@ if (!fs.existsSync(DB)) {
     fs.writeFileSync(DB, "[]");
 }
 
-const BLOCKED_FILES = new Set([
-    '/messages.json', '/users.json', '/conversations.json',
-    '/package.json', '/package-lock.json',
-    '/.env', '/.gitignore',
-    '/ghostnet-server.js',
-]);
+const ALLOWED_STATIC_EXTENSIONS = new Set(['.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot']);
 app.use((req, res, next) => {
-    if (BLOCKED_FILES.has(req.path.toLowerCase())) {
-        return res.status(404).end();
-    }
-    if (req.path.endsWith('.env') || req.path.endsWith('.key') || req.path.endsWith('.pem')) {
+    const reqPath = path.normalize(req.path).replace(/\\/g, '/');
+    const ext = path.extname(reqPath).toLowerCase();
+    if (reqPath !== '/' && !ALLOWED_STATIC_EXTENSIONS.has(ext)) {
         return res.status(404).end();
     }
     next();
@@ -158,33 +160,42 @@ app.post("/create-user", createUserRateLimit, (req, res) => {
         return res.status(400).json({ error: "Username required" });
     }
 
+    // [DAST-12] Validate avatar if provided
+    let sanitizedAvatar = null;
+    if (avatar) {
+        if (typeof avatar !== 'string' || avatar.length > 2048) {
+            return res.status(400).json({ error: "Invalid avatar" });
+        }
+        if (/^https:\/\//.test(avatar)) {
+            sanitizedAvatar = avatar.slice(0, 2048);
+        } else if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/.test(avatar)) {
+            if (avatar.length > 65536) return res.status(400).json({ error: "Avatar data too large" });
+            sanitizedAvatar = avatar;
+        }
+        // Anything else (javascript:, http://, arbitrary strings) is silently rejected
+    }
+
     const clean = username.trim().toLowerCase();
 
+    // [DAST-13] Anti-enumeration: same response shape whether username exists or not
     const exists = users.find(u => u.username === clean);
-
     if (exists) {
-        // Suggest alternatives
-        const suggestions = [];
-        for (let i = 1; i <= 5; i++) {
-            suggestions.push(clean + Math.floor(Math.random() * 999));
-        }
-
-        return res.status(409).json({
-            error: "Username taken",
-            suggestions
+        return res.status(200).json({
+            success: true,
+            message: "If this username is available, the account has been created."
         });
     }
 
     const newUser = {
         id: "user_" + crypto.randomUUID(),
         username: clean,
-        avatar: avatar || null
+        avatar: sanitizedAvatar
     };
 
     users.push(newUser);
     debouncedWriteUsers();
 
-    res.json({ success: true, user: newUser });
+    res.json({ success: true, user: newUser, message: "If this username is available, the account has been created." });
 });
 
 app.get("/user/:id", authenticateToken, (req, res) => {
@@ -319,6 +330,7 @@ const server = app.listen(PORT, "0.0.0.0", () => {
 // WebSocket Upgrade Handling (Proper Separation)
 const wss = new WebSocketServer({ noServer: true });
 
+// [DAST-17] Accept WS upgrade without token in URL — auth via first message
 server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
@@ -326,22 +338,20 @@ server.on("upgrade", (req, socket, head) => {
         socket.destroy();
         return;
     }
-    const token = url.searchParams.get('token');
-    if (!token) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
-        return;
-    }
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.authenticatedUserId = decoded.userId;
-    } catch {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
-        socket.destroy();
-        return;
+    // Check URL token for backward compat, but prefer first-message auth
+    let preAuthUserId = null;
+    const urlToken = url.searchParams.get('token');
+    if (urlToken) {
+        try {
+            const decoded = jwt.verify(urlToken, JWT_SECRET);
+            preAuthUserId = decoded.userId;
+        } catch { /* will auth via first message */ }
     }
     wss.handleUpgrade(req, socket, head, ws => {
-        ws.authenticatedUserId = req.authenticatedUserId;
+        ws.authenticatedUserId = preAuthUserId;
+        ws._authTimeout = setTimeout(() => {
+            if (!ws.authenticatedUserId) ws.close(4001, 'Auth timeout');
+        }, 10000);
         wss.emit("connection", ws, req);
     });
 });
@@ -351,7 +361,6 @@ const meshPeers = new Map(); // peerId -> { id, ws, capabilities, lastSeen }
 const MAX_WS_MESSAGE_SIZE = 8192;
 
 wss.on("connection", (ws, req) => {
-    const authenticatedUserId = ws.authenticatedUserId;
     let clientId = null;
 
     ws.on("message", data => {
@@ -362,10 +371,25 @@ wss.on("connection", (ws, req) => {
             const msg = JSON.parse(raw);
             if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
 
+            // [DAST-17] First-message JWT auth (if not already authenticated via URL)
+            if (msg.type === 'AUTH' && !ws.authenticatedUserId) {
+                if (typeof msg.token !== 'string') return;
+                try {
+                    const decoded = jwt.verify(msg.token, JWT_SECRET);
+                    ws.authenticatedUserId = decoded.userId;
+                    clearTimeout(ws._authTimeout);
+                    ws.send(JSON.stringify({ type: 'welcome', userId: ws.authenticatedUserId }));
+                } catch { ws.close(4001, 'Invalid token'); }
+                return;
+            }
+
+            // All messages after this require auth
+            if (!ws.authenticatedUserId) return;
+
             switch (msg.type) {
                 case 'HELLO':
                 case 'MESH_HELLO': {
-                    clientId = authenticatedUserId;
+                    clientId = ws.authenticatedUserId;
                     meshPeers.set(clientId, {
                         id: clientId,
                         ws: ws,
@@ -395,15 +419,25 @@ wss.on("connection", (ws, req) => {
                     }
                     break;
 
-                default:
-                    msg.from = authenticatedUserId;
+                default: {
+                    const ALLOWED_RELAY_TYPES = new Set(['MESH_MSG', 'MESH_DIRECT', 'MSG', 'HEARTBEAT_ACK']);
+                    if (!ALLOWED_RELAY_TYPES.has(msg.type)) break;
+                    msg.from = ws.authenticatedUserId;
                     const outbound = JSON.stringify(msg);
-                    for (const [id, peer] of meshPeers) {
-                        if (id !== clientId && peer.ws.readyState === 1) {
-                            peer.ws.send(outbound);
+                    if (msg.to && typeof msg.to === 'string') {
+                        const targetPeer = meshPeers.get(msg.to);
+                        if (targetPeer && targetPeer.ws.readyState === 1) {
+                            targetPeer.ws.send(outbound);
+                        }
+                    } else {
+                        for (const [id, peer] of meshPeers) {
+                            if (id !== clientId && peer.ws.readyState === 1) {
+                                peer.ws.send(outbound);
+                            }
                         }
                     }
                     break;
+                }
             }
         } catch { /* malformed message — silently drop */ }
     });
@@ -419,7 +453,11 @@ wss.on("connection", (ws, req) => {
         }
     });
 
-    ws.send(JSON.stringify({ type: "welcome", userId: authenticatedUserId }));
+    // [DAST-17] Only send welcome if pre-authenticated via URL token (backward compat)
+    if (ws.authenticatedUserId) {
+        ws.send(JSON.stringify({ type: "welcome", userId: ws.authenticatedUserId }));
+        clearTimeout(ws._authTimeout);
+    }
 });
 
 // Clean stale peers every 30 seconds
@@ -427,7 +465,7 @@ setInterval(() => {
     const now = Date.now();
     for (const [id, peer] of meshPeers) {
         if (now - peer.lastSeen > 90000) { // 90 seconds no heartbeat
-            console.log(`🕸️ Stale peer removed: ${id}`);
+            console.log(`🕸️ Stale peer removed`);
             meshPeers.delete(id);
             if (peer.ws.readyState === 1) {
                 peer.ws.close();
@@ -435,3 +473,13 @@ setInterval(() => {
         }
     }
 }, 30000);
+
+// [DAST-14] Purge expired messages every hour
+setInterval(() => {
+    const cutoff = Date.now() - MESSAGE_TTL_MS;
+    const before = messages.length;
+    messages = messages.filter(m => m.timestamp > cutoff);
+    if (messages.length < before) {
+        debouncedWriteDb();
+    }
+}, 3600000);

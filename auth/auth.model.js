@@ -44,8 +44,13 @@ try {
 // Helpers
 // ---------------------------------------------------------------------------
 
+let _persistTimer = null;
 function _persist() {
-    fs.writeFileSync(AUTH_USERS_FILE, JSON.stringify(authUsers, null, 2));
+    if (_persistTimer) return;
+    _persistTimer = setTimeout(() => {
+        _persistTimer = null;
+        fs.writeFile(AUTH_USERS_FILE, JSON.stringify(authUsers, null, 2), () => {});
+    }, 500);
 }
 
 function generateId() {
@@ -202,10 +207,15 @@ export function bumpTokenVersion(userId) {
  * @param {object} fields - key/value pairs to update
  * @returns {object|null} Updated user (sanitised) or null if not found
  */
+const ALLOWED_UPDATE_FIELDS = new Set(['shortCode', 'displayName', 'avatar']);
 export function updateUserFields(userId, fields) {
     const user = authUsers.find(u => u.id === userId);
     if (!user) return null;
-    Object.assign(user, fields);
+    for (const [key, value] of Object.entries(fields)) {
+        if (ALLOWED_UPDATE_FIELDS.has(key)) {
+            user[key] = value;
+        }
+    }
     _persist();
     return sanitise(user);
 }
@@ -236,9 +246,20 @@ export async function verifyEmail(email, code) {
         return { success: false, error: 'Verification code has expired. Please request a new one.' };
     }
 
+    const attempts = user.verify_attempts || 0;
+    if (attempts >= 5) {
+        delete user.verify_code;
+        delete user.verify_code_expires;
+        delete user.verify_attempts;
+        _persist();
+        return { success: false, error: 'Too many failed attempts. Please request a new code.' };
+    }
+
     // Compare submitted code against bcrypt hash (timing-safe)
     const match = await bcrypt.compare(code, user.verify_code);
     if (!match) {
+        user.verify_attempts = attempts + 1;
+        _persist();
         return { success: false, error: 'Invalid verification code.' };
     }
 
@@ -246,6 +267,7 @@ export async function verifyEmail(email, code) {
     user.verified = true;
     delete user.verify_code;
     delete user.verify_code_expires;
+    delete user.verify_attempts;
     _persist();
 
     return { success: true, user: sanitise(user) };
@@ -312,9 +334,20 @@ export async function resetPassword(email, token, newPasswordHash) {
         return { success: false, error: 'Reset code has expired. Please request a new one.' };
     }
 
+    const resetAttempts = user.reset_attempts || 0;
+    if (resetAttempts >= 5) {
+        delete user.reset_token;
+        delete user.reset_token_expires;
+        delete user.reset_attempts;
+        _persist();
+        return { success: false, error: 'Too many failed attempts. Please request a new reset code.' };
+    }
+
     // Compare submitted token against bcrypt hash (timing-safe)
     const match = await bcrypt.compare(token, user.reset_token);
     if (!match) {
+        user.reset_attempts = resetAttempts + 1;
+        _persist();
         return { success: false, error: 'Invalid reset code.' };
     }
 
@@ -323,6 +356,7 @@ export async function resetPassword(email, token, newPasswordHash) {
     user.tokenVersion = (user.tokenVersion || 0) + 1;
     delete user.reset_token;
     delete user.reset_token_expires;
+    delete user.reset_attempts;
     _persist();
 
     return { success: true };

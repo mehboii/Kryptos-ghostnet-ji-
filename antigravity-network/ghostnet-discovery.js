@@ -53,7 +53,17 @@
                 const p = this.knownPeers.get(peerId);
                 p.lastSeen = Date.now();
                 if (meta.isConnected !== undefined) p.isConnected = meta.isConnected;
+                if (meta.isConnected && !p.verified) p.verified = true;
             }
+        }
+
+        verifyPeer(peerId) {
+            if (!this._validatePeerId(peerId)) return false;
+            const peer = this.knownPeers.get(peerId);
+            if (!peer) return false;
+            peer.verified = true;
+            peer.lastSeen = Date.now();
+            return true;
         }
 
         removePeer(peerId) {
