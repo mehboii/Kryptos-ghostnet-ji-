@@ -381,7 +381,7 @@ router.post('/login', loginLimiter, async (req, res) => {
             const shortCode = generateUniqueShortCode();
             updateUserFields(user.id, { shortCode });
             user.shortCode = shortCode;
-            console.log(`🔖 Generated GhostCode ${shortCode} for existing user ${user.email}`);
+            console.log(`🔖 Generated GhostCode for existing user`);
         }
 
         res.json({

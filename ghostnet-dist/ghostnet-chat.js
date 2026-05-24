@@ -333,7 +333,7 @@
                 : crypto.getRandomValues(new Uint8Array(16));
 
             if (!resolvedPeerEcdh) {
-                throw new Error('Peer ECDH public key required for session establishment');
+                return null;
             }
 
             const session = await _deriveSharedSecret(
@@ -363,6 +363,12 @@
 
             const salt = crypto.getRandomValues(new Uint8Array(16));
             const session = await this.getSession(toPubKey, Array.from(salt));
+
+            if (!session) {
+                if (!this._pendingMessages) this._pendingMessages = [];
+                this._pendingMessages.push({ body, toPubKey, mode, ttl });
+                return { id: null, from: this.myIdentity.pub, to: toPubKey, ts: Date.now(), mode, status: 'pending_key_exchange' };
+            }
 
             const ciphertext = await crypto.subtle.encrypt(
                 { name: 'AES-GCM', iv },
@@ -396,6 +402,17 @@
             }
 
             return { id: msgId, from: this.myIdentity.pub, to: toPubKey, ts, mode, status: 'sent' };
+        }
+
+        async _flushPending(peerKey) {
+            if (!this._pendingMessages || this._pendingMessages.length === 0) return;
+            const toSend = this._pendingMessages.filter(m => m.toPubKey === peerKey);
+            this._pendingMessages = this._pendingMessages.filter(m => m.toPubKey !== peerKey);
+            for (const msg of toSend) {
+                try {
+                    await this.sendMessage(msg.body, msg.toPubKey, msg.mode, msg.ttl);
+                } catch { }
+            }
         }
 
         async sendDeleteRequest(targetMsgId, toPubKey) {
@@ -452,6 +469,10 @@
             if (this.messages.has(packet.id)) return;
 
             const peerEcdh = (typeof packet.dhPub === 'string' && packet.dhPub.length > 0) ? packet.dhPub : undefined;
+            if (peerEcdh) {
+                this.peerEcdhKeys.set(packet.from, peerEcdh);
+                this._flushPending(packet.from);
+            }
             const session = await this.getSession(packet.from, packet.salt, peerEcdh);
 
             // [FIX E] Verify HMAC before attempting decryption.
