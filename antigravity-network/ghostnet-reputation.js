@@ -24,7 +24,10 @@
         }
 
         _getPeer(peerId) {
+            if (!this._validatePeerId(peerId)) return null;
             if (!this.peers.has(peerId)) {
+                // [FIX 23] Cap total tracked peers to prevent memory exhaustion
+                if (this.peers.size >= 10000) return null;
                 this.peers.set(peerId, {
                     scores: { bandwidth: 0, storage: 0, uptime: 0 },
                     credits: 0,
@@ -34,24 +37,42 @@
             return this.peers.get(peerId);
         }
 
+        // [FIX 23] Validate peerId format to prevent prototype pollution / injection
+        _validatePeerId(peerId) {
+            if (typeof peerId !== 'string' || peerId.length === 0 || peerId.length > 128) return false;
+            if (peerId === '__proto__' || peerId === 'constructor' || peerId === 'prototype') return false;
+            return true;
+        }
+
         onRelayPacket(peerId, bytes) {
+            if (!this._validatePeerId(peerId)) return;
+            // [FIX 23] Cap per-event score increment to prevent inflation
+            const safeBytes = Math.max(0, Math.min(bytes, 10 * 1024 * 1024));
             const peer = this._getPeer(peerId);
-            peer.scores.bandwidth += (bytes / 1024);
+            peer.scores.bandwidth += (safeBytes / 1024);
+            // [FIX 23] Cap individual scores to prevent unbounded growth
+            peer.scores.bandwidth = Math.min(peer.scores.bandwidth, 100000);
             peer.lastActive = Date.now();
             this._recalcCredits(peer);
         }
 
         onStoreChunk(peerId, chunkSize) {
+            if (!this._validatePeerId(peerId)) return;
+            const safeSize = Math.max(0, Math.min(chunkSize, 256 * 1024 * 1024));
             const peer = this._getPeer(peerId);
-            peer.scores.storage += (chunkSize / (1024 * 1024)) * 10;
+            peer.scores.storage += (safeSize / (1024 * 1024)) * 10;
+            peer.scores.storage = Math.min(peer.scores.storage, 100000);
             peer.lastActive = Date.now();
             this._recalcCredits(peer);
         }
 
         onHeartbeat(peerId, latencyMs) {
+            if (!this._validatePeerId(peerId)) return;
+            const safeLatency = Math.max(0, Math.min(latencyMs, 60000));
             const peer = this._getPeer(peerId);
-            const latencyBonus = Math.max(0, (1000 - latencyMs) / 100);
+            const latencyBonus = Math.max(0, (1000 - safeLatency) / 100);
             peer.scores.uptime += (1 + latencyBonus);
+            peer.scores.uptime = Math.min(peer.scores.uptime, 100000);
             peer.lastActive = Date.now();
             this._recalcCredits(peer);
         }
@@ -64,6 +85,8 @@
         }
 
         canConsumeResource(peerId, cost) {
+            if (!this._validatePeerId(peerId)) return false;
+            if (typeof cost !== 'number' || cost < 0) return false;
             const peer = this.peers.get(peerId);
             if (!peer) return false;
 
@@ -75,6 +98,7 @@
         }
 
         getPriority(peerId) {
+            if (!this._validatePeerId(peerId)) return 0;
             const peer = this.peers.get(peerId);
             if (!peer) return 0;
             return Math.min(100, Math.log10(peer.credits + 1) * 20);

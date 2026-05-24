@@ -1,3 +1,10 @@
+// [FIX 24] HTML escaping to prevent XSS via innerHTML
+function escapeHtml(str) {
+    if (typeof str !== 'string') str = String(str ?? '');
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' };
+    return str.replace(/[&<>"']/g, c => map[c]);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // === State & References ===
     const els = {
@@ -329,10 +336,11 @@ document.addEventListener('DOMContentLoaded', () => {
         div.style.display = 'flex';
         div.style.justifyContent = 'space-between';
 
+        // [FIX 24] Escape device name/id to prevent XSS
         div.innerHTML = `
             <div class="device-info">
-                <span style="display:block; font-weight:bold; color:var(--neon-green)">${device.name || "Unknown Device"}</span>
-                <span style="font-size:0.7em; color:#888">REAL HARDWARE ID: ${device.id}</span>
+                <span style="display:block; font-weight:bold; color:var(--neon-green)">${escapeHtml(device.name || "Unknown Device")}</span>
+                <span style="font-size:0.7em; color:#888">REAL HARDWARE ID: ${escapeHtml(device.id)}</span>
             </div>
             <div class="signal" style="color:var(--neon-green)">LINKED</div>
         `;
@@ -355,7 +363,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const name = deviceNames[Math.floor(Math.random() * deviceNames.length)];
                 const rssi = -(Math.floor(Math.random() * 40) + 40);
-                const id = "0x" + Math.random().toString(16).substr(2, 4).toUpperCase();
+                // [FIX 24] Use crypto.getRandomValues instead of Math.random for IDs
+                const idBytes = new Uint8Array(2);
+                crypto.getRandomValues(idBytes);
+                const id = "0x" + Array.from(idBytes).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
 
                 // Add to List
                 const div = document.createElement('div');
@@ -363,10 +374,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 div.style.borderBottom = '1px solid rgba(255,255,255,0.1)';
                 div.style.display = 'flex';
                 div.style.justifyContent = 'space-between';
+                // [FIX 24] Escape simulated device data
                 div.innerHTML = `
                     <div class="device-info">
-                        <span style="display:block; font-weight:bold; color:var(--neon-blue)">${name}</span>
-                        <span style="font-size:0.7em; color:#666">ID: ${id}</span>
+                        <span style="display:block; font-weight:bold; color:var(--neon-blue)">${escapeHtml(name)}</span>
+                        <span style="font-size:0.7em; color:#666">ID: ${escapeHtml(id)}</span>
                         <span style="font-size:0.6em; color:var(--neon-green)">RELAY ACTIVE</span>
                     </div>
                     <div class="signal">
@@ -570,9 +582,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const type = filename.split('.').pop().toUpperCase();
                     const shards = 12 + Math.floor(Math.random() * 10);
 
+                    // [FIX 24] Escape filename in file list
                     fileRow.innerHTML = `
-                        <span>${filename}</span>
-                        <span>${type}</span>
+                        <span>${escapeHtml(filename)}</span>
+                        <span>${escapeHtml(type)}</span>
                         <span>${shards}/${shards}</span>
                         <span class="status-ok">Synced (Local)</span>
                     `;
