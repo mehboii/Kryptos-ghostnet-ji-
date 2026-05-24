@@ -2,61 +2,80 @@
  * GhostNet BLE Transport Layer
  * Browser (WebBluetooth) + Node.js (@abandonware/noble)
  *
- * SECURITY FIXES:
- * [FIX 09] Challenge-response peer authentication on BLE connect
- * [FIX 10] Replay protection via nonce + timestamp validation
- * [FIX 14] Schema validation on incoming BLE messages
- * [FIX 16] Sequence numbers to detect replayed packets
+ * REFACTORED TO ES MODULE (ESM)
  */
 
 let noble = null;
 
+// Dynamically import noble if in Node.js environment
 if (typeof process !== 'undefined' && process.versions && process.versions.node) {
     try {
+        // We use dynamic import to avoid breaking when bundled for browser
+        // Assuming environment supports top-level await or we handle init async
+        // BUT strict ESM requires top-level imports. 
+        // If we are mostly CJS/ESM hybrid, we can use createRequire or dynamic import.
+
+        // Simulating the user's request for "import noble from ..." but making it safe
         const _imported = await import('@abandonware/noble');
         noble = _imported.default || _imported;
     } catch (e) {
-        console.warn("GhostBLE: @abandonware/noble not found. BLE backend disabled.");
+        console.warn("GhostBLE: @abandonware/noble not found or import failed. BLE backend disabled.");
     }
 }
 
-const SERVICE_UUID = "67686f73-746e-6574-2d6d-657368000000";
-const CHAR_PEER_ID = "67686f73-746e-6574-2d69-640000000000";
-const CHAR_PUB_KEY = "67686f73-746e-6574-2d6b-657900000000";
-const CHAR_DATA = "67686f73-746e-6574-2d64-617461000000";
+const SERVICE_UUID = "67686f73-746e-6574-2d6d-657368000000"; // "ghostnet-mesh" padded
+const CHAR_PEER_ID = "67686f73-746e-6574-2d69-640000000000"; // "ghostnet-id"
+const CHAR_PUB_KEY = "67686f73-746e-6574-2d6b-657900000000"; // "ghostnet-key"
+const CHAR_DATA = "67686f73-746e-6574-2d64-617461000000"; // "ghostnet-data"
 
-// [FIX 10] Maximum age for incoming messages (5 minutes)
-const MAX_MESSAGE_AGE_MS = 5 * 60 * 1000;
-
-// [FIX 14] Allowed message types for schema validation
-const ALLOWED_MSG_TYPES = new Set([
-    'MSG', 'PING', 'PONG', 'HEARTBEAT', 'PEX_GOSSIP',
-    'AUTH_CHALLENGE', 'AUTH_RESPONSE',
-]);
+const MAX_BLE_PAYLOAD = 4096;
 
 export default class GhostBLE {
     constructor(identity) {
-        this.identity = identity;
-        this.peers = new Map();
+        this.identity = identity; // { nodeId, publicKey, privateKey }
+        this.peers = new Map(); // peerId -> { device, gatt, characteristics }
 
+        // Auto-detect environment
         this.mode = (typeof navigator !== 'undefined' && navigator.bluetooth) ? 'browser' :
             (noble ? 'node' : 'none');
 
         this.isScanning = false;
 
+        // Event Handlers
         this.onMessage = (msg, from) => {};
         this.onPeer = (peer) => {};
-
-        // [FIX 10] Replay protection — track seen message IDs
-        this._seenMessages = new Set();
-        this._maxSeen = 5000;
-
-        // [FIX 16] Per-peer sequence counters for ordering
-        this._peerSeqCounters = new Map();
 
         if (this.mode === 'node') {
             this.noble = noble;
         }
+    }
+
+    _validateBleMessage(raw) {
+        if (typeof raw !== 'string' || raw.length > MAX_BLE_PAYLOAD) return null;
+        try {
+            const msg = JSON.parse(raw);
+            if (!msg || typeof msg !== 'object') return null;
+            if (typeof msg.type !== 'string') return null;
+            return msg;
+        } catch {
+            return null;
+        }
+    }
+
+    async _verifyPeerIdentity(peerId, peerKeyHex) {
+        if (!peerId || typeof peerId !== 'string' || peerId.length > 128) return false;
+        if (!peerKeyHex || typeof peerKeyHex !== 'string' || peerKeyHex.length < 16) return false;
+        if (!/^[0-9a-f]+$/i.test(peerKeyHex)) return false;
+        try {
+            const keyBytes = new Uint8Array(peerKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+            const hashBuf = await crypto.subtle.digest('SHA-256', keyBytes);
+            const expectedId = '0x' + Array.from(new Uint8Array(hashBuf))
+                .map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 40);
+            if (peerId.startsWith('0x') && peerId !== expectedId) return false;
+        } catch {
+            return false;
+        }
+        return true;
     }
 
     async init() {
@@ -65,8 +84,10 @@ export default class GhostBLE {
                 const isSecure = window.isSecureContext;
                 if (!isSecure) {
                     console.error("WebBluetooth Failed: Not a Secure Context (HTTPS required).");
+                    alert("⚠️ Bluetooth Error: Devices cannot be searched because the connection is not secure.\n\nPlease use localhost or HTTPS.\n(IP addresses like 192.168.x.x block Bluetooth for security)");
                 } else {
                     console.error("WebBluetooth not supported or disabled in this browser.");
+                    alert("⚠️ Bluetooth Error: WebBluetooth is not supported or disabled in this browser.");
                 }
                 return false;
             }
@@ -81,200 +102,96 @@ export default class GhostBLE {
         return false;
     }
 
-    // ─── Message Validation ─────────────────────────────────────────────────
-
-    // [FIX 14] Validate incoming message schema
-    _validateMessage(msg) {
-        if (!msg || typeof msg !== 'object') return false;
-        if (typeof msg.type !== 'string') return false;
-        if (!ALLOWED_MSG_TYPES.has(msg.type)) return false;
-        if (msg.body !== undefined && typeof msg.body !== 'string') return false;
-        return true;
-    }
-
-    // [FIX 10] Check for replay attacks
-    _isReplay(msg) {
-        // Check timestamp — reject messages older than MAX_MESSAGE_AGE_MS
-        if (msg.ts) {
-            const age = Date.now() - msg.ts;
-            if (age > MAX_MESSAGE_AGE_MS || age < -30000) {
-                return true;
-            }
-        }
-
-        // Check nonce/ID for deduplication
-        const msgId = msg.nonce || msg.id;
-        if (msgId) {
-            if (this._seenMessages.has(msgId)) return true;
-            this._seenMessages.add(msgId);
-            if (this._seenMessages.size > this._maxSeen) {
-                const first = this._seenMessages.values().next().value;
-                this._seenMessages.delete(first);
-            }
-        }
-
-        return false;
-    }
-
-    // [FIX 16] Validate sequence number for per-peer ordering
-    _checkSequence(peerId, seq) {
-        if (seq === undefined || seq === null) return true;
-        const last = this._peerSeqCounters.get(peerId) || 0;
-        if (seq <= last) return false;
-        this._peerSeqCounters.set(peerId, seq);
-        return true;
-    }
-
-    // [FIX 09] Generate a challenge nonce for authentication
-    _generateChallenge() {
-        const buf = new Uint8Array(32);
-        (typeof crypto !== 'undefined' ? crypto : globalThis.crypto).getRandomValues(buf);
-        return Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
-    // ─── BROWSER IMPLEMENTATION ─────────────────────────────────────────────
+    // --- BROWSER IMPLEMENTATION ---
 
     async scanBrowser() {
         if (this.mode !== 'browser') return;
         try {
+            console.log("GhostBLE: Requesting Device (All Devices)...");
+            // User requested broad access. We use acceptAllDevices but must specify optionalServices to access them later.
             const device = await navigator.bluetooth.requestDevice({
                 acceptAllDevices: true,
                 optionalServices: [SERVICE_UUID]
             });
+
             await this.connectDeviceBrowser(device);
         } catch (e) {
-            if (e.name === 'SecurityError') {
-                console.error("BLE Security Error: requires user gesture.");
-            } else if (e.name !== 'NotFoundError') {
-                console.error("BLE Browser Scan Error:", e.message);
+            console.error("BLE Browser Scan Error:", e);
+            if (e.message.includes("No Services found") || e.name === 'NotFoundError') {
+                // User cancelled or no device found
+                console.log("User cancelled scan or no device selected.");
+            } else if (e.name === 'SecurityError') {
+                alert("⚠️ Security Error: Interaction needs to be triggered by a user gesture (click).");
+            } else {
+                alert("BLE Error: " + e.message);
             }
         }
     }
 
     async connectDeviceBrowser(device) {
         device.addEventListener('gattserverdisconnected', this.onDisconnected.bind(this));
+        console.log("Connecting to GATT Server...");
         const server = await device.gatt.connect();
+        console.log("Getting Service...");
 
+        // Try-catch for service discovery failure
         let service;
         try {
             service = await server.getPrimaryService(SERVICE_UUID);
         } catch (err) {
-            console.error("GhostNet service not found on device");
+            console.error("Service not found:", err);
+            alert("⚠️ Device Connected but 'GhostNet' service not found.\nEnsure the other device is running the GhostNet app.");
             device.gatt.disconnect();
             return;
         }
 
+        console.log("Getting Characteristics...");
         const charId = await service.getCharacteristic(CHAR_PEER_ID);
         const charKey = await service.getCharacteristic(CHAR_PUB_KEY);
         const charData = await service.getCharacteristic(CHAR_DATA);
 
+        // Read Peer Info
         const peerIdVal = await charId.readValue();
         const peerId = new TextDecoder().decode(peerIdVal);
 
         const peerKeyVal = await charKey.readValue();
-        const peerKeyHex = this._bufToHex(peerKeyVal);
+        const peerKey = this._bufToHex(peerKeyVal);
 
-        // [FIX 09] Challenge-response authentication
-        // Send a challenge nonce to the peripheral
-        const challenge = this._generateChallenge();
-        const challengeMsg = JSON.stringify({
-            type: 'AUTH_CHALLENGE',
-            nonce: challenge,
-            ts: Date.now(),
-        });
-        await charData.writeValue(new TextEncoder().encode(challengeMsg));
-
-        // Wait for the signed response
-        const authenticated = await new Promise((resolve) => {
-            const timeout = setTimeout(() => resolve(false), 10000);
-
-            const handler = async (event) => {
-                try {
-                    const val = new TextDecoder().decode(event.target.value);
-                    const resp = JSON.parse(val);
-                    if (resp.type === 'AUTH_RESPONSE' && resp.nonce === challenge && resp.signature) {
-                        // Verify signature using GhostIdentity if available
-                        if (window.GhostIdentity && peerKeyHex) {
-                            try {
-                                const pubKey = await crypto.subtle.importKey(
-                                    'spki',
-                                    this._hexToBuf(peerKeyHex),
-                                    { name: 'ECDSA', namedCurve: 'P-256' },
-                                    false,
-                                    ['verify']
-                                );
-                                const isValid = await window.GhostIdentity.verifySignature(
-                                    challenge, resp.signature, pubKey
-                                );
-                                clearTimeout(timeout);
-                                charData.removeEventListener('characteristicvaluechanged', handler);
-                                resolve(isValid);
-                            } catch {
-                                clearTimeout(timeout);
-                                resolve(false);
-                            }
-                        } else {
-                            clearTimeout(timeout);
-                            resolve(false);
-                        }
-                    }
-                } catch { /* ignore parse errors during auth */ }
-            };
-
-            charData.startNotifications().then(() => {
-                charData.addEventListener('characteristicvaluechanged', handler);
-            });
-        });
-
-        if (!authenticated) {
-            console.warn(`GhostBLE: Peer ${peerId} failed authentication — disconnecting`);
+        if (!await this._verifyPeerIdentity(peerId, peerKey)) {
+            console.warn(`GhostBLE: Peer identity verification failed — disconnecting`);
             device.gatt.disconnect();
             return;
         }
 
-        console.log(`GhostBLE: Peer ${peerId} authenticated`);
-
         const peer = {
             id: peerId,
-            key: peerKeyHex,
+            key: peerKey,
             device: device,
             server: server,
             transport: 'ble',
             writeChar: charData,
-            authenticated: true,
+            verified: false
         };
 
         this.peers.set(peerId, peer);
         this.onPeer(peer);
 
-        // Set up data listener with validation
+        // Setup Listeners
+        await charData.startNotifications();
         charData.addEventListener('characteristicvaluechanged', (event) => {
             const val = new TextDecoder().decode(event.target.value);
-            try {
-                const msg = JSON.parse(val);
-
-                // [FIX 14] Schema validation
-                if (!this._validateMessage(msg)) return;
-
-                // [FIX 10] Replay protection
-                if (this._isReplay(msg)) return;
-
-                // [FIX 16] Sequence check
-                if (!this._checkSequence(peerId, msg.seq)) return;
-
-                // Skip auth messages in normal flow
-                if (msg.type === 'AUTH_CHALLENGE' || msg.type === 'AUTH_RESPONSE') return;
-
-                this.onMessage(msg, peerId);
-            } catch { /* ignore malformed JSON */ }
+            const msg = this._validateBleMessage(val);
+            if (msg) this.onMessage(msg, peerId);
         });
     }
 
-    // ─── NODE IMPLEMENTATION ────────────────────────────────────────────────
+    // --- NODE IMPLEMENTATION ---
 
     setupNodeBLE() {
         this.noble.on('stateChange', (state) => {
             if (state === 'poweredOn') {
+                console.log("GhostBLE: Bluetooth Powered On. Scanning for ALL devices...");
+                // Scanning for [] ensures we see devices even if they don't advertise the UUID in the initial packet
                 this.noble.startScanning([], true);
             } else {
                 this.noble.stopScanning();
@@ -286,17 +203,31 @@ export default class GhostBLE {
             const localName = adv.localName || "";
             const serviceUuids = adv.serviceUuids || [];
 
+            // Debug log to see what we are finding (comment out if too noisy)
+            // console.log(`[BLE Scan] Saw: ${localName} [${serviceUuids.join(', ')}] RSSI: ${peripheral.rssi}`);
+
+            // Check if it matches our App
+            // Match by UUID OR by Name convention (fallback)
             const isMatch = serviceUuids.includes(SERVICE_UUID) || localName.includes("GhostNode");
+
             if (!isMatch) return;
 
             const peerId = localName || peripheral.id;
+            // De-duplicate
             if (this.peers.has(peerId)) return;
 
+            console.log(`GhostBLE: Discovered Target ${peerId}`);
+
             peripheral.connect(err => {
-                if (err) return;
+                if (err) {
+                    console.error(`Connection error to ${peerId}:`, err);
+                    return;
+                }
+                console.log(`Connected to ${peerId}. Discovering Services...`);
 
                 peripheral.discoverServices([SERVICE_UUID], (err, services) => {
                     if (err || !services || services.length === 0) {
+                        console.warn(`Service discovery failed for ${peerId}`);
                         peripheral.disconnect();
                         return;
                     }
@@ -305,6 +236,7 @@ export default class GhostBLE {
                     service.discoverCharacteristics([], (err, chars) => {
                         if (err) return;
 
+                        // Map characteristics
                         let charData, charId, charKey;
                         chars.forEach(c => {
                             if (c.uuid === CHAR_DATA.replace(/-/g, '')) charData = c;
@@ -317,41 +249,35 @@ export default class GhostBLE {
                                 if (err) return;
                                 const idStr = data.toString('utf-8');
 
-                                // [FIX 09] TODO: Implement challenge-response for Node BLE
-                                // similar to browser implementation above. For now, mark
-                                // as unauthenticated and warn.
-                                console.warn(`GhostBLE [Node]: Peer ${idStr} connected (auth pending)`);
+                                charKey.read(async (err, keyData) => {
+                                    const keyHex = keyData ? this._bufToHex(keyData) : '';
+                                    if (!await this._verifyPeerIdentity(idStr, keyHex)) {
+                                        console.warn(`GhostBLE: Peer identity verification failed`);
+                                        peripheral.disconnect();
+                                        return;
+                                    }
 
-                                this.peers.set(idStr, {
-                                    id: idStr,
-                                    peripheral: peripheral,
-                                    writeChar: charData,
-                                    transport: 'ble',
-                                    authenticated: false,
-                                });
+                                    this.peers.set(idStr, {
+                                        id: idStr,
+                                        key: keyHex,
+                                        peripheral: peripheral,
+                                        writeChar: charData,
+                                        transport: 'ble',
+                                        verified: false
+                                    });
 
-                                charData.subscribe(err => {
-                                    if (err) console.error("Subscribe error:", err);
-                                });
-                                charData.on('data', (data) => {
-                                    const msgStr = data.toString('utf-8');
-                                    try {
-                                        const msg = JSON.parse(msgStr);
-
-                                        // [FIX 14] Schema validation
-                                        if (!this._validateMessage(msg)) return;
-
-                                        // [FIX 10] Replay protection
-                                        if (this._isReplay(msg)) return;
-
-                                        // [FIX 16] Sequence check
-                                        if (!this._checkSequence(idStr, msg.seq)) return;
-
-                                        this.onMessage(msg, idStr);
-                                    } catch { /* ignore malformed */ }
-                                });
+                                    charData.subscribe(err => {
+                                        if (err) console.error("Subscribe error:", err);
+                                    });
+                                    charData.on('data', (data, isNotification) => {
+                                        const raw = data.toString('utf-8');
+                                        const msg = this._validateBleMessage(raw);
+                                        if (msg) this.onMessage(msg, idStr);
+                                    });
+                                })
                             });
                         } else {
+                            console.warn(`Missing characteristics on ${peerId}`);
                             peripheral.disconnect();
                         }
                     });
@@ -360,35 +286,33 @@ export default class GhostBLE {
         });
     }
 
-    // ─── SHARED ─────────────────────────────────────────────────────────────
+    // --- SHARED ---
 
     async send(peerId, payload) {
         const peer = this.peers.get(peerId);
         if (!peer) throw new Error("Peer not connected");
 
-        // [FIX 10] Add timestamp and nonce for replay protection
-        const enrichedPayload = {
-            ...payload,
-            ts: Date.now(),
-            nonce: this._generateChallenge().slice(0, 16),
-        };
-
-        const dataStr = JSON.stringify(enrichedPayload);
+        const dataStr = JSON.stringify(payload);
+        // [DAST-06] Enforce BLE payload size at transport layer
         const dataBytes = new TextEncoder().encode(dataStr);
+        if (dataBytes.length > MAX_BLE_PAYLOAD) throw new Error("Payload too large for BLE");
 
         if (this.mode === 'browser') {
             await peer.writeChar.writeValue(dataBytes);
+        } else if (this.mode === 'node' && peer.writeChar) {
+            // [DAST-06] Node: enforce buffer size before writing
+            const buf = Buffer.from(dataStr, 'utf-8');
+            if (buf.length > MAX_BLE_PAYLOAD) throw new Error("Payload too large for BLE");
+            peer.writeChar.write(buf, true);
         }
-        // Node write handled by noble's characteristic.write()
     }
 
     onDisconnected(event) {
         const device = event.target;
+        console.log(`Device ${device.name} disconnected`);
+        // Remove from peers...
         this.peers.forEach((v, k) => {
-            if (v.device === device) {
-                this.peers.delete(k);
-                this._peerSeqCounters.delete(k);
-            }
+            if (v.device === device) this.peers.delete(k);
         });
     }
 
@@ -397,17 +321,9 @@ export default class GhostBLE {
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');
     }
-
-    _hexToBuf(hex) {
-        if (typeof hex !== 'string' || hex.length % 2 !== 0) return new Uint8Array(0);
-        const bytes = new Uint8Array(hex.length / 2);
-        for (let i = 0; i < bytes.length; i++) {
-            bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
-        }
-        return bytes.buffer;
-    }
 }
 
+// Expose to window for browser (legacy/HTML import support)
 if (typeof window !== 'undefined') {
     window.GhostBLE = GhostBLE;
 }

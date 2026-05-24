@@ -1,11 +1,5 @@
-/* GhostIdentity.js - Browser Compatible Identity Module
- *
- * SECURITY FIXES:
- * [FIX 05-A] Private key generated with extractable: false
- * [FIX 05-B] Private key NOT returned in identity object — sealed in closure
- * [FIX 05-C] sign() method exposed instead of raw CryptoKey
- */
-(function (root) {
+/* GhostIdentity.js - Browser Compatible Identity Module */
+(function (window) {
 
     function bufferToHex(buffer) {
         return Array.from(new Uint8Array(buffer))
@@ -22,42 +16,46 @@
 
     const GhostIdentity = {
         async generateIdentity() {
-            // [FIX 05-A] extractable: false — private key cannot be exported
-            const keys = await root.crypto.subtle.generateKey(
+            // [DAST-08] Generate extractable to export pubkey, then re-import private key as non-extractable
+            const keys = await window.crypto.subtle.generateKey(
                 {
                     name: "ECDSA",
                     namedCurve: "P-256",
                 },
-                false,
+                true,
                 ["sign", "verify"]
             );
 
-            const pubBuffer = await root.crypto.subtle.exportKey("spki", keys.publicKey);
+            const pubBuffer = await window.crypto.subtle.exportKey("spki", keys.publicKey);
             const pubHex = bufferToHex(pubBuffer);
-            const nodeId = "node_" + pubHex.substring(pubHex.length - 8);
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', pubBuffer);
+            const hashHex = bufferToHex(hashBuffer);
+            const nodeId = "0x" + hashHex.substring(0, 40);
 
-            // [FIX 05-B] Seal private key in closure — never returned
-            const _privateKey = keys.privateKey;
+            // [DAST-08] Re-import private key as non-extractable so exportKey('pkcs8') is blocked
+            const privBuffer = await window.crypto.subtle.exportKey("pkcs8", keys.privateKey);
+            const nonExtractablePrivKey = await window.crypto.subtle.importKey(
+                "pkcs8", privBuffer,
+                { name: "ECDSA", namedCurve: "P-256" },
+                false,
+                ["sign"]
+            );
+            // Zero out exported private key material
+            new Uint8Array(privBuffer).fill(0);
 
             return {
                 id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString()),
                 nodeId: nodeId,
                 publicKey: keys.publicKey,
-                publicKeyHex: pubHex,
-                // [FIX 05-C] Only way to use the private key
-                sign: (message) => GhostIdentity.signMessage(message, _privateKey),
-                // privateKey intentionally absent
+                privateKey: nonExtractablePrivKey
             };
         },
 
         async signMessage(messageStr, privateKey) {
-            if (!privateKey || typeof privateKey !== 'object') {
-                throw new TypeError('signMessage: privateKey must be a CryptoKey object.');
-            }
             const encoder = new TextEncoder();
             const data = typeof messageStr === 'string' ? encoder.encode(messageStr) : messageStr;
 
-            const signature = await root.crypto.subtle.sign(
+            const signature = await window.crypto.subtle.sign(
                 {
                     name: "ECDSA",
                     hash: { name: "SHA-256" },
@@ -69,19 +67,12 @@
         },
 
         async verifySignature(messageStr, signatureHex, publicKey) {
-            if (!publicKey) {
-                throw new TypeError('verifySignature: publicKey is required.');
-            }
             const encoder = new TextEncoder();
             const data = typeof messageStr === 'string' ? encoder.encode(messageStr) : messageStr;
-
-            if (typeof signatureHex !== 'string' || !/^[0-9a-fA-F]+$/.test(signatureHex)) {
-                return false;
-            }
             const signature = hexToBuffer(signatureHex);
 
             try {
-                const isValid = await root.crypto.subtle.verify(
+                const isValid = await window.crypto.subtle.verify(
                     {
                         name: "ECDSA",
                         hash: { name: "SHA-256" },
@@ -92,22 +83,12 @@
                 );
                 return isValid;
             } catch (e) {
-                if (e instanceof DOMException) {
-                    return false;
-                }
-                throw e;
+                console.error("Signature Verify Failed:", e);
+                return false;
             }
         }
     };
 
-    // Immutable global — cannot be overwritten by later scripts
-    if (typeof root !== 'undefined' && root !== null) {
-        Object.defineProperty(root, 'GhostIdentity', {
-            value: GhostIdentity,
-            writable: false,
-            configurable: false,
-            enumerable: true,
-        });
-    }
+    window.GhostIdentity = GhostIdentity;
 
 })(typeof window !== 'undefined' ? window : this);

@@ -2,11 +2,11 @@
 /**
  * GhostNet Application Logic
  * Integrates Identity, GhostMesh Transport, and Chat.
- *
- * SECURITY FIXES:
- * [FIX 08] Use crypto.randomUUID() instead of Math.random() for IDs
- * [FIX 18] Persist identity keys in IndexedDB across sessions
- * [FIX 19] No hardcoded production URLs — derive from current host
+ * 
+ * Architecture:
+ * - GhostMesh handles ALL transport (WebSocket auto-connect + BLE scan)
+ * - HTTP persistence always works independently
+ * - BLE and GhostChat are optional enhancements
  */
 
 window.app = {
@@ -15,9 +15,9 @@ window.app = {
     chatTarget: null,
     chatContactName: null,
     mesh: null,
-    authToken: null,
     transport: {
         ble: null,
+        // Legacy compatibility: startBLEScan delegates to mesh
         startBLEScan: async () => {
             if (window.app.mesh) {
                 await window.app.mesh.scanBLE();
@@ -28,122 +28,105 @@ window.app = {
     }
 };
 
-// ─── IndexedDB Identity Persistence ─────────────────────────────────────────
-// [FIX 18] Store CryptoKey pairs in IndexedDB so identity survives page reloads.
-// IndexedDB can store non-extractable CryptoKey objects natively.
-
-const IDENTITY_DB_NAME = 'ghostnet_identity';
-const IDENTITY_STORE = 'keys';
-
-function openIdentityDB() {
+// [DAST-09] IndexedDB-backed non-extractable storage key
+async function _getOrCreateStorageKey() {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(IDENTITY_DB_NAME, 1);
-        req.onupgradeneeded = () => {
-            req.result.createObjectStore(IDENTITY_STORE, { keyPath: 'id' });
+        const req = indexedDB.open('ghostnet_keys', 1);
+        req.onupgradeneeded = (e) => {
+            e.target.result.createObjectStore('keys');
         };
-        req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
+        req.onsuccess = async () => {
+            const db = req.result;
+            const tx = db.transaction('keys', 'readonly');
+            const store = tx.objectStore('keys');
+            const getReq = store.get('storage_key');
+            getReq.onsuccess = async () => {
+                if (getReq.result) {
+                    resolve(getReq.result);
+                } else {
+                    const key = await crypto.subtle.generateKey(
+                        { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                    );
+                    const wtx = db.transaction('keys', 'readwrite');
+                    wtx.objectStore('keys').put(key, 'storage_key');
+                    wtx.oncomplete = () => resolve(key);
+                    wtx.onerror = () => reject(wtx.error);
+                }
+            };
+            getReq.onerror = () => reject(getReq.error);
+        };
     });
-}
-
-async function loadStoredIdentity() {
-    try {
-        const db = await openIdentityDB();
-        return new Promise((resolve, reject) => {
-            const tx = db.transaction(IDENTITY_STORE, 'readonly');
-            const store = tx.objectStore(IDENTITY_STORE);
-            const req = store.get('primary');
-            req.onsuccess = () => resolve(req.result || null);
-            req.onerror = () => reject(req.error);
-        });
-    } catch {
-        return null;
-    }
-}
-
-async function saveIdentity(identity) {
-    try {
-        const db = await openIdentityDB();
-        const tx = db.transaction(IDENTITY_STORE, 'readwrite');
-        const store = tx.objectStore(IDENTITY_STORE);
-        store.put({ id: 'primary', ...identity });
-        return new Promise((resolve, reject) => {
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    } catch (e) {
-        console.warn("Failed to persist identity to IndexedDB:", e.message);
-    }
-}
-
-// ─── Auth Token Helper ──────────────────────────────────────────────────────
-function getAuthHeaders() {
-    const token = window.app.authToken || localStorage.getItem('ghostnet_token') || '';
-    return {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-        'X-GhostNet-Client': '1',
-    };
 }
 
 // Initialize App on Load
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log("System: Initializing GhostNet...");
-
-    // Load auth token
-    window.app.authToken = localStorage.getItem('ghostnet_token') || '';
+    console.log("🚀 System: Initializing GhostNet...");
 
     // --- 1. IDENTITY ---
-    // [FIX 18] Try to load persisted identity from IndexedDB first
-    let identity = null;
-    const stored = await loadStoredIdentity();
-
-    if (stored && stored.publicKey && stored.nodeId) {
-        identity = stored;
-        console.log("Identity loaded from IndexedDB");
-    } else if (window.GhostIdentity) {
-        identity = await window.GhostIdentity.generateIdentity();
-        await saveIdentity(identity);
-        console.log("New identity generated and persisted");
-    }
-
-    if (identity) {
-        window.app.identity = identity;
-    } else {
-        // [FIX 08] Fallback ID uses crypto.randomUUID instead of Math.random
-        const fallbackId = "user_" + (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36));
-        window.app.identity = { id: fallbackId, pub: fallbackId, nodeId: fallbackId };
-        console.warn("GhostIdentity module missing, using fallback identity");
-    }
-
-    // Ensure a stable user ID is persisted in localStorage for HTTP API usage
     let myId = localStorage.getItem('ghostnet_user_id');
     if (!myId) {
-        myId = window.app.identity.nodeId || window.app.identity.id;
+        myId = "user_" + crypto.randomUUID();
         localStorage.setItem('ghostnet_user_id', myId);
     }
-    window.app.identity.id = myId;
-    window.app.identity.nodeId = myId;
 
+    if (window.GhostIdentity) {
+        window.app.identity = await window.GhostIdentity.generateIdentity();
+        window.app.identity.id = myId;
+        window.app.identity.pub = myId;
+        window.app.identity.nodeId = myId;
+    } else {
+        window.app.identity = { id: myId, pub: myId, nodeId: myId };
+        console.warn("⚠️ GhostIdentity module missing, using fallback identity");
+    }
+
+    // Set identity in global state
     if (window.AppState) {
         window.AppState.identity = window.app.identity;
     }
 
-    console.log("Identity:", myId.slice(0, 12) + "…");
+    console.log("🆔 Identity:", myId);
 
-    // --- 2. HTTP PERSISTENCE ---
+    // --- 2. HTTP PERSISTENCE (always works) ---
+    // [RT-12] Storage key held in closure — not on window.app — so XSS cannot access it
+    const _storageKey = await _getOrCreateStorageKey();
+
+    const _encryptForStorage = async (text) => {
+        try {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const cipherBuf = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, _storageKey, new TextEncoder().encode(text)
+            );
+            return JSON.stringify({
+                enc: true,
+                iv: Array.from(iv),
+                data: Array.from(new Uint8Array(cipherBuf))
+            });
+        } catch (e) {
+            return text;
+        }
+    };
+
     window.app.persistMessage = async (text, targetId) => {
         const myId = window.app.identity.id;
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
+        const encryptedContent = await _encryptForStorage(text);
+        // [DAST-10] Single JWT source — sessionStorage only (never localStorage)
+        const token = sessionStorage.getItem('ghostnet_jwt') || '';
+
         try {
             const response = await fetch('/message', {
                 method: 'POST',
-                headers: getAuthHeaders(),
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
+                    senderId: myId,
                     receiverId: targetId,
                     contactName: window.app.chatContactName || targetId,
-                    content: { body: text, from: myId, to: targetId, ts: Date.now(), type: 'MSG' }
+                    content: encryptedContent
                 })
             });
 
@@ -157,9 +140,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 return result;
             }
-        } catch (e) {
-            console.error("HTTP Persistence failed");
-        }
+        } catch (e) { }
         return null;
     };
 
@@ -168,6 +149,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         const btn = document.getElementById('chat-send');
         const input = document.getElementById('chat-input');
         if (!btn || !input) {
+            console.warn("Chat send button or input not found. Retrying...");
             setTimeout(wireUpSendButton, 500);
             return;
         }
@@ -181,29 +163,29 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             await window.app.persistMessage(text, window.app.chatTarget);
 
-            if (window.app.mesh) {
+            if (window.app.chat && window.app.chat.sendMessage) {
                 try {
-                    window.app.mesh.broadcast({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast',
-                        type: 'MSG'
-                    });
+                    await window.app.chat.sendMessage(
+                        text,
+                        window.app.chatTarget || 'broadcast',
+                        'PERSIST'
+                    );
                 } catch (e) {
-                    console.warn("Mesh broadcast failed");
+                    console.warn("GhostChat encrypted send failed, falling back to mesh:", e);
+                    if (window.app.mesh) {
+                        window.app.mesh.broadcast({
+                            from: window.app.identity.id,
+                            to: window.app.chatTarget || 'broadcast',
+                            type: 'MSG'
+                        });
+                    }
                 }
-            }
-
-            if (window.app.chat && window.app.chat.sendToNetwork) {
-                try {
-                    await window.app.chat.sendToNetwork(JSON.stringify({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast'
-                    }));
-                } catch (e) {
-                    console.warn("GhostChat send failed");
-                }
+            } else if (window.app.mesh) {
+                window.app.mesh.broadcast({
+                    from: window.app.identity.id,
+                    to: window.app.chatTarget || 'broadcast',
+                    type: 'MSG'
+                });
             }
         };
 
@@ -220,14 +202,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (e.key === 'Enter') sendMessage();
         };
 
-        console.log("Chat SEND button wired to HTTP + Mesh");
+        console.log("✅ Chat SEND button wired to HTTP + Mesh");
 
+        // File Attachment Logic
         const fileInput = document.getElementById('chat-file');
         if (fileInput) {
             fileInput.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                UI.addMessage(`FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
+                console.log("📎 File Selected:", file.name);
+                UI.addMessage(`📎 FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
                 fileInput.value = '';
             };
         }
@@ -241,9 +225,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             const mesh = new GhostMesh(window.app.identity);
             window.app.mesh = mesh;
 
-            mesh.onPeerJoin = (peer) => {
-                console.log(`Peer joined: ${(peer.name || '').slice(0, 12)} via ${peer.transport}`);
+            // --- Mesh event handlers ---
 
+            mesh.onPeerJoin = (peer) => {
+                console.log(`👋 Peer joined: ${peer.name} via ${peer.transport}`);
+
+                // Add to AppState peers
                 if (window.AppState && !window.AppState.peers.find(p => p.id === peer.id)) {
                     window.AppState.peers.push({
                         id: peer.id,
@@ -252,10 +239,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                         latency: peer.transport === 'ble' ? 15 : 5
                     });
                 }
+
                 window.dispatchEvent(new Event("app:state"));
             };
 
             mesh.onPeerLeave = (peer) => {
+                console.log(`👋 Peer left: ${peer.name || peer.id}`);
+
                 if (window.AppState) {
                     window.AppState.peers = window.AppState.peers.filter(p => p.id !== peer.id);
                 }
@@ -263,6 +253,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onMessage = (msgData, from, transport) => {
+                console.log(`📩 Mesh message from ${from} via ${transport}:`, msgData);
+
+                // Display in chat if it's a MSG type
                 if (msgData && (msgData.type === 'MSG' || msgData.body)) {
                     if (window.UI) {
                         UI.addMessage(msgData.body || JSON.stringify(msgData), 'them');
@@ -271,46 +264,59 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onMeshUpdate = (peers) => {
+                // Update the UI stat counter
                 const statNodes = document.getElementById('stat-nodes');
-                if (statNodes) statNodes.innerText = peers.length + 1;
+                if (statNodes) statNodes.innerText = peers.length + 1; // +1 for self
             };
 
             mesh.onStatusChange = (status) => {
+                console.log('🕸️ Mesh status:', status);
+
                 if (status.state === 'error') {
                     console.warn('Mesh error:', status.message);
                 }
             };
 
+            // Start the mesh (WebSocket auto-connects, BLE auto-reconnects known devices)
             await mesh.start();
-            console.log("GhostMesh started. Status:", mesh.getStatus());
+            console.log("✅ GhostMesh started. Status:", mesh.getStatus());
 
         } catch (e) {
-            console.warn("GhostMesh init failed");
+            console.warn("GhostMesh init failed:", e);
         }
     } else {
-        // [FIX 19] Derive WS URL from current host — no hardcoded production URL
-        console.warn("GhostMesh not loaded, using direct WebSocket fallback");
+        // Fallback: Direct WebSocket if GhostMesh not loaded
+        console.warn("⚠️ GhostMesh not loaded, using direct WebSocket fallback");
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const token = window.app.authToken || '';
-            const wsUrl = `${protocol}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
+            // [DAST-10] Single JWT source — sessionStorage only
+            // [DAST-17] No JWT in URL — authenticate via first message
+            const wsToken = sessionStorage.getItem('ghostnet_jwt') || '';
+            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'MESH_HELLO', capabilities: {} }));
+                ws.send(JSON.stringify({ type: 'AUTH', token: wsToken }));
+                ws.send(JSON.stringify({ type: 'HELLO', id: myId }));
             };
             ws.onmessage = (event) => {
                 try {
-                    const msg = JSON.parse(event.data);
+                    const raw = event.data;
+                    if (typeof raw !== 'string' || raw.length > 65536) return;
+                    const msg = JSON.parse(raw);
+                    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+                    const allowedTypes = new Set(['PEER_JOIN', 'PEER_LEAVE', 'MESH_PEERS', 'welcome', 'HEARTBEAT']);
+                    if (!allowedTypes.has(msg.type)) return;
                     if (msg.type === 'PEER_JOIN') {
+                        if (typeof msg.id !== 'string' || msg.id.length > 128) return;
                         if (window.AppState) {
-                            window.AppState.peers.push({ id: msg.id, type: 'Wi-Fi', latency: 5 });
+                            window.AppState.peers.push({ id: String(msg.id), type: 'Wi-Fi', latency: 5 });
                             window.dispatchEvent(new Event("app:state"));
                         }
                     }
                 } catch (e) { }
             };
         } catch (e) {
-            console.warn("WebSocket fallback failed");
+            console.warn("WebSocket fallback failed:", e);
         }
     }
 
@@ -327,9 +333,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             chat.onMessage = (msg) => {
                 if (window.UI) UI.addMessage(msg.body, "them");
             };
-            console.log("GhostChat encryption layer initialized");
+            console.log("✅ GhostChat encryption layer initialized");
         } catch (e) {
-            console.warn("GhostChat init failed (non-critical)");
+            console.warn("GhostChat init failed (non-critical):", e);
         }
     }
 
@@ -338,6 +344,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.dispatchEvent(new Event("app:state"));
 
     if (window.location.protocol === 'file:') {
-        alert("WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
+        alert("⚠️ WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
     }
 });

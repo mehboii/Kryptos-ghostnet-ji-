@@ -21,7 +21,7 @@ const _ALLOWED_MESH_TYPES = new Set([
     // server/control types used by demo mesh
     'HELLO', 'MESH_HELLO', 'welcome',
     'PEER_JOIN', 'PEER_LEAVE', 'MESH_MSG',
-    'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK'
+    'MSG', 'MESH_DIRECT', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK'
 ]);
 
 function _sanitizeMeshMessage(raw) {
@@ -54,7 +54,7 @@ function _sanitizeMeshMessage(raw) {
         if (msg.timestamp > now + 30000) return null;  // more than 30s in future
     }
 
-    return {
+    const sanitized = {
         type: String(msg.type),
         body: msg.body ? String(msg.body).slice(0, 4096) : undefined,
         senderId: msg.senderId || null,
@@ -63,6 +63,21 @@ function _sanitizeMeshMessage(raw) {
             ? Math.min(Math.max(0, msg.hopCount), 10)
             : 0
     };
+
+    if (msg.id) sanitized.id = String(msg.id);
+    if (msg.from) sanitized.from = String(msg.from);
+    if (msg.to) sanitized.to = String(msg.to);
+    if (msg.ts) sanitized.ts = msg.ts;
+    if (msg.hops !== undefined) sanitized.hops = typeof msg.hops === 'number' ? Math.min(msg.hops, 10) : 0;
+    if (msg.maxHops !== undefined) sanitized.maxHops = typeof msg.maxHops === 'number' ? Math.min(msg.maxHops, 10) : 5;
+    if (msg.enc && typeof msg.enc === 'object') sanitized.enc = msg.enc;
+    if (msg.data !== undefined) sanitized.data = msg.data;
+    if (msg.content !== undefined) sanitized.content = msg.content;
+    if (msg.peers && Array.isArray(msg.peers)) sanitized.peers = msg.peers;
+    if (msg.capabilities && typeof msg.capabilities === 'object') sanitized.capabilities = msg.capabilities;
+    if (msg.name) sanitized.name = String(msg.name).slice(0, 64);
+
+    return sanitized;
 }
 
 class GhostMesh {
@@ -75,12 +90,19 @@ class GhostMesh {
         this.bleScanning = false;
         this.reconnectTimer = null;
         this.heartbeatTimer = null;
-        this.knownBLEDevices = []; // Stored in localStorage for auto-reconnect
+        this.knownBLEDevices = []; // Stored encrypted in localStorage
 
-        // BLE Constants
+        // [DAST-02] Message deduplication at mesh layer
+        this._seenMsgIds = new Set();
+        this._seenMsgIdsMax = 2000;
+
+        // [DAST-16] Transport downgrade tracking
+        this._transportConsent = { bleOnly: false, downgradeAcked: false };
+
         this.SERVICE_UUID = '67686f73-746e-6574-2d6d-657368000000';
         this.CHAR_DATA = '67686f73-746e-6574-2d64-617461000000';
         this.CHAR_PEER_ID = '67686f73-746e-6574-2d69-640000000000';
+        this.CHAR_PUB_KEY = '67686f73-746e-6574-2d6b-657900000000';
 
         // Event handlers (set by app.js)
         this.onPeerJoin = (peer) => { };
@@ -89,11 +111,9 @@ class GhostMesh {
         this.onMeshUpdate = (peers) => { };
         this.onStatusChange = (status) => { };
 
-        // Load known BLE devices from storage
-        try {
-            const stored = localStorage.getItem('ghostnet_ble_devices');
-            if (stored) this.knownBLEDevices = JSON.parse(stored);
-        } catch (e) { }
+        // [DAST-11] BLE device list loaded via encrypted storage (see _loadEncryptedBleDevices)
+        this._bleDeviceKey = null;
+        this._initBleDeviceKey().then(() => this._loadEncryptedBleDevices()).catch(() => {});
 
         // Check BLE availability
         this.bleAvailable = typeof navigator !== 'undefined' && !!navigator.bluetooth;
@@ -175,35 +195,67 @@ class GhostMesh {
 
     /** Send a message to all connected peers via all transports */
     async broadcast(message) {
-        const payload = {
+        let encryptedData;
+        let ivHex;
+        try {
+            if (!this._broadcastKey) {
+                this._broadcastKey = await crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                );
+            }
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const plainBytes = new TextEncoder().encode(JSON.stringify(message));
+            const cipherBuf = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, this._broadcastKey, plainBytes
+            );
+            encryptedData = Array.from(new Uint8Array(cipherBuf));
+            ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
+        } catch (e) {
+            console.error('Broadcast encryption failed:', e);
+            return;
+        }
+
+        let payload = {
             type: 'MESH_MSG',
             id: crypto.randomUUID(),
             from: this.identity.id,
-            data: message,
+            enc: { data: encryptedData, iv: ivHex },
             ts: Date.now(),
             hops: 0,
             maxHops: 5
         };
 
-        // Send via WebSocket
+        // [DAST-04] Sign mesh message with identity key
+        payload = await this._signMeshPayload(payload);
+
         if (this.ws && this.wsReady) {
             try {
                 this.ws.send(JSON.stringify(payload));
-            } catch (e) {
-                console.error('WS send failed:', e);
-            }
+            } catch (e) { }
         }
 
-        // Send via BLE to all connected peers
         for (const [peerId, peer] of this.peers) {
             if (peer.transport === 'ble' && peer.connected && peer.writeChar) {
                 try {
                     const data = new TextEncoder().encode(JSON.stringify(payload));
                     await peer.writeChar.writeValue(data);
-                } catch (e) {
-                    console.error(`BLE send to ${peerId} failed:`, e);
-                }
+                } catch (e) { }
             }
+        }
+    }
+
+    /** Decrypt an encrypted mesh message envelope using session broadcast key */
+    async _decryptMeshPayload(enc) {
+        if (!enc || !enc.data || !enc.iv) return null;
+        if (!this._broadcastKey) return null;
+        try {
+            const ivBytes = new Uint8Array(enc.iv.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: ivBytes }, this._broadcastKey, new Uint8Array(enc.data)
+            );
+            return JSON.parse(new TextDecoder().decode(decrypted));
+        } catch {
+            return null;
         }
     }
 
@@ -211,16 +263,37 @@ class GhostMesh {
     async sendToPeer(peerId, message) {
         const peer = this.peers.get(peerId);
 
+        let encryptedData;
+        try {
+            if (!this._peerKeys) this._peerKeys = new Map();
+            if (!this._peerKeys.has(peerId)) {
+                this._peerKeys.set(peerId, await crypto.subtle.generateKey(
+                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                ));
+            }
+            const peerKey = this._peerKeys.get(peerId);
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const plainBytes = new TextEncoder().encode(JSON.stringify(message));
+            const cipherBuf = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, peerKey, plainBytes
+            );
+            encryptedData = {
+                data: Array.from(new Uint8Array(cipherBuf)),
+                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('')
+            };
+        } catch (e) {
+            return;
+        }
+
         const payload = {
             type: 'MESH_DIRECT',
             id: crypto.randomUUID(),
             from: this.identity.id,
             to: peerId,
-            data: message,
+            enc: encryptedData,
             ts: Date.now()
         };
 
-        // Try BLE first (direct), then WebSocket relay
         if (peer && peer.transport === 'ble' && peer.connected && peer.writeChar) {
             const data = new TextEncoder().encode(JSON.stringify(payload));
             await peer.writeChar.writeValue(data);
@@ -271,22 +344,23 @@ class GhostMesh {
                 console.warn('[Mesh] No auth token — cannot connect');
                 return;
             }
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // [DAST-17] Connect without JWT in URL — authenticate via first message
             const baseUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
-            const wsUrl = `${baseUrl}?token=${encodeURIComponent(token)}`;
-            console.log(`🔌 Mesh: Connecting WebSocket: ${baseUrl}`);
+            console.log('Mesh: Connecting WebSocket');
 
-            this.ws = new WebSocket(wsUrl);
+            this.ws = new WebSocket(baseUrl);
 
             this.ws.onopen = () => {
-                console.log('✅ Mesh: WebSocket connected');
+                console.log('Mesh: WebSocket connected');
                 this.wsReady = true;
 
-                // Register ourselves
+                // [DAST-17] Send JWT in first message instead of URL
+                this.ws.send(JSON.stringify({ type: 'AUTH', token }));
+
+                // [DAST-07] Register without exposing static nodeId in hello
                 this.ws.send(JSON.stringify({
                     type: 'MESH_HELLO',
                     id: this.identity.id,
-                    nodeId: this.identity.nodeId,
                     capabilities: {
                         ble: this.bleAvailable,
                         ws: true
@@ -303,11 +377,22 @@ class GhostMesh {
             };
 
             this.ws.onclose = () => {
-                console.warn('🔌 Mesh: WebSocket disconnected');
+                console.warn('Mesh: WebSocket disconnected');
                 this.wsReady = false;
-                this.onStatusChange({ state: 'disconnected', transport: 'ws' });
 
-                // Remove WS peers
+                // [DAST-16] Track transport downgrade — if BLE peers remain, this is a downgrade
+                const blePeersActive = [...this.peers.values()].some(p => p.transport === 'ble' && p.connected);
+                if (blePeersActive && !this._transportConsent.downgradeAcked) {
+                    this.onStatusChange({
+                        state: 'downgraded',
+                        transport: 'ble-only',
+                        message: 'WebSocket lost — operating over BLE only. Messages may not reach all peers.'
+                    });
+                    this._transportConsent.downgradeAcked = true;
+                } else {
+                    this.onStatusChange({ state: 'disconnected', transport: 'ws' });
+                }
+
                 for (const [id, peer] of this.peers) {
                     if (peer.transport === 'ws') {
                         this.peers.delete(id);
@@ -316,9 +401,11 @@ class GhostMesh {
                 }
                 this.onMeshUpdate(this.getPeers());
 
-                // Auto-reconnect after 3 seconds
                 clearTimeout(this.reconnectTimer);
-                this.reconnectTimer = setTimeout(() => this.connectWebSocket(), 3000);
+                this.reconnectTimer = setTimeout(() => {
+                    this._transportConsent.downgradeAcked = false;
+                    this.connectWebSocket();
+                }, 3000);
             };
 
             this.ws.onerror = (e) => {
@@ -333,7 +420,7 @@ class GhostMesh {
         }
     }
 
-    handleWSMessage(msg) {
+    async handleWSMessage(msg) {
         switch (msg.type) {
             case 'HELLO':
             case 'MESH_HELLO':
@@ -342,6 +429,12 @@ class GhostMesh {
 
             case 'PEER_JOIN':
                 if (msg.id !== this.identity.id) {
+                    // [DAST-03] Reject if peer ID already connected via different transport
+                    const existing = this.peers.get(msg.id);
+                    if (existing && existing.connected && existing.transport !== 'ws') {
+                        console.warn('[DAST-03] Peer ID conflict — already connected via', existing.transport);
+                        break;
+                    }
                     const peer = {
                         id: msg.id,
                         transport: 'ws',
@@ -367,13 +460,25 @@ class GhostMesh {
             case 'MESH_MSG':
             case 'MSG':
                 if (msg.from !== this.identity.id) {
-                    // Update peer lastSeen
+                    // [DAST-02][RT-02][RT-03] Dedup + mandatory timestamp validation
+                    if (this._isDuplicate(msg.id)) break;
+                    if (!this._isTimestampValid(msg.ts)) break;
+
+                    // [DAST-04] Verify mesh signature if present
+                    if (msg.meshSig && !await this._verifyMeshSignature(msg)) break;
+
                     if (this.peers.has(msg.from)) {
                         this.peers.get(msg.from).lastSeen = Date.now();
                     }
-                    this.onMessage(msg.data || msg.content || msg, msg.from, 'ws');
 
-                    // Bridge to BLE peers (mesh relay)
+                    let msgContent = msg.data || msg.content || msg;
+                    if (msg.enc) {
+                        const decrypted = await this._decryptMeshPayload(msg.enc);
+                        if (!decrypted) break;
+                        msgContent = decrypted;
+                    }
+                    this.onMessage(msgContent, msg.from, 'ws');
+
                     if (msg.hops !== undefined && msg.hops < (msg.maxHops || 5)) {
                         this.relayToBLE({ ...msg, hops: (msg.hops || 0) + 1 });
                     }
@@ -438,34 +543,21 @@ class GhostMesh {
             console.log(`📲 BLE: Connecting GATT to ${device.name || device.id}...`);
             const server = await device.gatt.connect();
 
-            // Try to get our custom service
-            let service, charData, charId;
+            let service, charData, charId, charKey;
             try {
                 service = await server.getPrimaryService(this.SERVICE_UUID);
                 charData = await service.getCharacteristic(this.CHAR_DATA);
                 charId = await service.getCharacteristic(this.CHAR_PEER_ID);
+                try { charKey = await service.getCharacteristic(this.CHAR_PUB_KEY); } catch (e) { charKey = null; }
             } catch (e) {
-                console.warn(`📲 BLE: GhostNet service not found on ${device.name || device.id}. Adding as generic BLE peer.`);
-                // Still add as a peer even without our service (device is reachable)
-                const peer = {
-                    id: device.id,
-                    transport: 'ble',
-                    connected: true,
-                    lastSeen: Date.now(),
-                    name: device.name || 'BLE-' + device.id.substr(-4),
-                    device: device,
-                    server: server,
-                    writeChar: null
-                };
-                this.peers.set(device.id, peer);
-                this.onPeerJoin(peer);
-                this.onMeshUpdate(this.getPeers());
-                this.onStatusChange({ state: 'connected', transport: 'ble', peerId: device.id });
+                // [RT-01] Reject devices without GhostNet service — no unauthenticated peers
+                console.warn(`BLE: GhostNet service not found on ${device.name || device.id} — rejecting`);
+                device.gatt.disconnect();
                 return;
             }
 
-            // Read peer ID
             let peerId = device.id;
+            let peerKeyHex = null;
             try {
                 const idVal = await charId.readValue();
                 peerId = new TextDecoder().decode(idVal);
@@ -473,31 +565,91 @@ class GhostMesh {
                 console.warn('Could not read peer ID, using device ID');
             }
 
-            // Setup notifications for incoming data
+            if (charKey) {
+                try {
+                    const keyVal = await charKey.readValue();
+                    peerKeyHex = Array.from(new Uint8Array(keyVal.buffer || keyVal))
+                        .map(b => b.toString(16).padStart(2, '0')).join('');
+                    if (!peerKeyHex || !/^[0-9a-f]+$/i.test(peerKeyHex) || peerKeyHex.length < 16) {
+                        console.warn('BLE: Invalid peer public key — rejecting connection');
+                        device.gatt.disconnect();
+                        return;
+                    }
+                    const keyHash = await crypto.subtle.digest('SHA-256',
+                        new Uint8Array(peerKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16))));
+                    const expectedId = '0x' + Array.from(new Uint8Array(keyHash))
+                        .map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 40);
+                    if (peerId.startsWith('0x') && peerId !== expectedId) {
+                        console.warn('BLE: Peer identity mismatch — nodeId does not match public key hash');
+                        device.gatt.disconnect();
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('BLE: Could not verify peer key:', e);
+                }
+            }
+
+            // [DAST-01][RT-01] Challenge-response is MANDATORY — no pubkey = no connection
+            if (!peerKeyHex) {
+                console.warn('[RT-01] BLE: No public key — rejecting unauthenticated peer');
+                device.gatt.disconnect();
+                return;
+            }
             try {
                 await charData.startNotifications();
-                charData.addEventListener('characteristicvaluechanged', (event) => {
-                    const val = new TextDecoder().decode(event.target.value);
-                    try {
-                        const msg = JSON.parse(val);
-                        if (msg.from !== this.identity.id) {
-                            this.onMessage(msg.data || msg, msg.from || peerId, 'ble');
+                const authResult = await this._bleChallengeResponse(charData, peerKeyHex, peerId);
+                if (!authResult) {
+                    console.warn('[DAST-01] BLE challenge-response failed — disconnecting');
+                    device.gatt.disconnect();
+                    return;
+                }
+            } catch (e) {
+                // [RT-01] Challenge failure is FATAL — do not continue
+                console.warn('[RT-01] BLE challenge-response error — disconnecting');
+                device.gatt.disconnect();
+                return;
+            }
 
-                            // Bridge to WebSocket (mesh relay)
-                            if (msg.hops !== undefined && msg.hops < (msg.maxHops || 5)) {
-                                this.relayToWS({ ...msg, hops: (msg.hops || 0) + 1 });
-                            }
-                        }
-                    } catch (e) {
-                        // Non-JSON data, pass as string
-                        this.onMessage(val, peerId, 'ble');
+            try {
+                if (!charData._notificationsStarted) await charData.startNotifications();
+                charData.addEventListener('characteristicvaluechanged', async (event) => {
+                    const val = new TextDecoder().decode(event.target.value);
+                    const msg = _sanitizeMeshMessage(val);
+                    if (!msg) return;
+                    if (msg.from === this.identity.id) return;
+
+                    // [DAST-02][RT-02][RT-03] Dedup + mandatory timestamp
+                    if (this._isDuplicate(msg.id)) return;
+                    if (!this._isTimestampValid(msg.ts)) return;
+                    // [DAST-04] Verify signature if present
+                    if (msg.meshSig && !await this._verifyMeshSignature(msg)) return;
+
+                    let msgContent = msg.data || msg;
+                    if (msg.enc) {
+                        const decrypted = await this._decryptMeshPayload(msg.enc);
+                        if (!decrypted) return;
+                        msgContent = decrypted;
+                    }
+                    this.onMessage(msgContent, msg.from || peerId, 'ble');
+
+                    if (msg.hops !== undefined && msg.hops < (msg.maxHops || 5)) {
+                        this.relayToWS({ ...msg, hops: (msg.hops || 0) + 1 });
                     }
                 });
             } catch (e) {
                 console.warn('BLE notifications not supported:', e);
             }
 
-            // Create peer entry
+            // [RT-07] Check for peer ID conflict before adding BLE peer
+            const existingPeer = this.peers.get(peerId);
+            if (existingPeer && existingPeer.connected && existingPeer.transport !== 'ble') {
+                // [DAST-03] Peer ID already connected via different transport — reject
+                console.warn('[RT-07] BLE peer ID conflict — already connected via', existingPeer.transport);
+                device.gatt.disconnect();
+                return;
+            }
+
+            // [DAST-15] Preserve crypto session when migrating between transports
             const peer = {
                 id: peerId,
                 transport: 'ble',
@@ -506,7 +658,9 @@ class GhostMesh {
                 name: device.name || 'BLE-' + peerId.substr(-4),
                 device: device,
                 server: server,
-                writeChar: charData
+                writeChar: charData,
+                pubKey: peerKeyHex || (existingPeer && existingPeer.pubKey) || null,
+                sessionMigrated: !!existingPeer
             };
 
             this.peers.set(peerId, peer);
@@ -587,9 +741,8 @@ class GhostMesh {
             this.knownBLEDevices = this.knownBLEDevices.slice(-20);
         }
 
-        try {
-            localStorage.setItem('ghostnet_ble_devices', JSON.stringify(this.knownBLEDevices));
-        } catch (e) { }
+        // [DAST-11] Encrypt before storing
+        this._saveEncryptedBleDevices();
     }
 
     // ============================================
@@ -597,10 +750,16 @@ class GhostMesh {
     // ============================================
 
     relayToBLE(msg) {
+        // [DAST-05][RT-06] Strip cleartext metadata but preserve from+meshSig for verification
+        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
+        const serialized = JSON.stringify(relayMsg);
+        const validated = _sanitizeMeshMessage(serialized);
+        if (!validated) return;
+
         for (const [peerId, peer] of this.peers) {
             if (peer.transport === 'ble' && peer.connected && peer.writeChar) {
                 try {
-                    const data = new TextEncoder().encode(JSON.stringify(msg));
+                    const data = new TextEncoder().encode(serialized);
                     peer.writeChar.writeValue(data);
                 } catch (e) { }
             }
@@ -608,9 +767,15 @@ class GhostMesh {
     }
 
     relayToWS(msg) {
+        // [DAST-05] Strip cleartext metadata before relay
+        const relayMsg = { type: msg.type, id: msg.id, enc: msg.enc, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
+        const serialized = JSON.stringify(relayMsg);
+        const validated = _sanitizeMeshMessage(serialized);
+        if (!validated) return;
+
         if (this.ws && this.wsReady) {
             try {
-                this.ws.send(JSON.stringify(msg));
+                this.ws.send(serialized);
             } catch (e) { }
         }
     }
@@ -666,6 +831,163 @@ class GhostMesh {
         }
 
         this.peers.clear();
+    }
+
+    // ============================================
+    // [DAST-11] ENCRYPTED BLE DEVICE STORAGE
+    // ============================================
+
+    async _initBleDeviceKey() {
+        // [RT-10] Use random salt stored alongside encrypted data, not deterministic from localStorage
+        let salt;
+        const storedSalt = localStorage.getItem('ghostnet_ble_key_salt');
+        if (storedSalt) {
+            salt = new Uint8Array(JSON.parse(storedSalt));
+        } else {
+            salt = crypto.getRandomValues(new Uint8Array(16));
+            localStorage.setItem('ghostnet_ble_key_salt', JSON.stringify(Array.from(salt)));
+        }
+        const baseKey = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode('ghostnet-ble-devices-' + this.identity.id),
+            'HKDF', false, ['deriveKey']
+        );
+        this._bleDeviceKey = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('ble-device-enc') },
+            baseKey,
+            { name: 'AES-GCM', length: 256 },
+            false, ['encrypt', 'decrypt']
+        );
+    }
+
+    async _loadEncryptedBleDevices() {
+        try {
+            const stored = localStorage.getItem('ghostnet_ble_devices_enc');
+            if (!stored || !this._bleDeviceKey) return;
+            const { iv, data } = JSON.parse(stored);
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: new Uint8Array(iv) },
+                this._bleDeviceKey,
+                new Uint8Array(data)
+            );
+            this.knownBLEDevices = JSON.parse(new TextDecoder().decode(decrypted));
+        } catch { this.knownBLEDevices = []; }
+    }
+
+    async _saveEncryptedBleDevices() {
+        if (!this._bleDeviceKey) return;
+        try {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const plaintext = new TextEncoder().encode(JSON.stringify(this.knownBLEDevices));
+            const ciphertext = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, this._bleDeviceKey, plaintext
+            );
+            localStorage.setItem('ghostnet_ble_devices_enc', JSON.stringify({
+                iv: Array.from(iv),
+                data: Array.from(new Uint8Array(ciphertext))
+            }));
+            localStorage.removeItem('ghostnet_ble_devices');
+        } catch { }
+    }
+
+    // ============================================
+    // [DAST-02] MESSAGE DEDUPLICATION
+    // ============================================
+
+    _isDuplicate(msgId) {
+        // [RT-02] Reject messages with missing/falsy ID — no ID means no dedup possible
+        if (!msgId || typeof msgId !== 'string') return true;
+        if (this._seenMsgIds.has(msgId)) return true;
+        this._seenMsgIds.add(msgId);
+        if (this._seenMsgIds.size > this._seenMsgIdsMax) {
+            const it = this._seenMsgIds.values();
+            this._seenMsgIds.delete(it.next().value);
+        }
+        return false;
+    }
+
+    _isTimestampValid(ts) {
+        // [RT-03] Reject non-numeric or falsy timestamps — no timestamp = no time validation
+        if (typeof ts !== 'number' || ts <= 0) return false;
+        const now = Date.now();
+        return ts > now - 300000 && ts < now + 30000;
+    }
+
+    // ============================================
+    // [DAST-01] BLE CHALLENGE-RESPONSE AUTH
+    // ============================================
+
+    async _bleChallengeResponse(writeChar, peerKeyHex, peerId) {
+        const nonce = crypto.getRandomValues(new Uint8Array(32));
+        const nonceHex = Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('');
+        const challenge = JSON.stringify({ type: 'AUTH_CHALLENGE', nonce: nonceHex });
+        await writeChar.writeValue(new TextEncoder().encode(challenge));
+
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => resolve(false), 5000);
+            const handler = async (event) => {
+                try {
+                    const val = new TextDecoder().decode(event.target.value);
+                    const resp = JSON.parse(val);
+                    if (resp.type !== 'AUTH_RESPONSE' || !resp.sig) return;
+                    writeChar.removeEventListener('characteristicvaluechanged', handler);
+                    clearTimeout(timeout);
+
+                    const keyBytes = new Uint8Array(peerKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+                    const pubKey = await crypto.subtle.importKey(
+                        'spki', keyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
+                    );
+                    const sigBytes = new Uint8Array(resp.sig.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+                    const valid = await crypto.subtle.verify(
+                        { name: 'ECDSA', hash: 'SHA-256' }, pubKey, sigBytes, nonce
+                    );
+                    resolve(valid);
+                } catch { resolve(false); }
+            };
+            writeChar.addEventListener('characteristicvaluechanged', handler);
+        });
+    }
+
+    // ============================================
+    // [DAST-04] SIGN MESH MESSAGES
+    // ============================================
+
+    async _signMeshPayload(payload) {
+        if (!this.identity.privateKey) return payload;
+        try {
+            // [RT-05] Include enc hash in signature so payload can't be substituted
+            const encHash = payload.enc ? JSON.stringify(payload.enc) : '';
+            const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}|${encHash}`;
+            const sig = await crypto.subtle.sign(
+                { name: 'ECDSA', hash: 'SHA-256' },
+                this.identity.privateKey,
+                new TextEncoder().encode(canonical)
+            );
+            payload.meshSig = Array.from(new Uint8Array(sig))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+            return payload;
+        } catch { return payload; }
+    }
+
+    async _verifyMeshSignature(msg) {
+        if (!msg.meshSig || !msg.from) return false;
+        const peer = this.peers.get(msg.from);
+        // [RT-04] If message has meshSig but we have no pubKey to verify, reject — no auto-pass
+        if (!peer || !peer.pubKey) return false;
+        try {
+            // [RT-05] Must match sign canonical — includes enc hash
+            const encHash = msg.enc ? JSON.stringify(msg.enc) : '';
+            const canonical = `${msg.id}|${msg.from}|${msg.ts}|${msg.type}|${encHash}`;
+            const keyBytes = new Uint8Array(peer.pubKey.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+            const pubKey = await crypto.subtle.importKey(
+                'spki', keyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
+            );
+            const sigBytes = new Uint8Array(msg.meshSig.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+            return await crypto.subtle.verify(
+                { name: 'ECDSA', hash: 'SHA-256' }, pubKey, sigBytes,
+                new TextEncoder().encode(canonical)
+            );
+        } catch { return false; }
     }
 }
 

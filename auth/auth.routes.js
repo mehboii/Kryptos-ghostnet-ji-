@@ -95,8 +95,10 @@ async function sendVerificationEmail(email, code) {
     try {
         const mailer = await getTransporter();
         if (!mailer) {
-            console.log(`📧 [DEV] Verification code for ${email}: ${code}`);
-            return { sent: false, preview: null, devCode: code };
+            if (process.env.NODE_ENV !== 'production') {
+                console.log(`📧 [DEV] Verification code generated (mailer unavailable)`);
+            }
+            return { sent: false, preview: null };
         }
 
         const fromAddr = process.env.SMTP_FROM || '"GhostNet" <noreply@ghostnet.io>';
@@ -135,8 +137,10 @@ async function sendVerificationEmail(email, code) {
         return { sent: true, preview: previewUrl || null };
     } catch (e) {
         console.error('📧 Email send error:', e.message);
-        console.log(`📧 [FALLBACK] Verification code for ${email}: ${code}`);
-        return { sent: false, preview: null, devCode: code };
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`📧 [FALLBACK] Verification code generated (email send failed)`);
+        }
+        return { sent: false, preview: null };
     }
 }
 
@@ -246,8 +250,6 @@ router.post('/signup', signupLimiter, async (req, res) => {
             user,
             requiresVerification: true,
             message: 'Account created! Check your email for a 6-digit verification code.',
-            // In dev mode, include the code directly if email couldn't be sent
-            ...(emailResult.devCode ? { devCode: emailResult.devCode } : {}),
             ...(emailResult.preview ? { emailPreview: emailResult.preview } : {}),
         });
     } catch (err) {
@@ -328,7 +330,6 @@ router.post('/resend-code', resendLimiter, async (req, res) => {
         res.json({
             success: true,
             message: 'A new verification code has been sent to your email.',
-            ...(emailResult.devCode ? { devCode: emailResult.devCode } : {}),
             ...(emailResult.preview ? { emailPreview: emailResult.preview } : {}),
         });
     } catch (err) {
@@ -380,7 +381,7 @@ router.post('/login', loginLimiter, async (req, res) => {
             const shortCode = generateUniqueShortCode();
             updateUserFields(user.id, { shortCode });
             user.shortCode = shortCode;
-            console.log(`🔖 Generated GhostCode ${shortCode} for existing user ${user.email}`);
+            console.log(`🔖 Generated GhostCode for existing user`);
         }
 
         res.json({
