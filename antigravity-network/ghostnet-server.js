@@ -35,6 +35,12 @@ const MAX_MESSAGES = 10_000;
 const MAX_MESSAGE_LENGTH = 4096;
 
 const _createUserBuckets = new Map();
+setInterval(() => {
+    const now = Date.now();
+    for (const [ip, bucket] of _createUserBuckets) {
+        if (now > bucket.resetAt) _createUserBuckets.delete(ip);
+    }
+}, 120000);
 function createUserRateLimit(req, res, next) {
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
@@ -85,17 +91,11 @@ if (!fs.existsSync(DB)) {
     fs.writeFileSync(DB, "[]");
 }
 
-const BLOCKED_FILES = new Set([
-    '/messages.json', '/users.json', '/conversations.json',
-    '/package.json', '/package-lock.json',
-    '/.env', '/.gitignore',
-    '/ghostnet-server.js',
-]);
+const ALLOWED_STATIC_EXTENSIONS = new Set(['.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot']);
 app.use((req, res, next) => {
-    if (BLOCKED_FILES.has(req.path.toLowerCase())) {
-        return res.status(404).end();
-    }
-    if (req.path.endsWith('.env') || req.path.endsWith('.key') || req.path.endsWith('.pem')) {
+    const reqPath = path.normalize(req.path).replace(/\\/g, '/');
+    const ext = path.extname(reqPath).toLowerCase();
+    if (reqPath !== '/' && !ALLOWED_STATIC_EXTENSIONS.has(ext)) {
         return res.status(404).end();
     }
     next();
@@ -395,15 +395,25 @@ wss.on("connection", (ws, req) => {
                     }
                     break;
 
-                default:
+                default: {
+                    const ALLOWED_RELAY_TYPES = new Set(['MESH_MSG', 'MESH_DIRECT', 'MSG', 'HEARTBEAT_ACK']);
+                    if (!ALLOWED_RELAY_TYPES.has(msg.type)) break;
                     msg.from = authenticatedUserId;
                     const outbound = JSON.stringify(msg);
-                    for (const [id, peer] of meshPeers) {
-                        if (id !== clientId && peer.ws.readyState === 1) {
-                            peer.ws.send(outbound);
+                    if (msg.to && typeof msg.to === 'string') {
+                        const targetPeer = meshPeers.get(msg.to);
+                        if (targetPeer && targetPeer.ws.readyState === 1) {
+                            targetPeer.ws.send(outbound);
+                        }
+                    } else {
+                        for (const [id, peer] of meshPeers) {
+                            if (id !== clientId && peer.ws.readyState === 1) {
+                                peer.ws.send(outbound);
+                            }
                         }
                     }
                     break;
+                }
             }
         } catch { /* malformed message — silently drop */ }
     });
@@ -427,7 +437,7 @@ setInterval(() => {
     const now = Date.now();
     for (const [id, peer] of meshPeers) {
         if (now - peer.lastSeen > 90000) { // 90 seconds no heartbeat
-            console.log(`🕸️ Stale peer removed: ${id}`);
+            console.log(`🕸️ Stale peer removed`);
             meshPeers.delete(id);
             if (peer.ws.readyState === 1) {
                 peer.ws.close();
