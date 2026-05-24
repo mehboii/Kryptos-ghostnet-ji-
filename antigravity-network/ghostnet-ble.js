@@ -62,10 +62,19 @@ export default class GhostBLE {
         }
     }
 
-    _verifyPeerIdentity(peerId, peerKeyHex) {
+    async _verifyPeerIdentity(peerId, peerKeyHex) {
         if (!peerId || typeof peerId !== 'string' || peerId.length > 128) return false;
-        if (!peerKeyHex || typeof peerKeyHex !== 'string') return false;
+        if (!peerKeyHex || typeof peerKeyHex !== 'string' || peerKeyHex.length < 16) return false;
         if (!/^[0-9a-f]+$/i.test(peerKeyHex)) return false;
+        try {
+            const keyBytes = new Uint8Array(peerKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
+            const hashBuf = await crypto.subtle.digest('SHA-256', keyBytes);
+            const expectedId = '0x' + Array.from(new Uint8Array(hashBuf))
+                .map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 40);
+            if (peerId.startsWith('0x') && peerId !== expectedId) return false;
+        } catch {
+            return false;
+        }
         return true;
     }
 
@@ -148,7 +157,7 @@ export default class GhostBLE {
         const peerKeyVal = await charKey.readValue();
         const peerKey = this._bufToHex(peerKeyVal);
 
-        if (!this._verifyPeerIdentity(peerId, peerKey)) {
+        if (!await this._verifyPeerIdentity(peerId, peerKey)) {
             console.warn(`GhostBLE: Peer identity verification failed — disconnecting`);
             device.gatt.disconnect();
             return;
@@ -240,10 +249,10 @@ export default class GhostBLE {
                                 if (err) return;
                                 const idStr = data.toString('utf-8');
 
-                                charKey.read((err, keyData) => {
+                                charKey.read(async (err, keyData) => {
                                     const keyHex = keyData ? this._bufToHex(keyData) : '';
-                                    if (!this._verifyPeerIdentity(idStr, keyHex)) {
-                                        console.warn(`GhostBLE: Peer identity verification failed for ${peerId}`);
+                                    if (!await this._verifyPeerIdentity(idStr, keyHex)) {
+                                        console.warn(`GhostBLE: Peer identity verification failed`);
                                         peripheral.disconnect();
                                         return;
                                     }
