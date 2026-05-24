@@ -168,7 +168,8 @@ app.post("/create-user", createUserRateLimit, (req, res) => {
         }
         if (/^https:\/\//.test(avatar)) {
             sanitizedAvatar = avatar.slice(0, 2048);
-        } else if (/^data:image\/(png|jpeg|gif|webp|svg\+xml);base64,/.test(avatar)) {
+        // [RT-09] SVG removed — can contain embedded JavaScript (stored XSS)
+        } else if (/^data:image\/(png|jpeg|gif|webp);base64,/.test(avatar)) {
             if (avatar.length > 65536) return res.status(400).json({ error: "Avatar data too large" });
             sanitizedAvatar = avatar;
         }
@@ -177,7 +178,7 @@ app.post("/create-user", createUserRateLimit, (req, res) => {
 
     const clean = username.trim().toLowerCase();
 
-    // [DAST-13] Anti-enumeration: same response shape whether username exists or not
+    // [DAST-13][RT-08] Anti-enumeration: identical response shape regardless of outcome
     const exists = users.find(u => u.username === clean);
     if (exists) {
         return res.status(200).json({
@@ -195,7 +196,8 @@ app.post("/create-user", createUserRateLimit, (req, res) => {
     users.push(newUser);
     debouncedWriteUsers();
 
-    res.json({ success: true, user: newUser, message: "If this username is available, the account has been created." });
+    // [RT-08] Same shape as "exists" response — no user object leaked
+    res.json({ success: true, message: "If this username is available, the account has been created." });
 });
 
 app.get("/user/:id", authenticateToken, (req, res) => {
@@ -338,17 +340,9 @@ server.on("upgrade", (req, socket, head) => {
         socket.destroy();
         return;
     }
-    // Check URL token for backward compat, but prefer first-message auth
-    let preAuthUserId = null;
-    const urlToken = url.searchParams.get('token');
-    if (urlToken) {
-        try {
-            const decoded = jwt.verify(urlToken, JWT_SECRET);
-            preAuthUserId = decoded.userId;
-        } catch { /* will auth via first message */ }
-    }
+    // [RT-11] No URL token — auth exclusively via first message (no backward compat)
     wss.handleUpgrade(req, socket, head, ws => {
-        ws.authenticatedUserId = preAuthUserId;
+        ws.authenticatedUserId = null;
         ws._authTimeout = setTimeout(() => {
             if (!ws.authenticatedUserId) ws.close(4001, 'Auth timeout');
         }, 10000);
@@ -453,11 +447,7 @@ wss.on("connection", (ws, req) => {
         }
     });
 
-    // [DAST-17] Only send welcome if pre-authenticated via URL token (backward compat)
-    if (ws.authenticatedUserId) {
-        ws.send(JSON.stringify({ type: "welcome", userId: ws.authenticatedUserId }));
-        clearTimeout(ws._authTimeout);
-    }
+    // [RT-11] No pre-auth — welcome sent only after first-message AUTH succeeds
 });
 
 // Clean stale peers every 30 seconds

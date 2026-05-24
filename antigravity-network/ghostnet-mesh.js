@@ -460,9 +460,9 @@ class GhostMesh {
             case 'MESH_MSG':
             case 'MSG':
                 if (msg.from !== this.identity.id) {
-                    // [DAST-02] Dedup + timestamp validation
+                    // [DAST-02][RT-02][RT-03] Dedup + mandatory timestamp validation
                     if (this._isDuplicate(msg.id)) break;
-                    if (msg.ts && !this._isTimestampValid(msg.ts)) break;
+                    if (!this._isTimestampValid(msg.ts)) break;
 
                     // [DAST-04] Verify mesh signature if present
                     if (msg.meshSig && !await this._verifyMeshSignature(msg)) break;
@@ -550,22 +550,9 @@ class GhostMesh {
                 charId = await service.getCharacteristic(this.CHAR_PEER_ID);
                 try { charKey = await service.getCharacteristic(this.CHAR_PUB_KEY); } catch (e) { charKey = null; }
             } catch (e) {
-                console.warn(`📲 BLE: GhostNet service not found on ${device.name || device.id}. Adding as generic BLE peer.`);
-                // Still add as a peer even without our service (device is reachable)
-                const peer = {
-                    id: device.id,
-                    transport: 'ble',
-                    connected: true,
-                    lastSeen: Date.now(),
-                    name: device.name || 'BLE-' + device.id.substr(-4),
-                    device: device,
-                    server: server,
-                    writeChar: null
-                };
-                this.peers.set(device.id, peer);
-                this.onPeerJoin(peer);
-                this.onMeshUpdate(this.getPeers());
-                this.onStatusChange({ state: 'connected', transport: 'ble', peerId: device.id });
+                // [RT-01] Reject devices without GhostNet service — no unauthenticated peers
+                console.warn(`BLE: GhostNet service not found on ${device.name || device.id} — rejecting`);
+                device.gatt.disconnect();
                 return;
             }
 
@@ -602,20 +589,25 @@ class GhostMesh {
                 }
             }
 
-            // [DAST-01] Challenge-response authentication before trusting peer
-            if (charData && peerKeyHex) {
-                try {
-                    await charData.startNotifications();
-                    const authResult = await this._bleChallengeResponse(charData, peerKeyHex, peerId);
-                    if (!authResult) {
-                        console.warn('[DAST-01] BLE challenge-response failed — disconnecting');
-                        device.gatt.disconnect();
-                        return;
-                    }
-                    console.log('[DAST-01] BLE challenge-response passed');
-                } catch (e) {
-                    console.warn('[DAST-01] Challenge-response error (non-fatal):', e.message);
+            // [DAST-01][RT-01] Challenge-response is MANDATORY — no pubkey = no connection
+            if (!peerKeyHex) {
+                console.warn('[RT-01] BLE: No public key — rejecting unauthenticated peer');
+                device.gatt.disconnect();
+                return;
+            }
+            try {
+                await charData.startNotifications();
+                const authResult = await this._bleChallengeResponse(charData, peerKeyHex, peerId);
+                if (!authResult) {
+                    console.warn('[DAST-01] BLE challenge-response failed — disconnecting');
+                    device.gatt.disconnect();
+                    return;
                 }
+            } catch (e) {
+                // [RT-01] Challenge failure is FATAL — do not continue
+                console.warn('[RT-01] BLE challenge-response error — disconnecting');
+                device.gatt.disconnect();
+                return;
             }
 
             try {
@@ -626,9 +618,9 @@ class GhostMesh {
                     if (!msg) return;
                     if (msg.from === this.identity.id) return;
 
-                    // [DAST-02] Dedup + timestamp
+                    // [DAST-02][RT-02][RT-03] Dedup + mandatory timestamp
                     if (this._isDuplicate(msg.id)) return;
-                    if (msg.ts && !this._isTimestampValid(msg.ts)) return;
+                    if (!this._isTimestampValid(msg.ts)) return;
                     // [DAST-04] Verify signature if present
                     if (msg.meshSig && !await this._verifyMeshSignature(msg)) return;
 
@@ -648,8 +640,16 @@ class GhostMesh {
                 console.warn('BLE notifications not supported:', e);
             }
 
-            // [DAST-15] Preserve crypto session when migrating between transports
+            // [RT-07] Check for peer ID conflict before adding BLE peer
             const existingPeer = this.peers.get(peerId);
+            if (existingPeer && existingPeer.connected && existingPeer.transport !== 'ble') {
+                // [DAST-03] Peer ID already connected via different transport — reject
+                console.warn('[RT-07] BLE peer ID conflict — already connected via', existingPeer.transport);
+                device.gatt.disconnect();
+                return;
+            }
+
+            // [DAST-15] Preserve crypto session when migrating between transports
             const peer = {
                 id: peerId,
                 transport: 'ble',
@@ -750,8 +750,8 @@ class GhostMesh {
     // ============================================
 
     relayToBLE(msg) {
-        // [DAST-05] Strip cleartext metadata before relay — only encrypted envelope passes
-        const relayMsg = { type: msg.type, id: msg.id, enc: msg.enc, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
+        // [DAST-05][RT-06] Strip cleartext metadata but preserve from+meshSig for verification
+        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
         const serialized = JSON.stringify(relayMsg);
         const validated = _sanitizeMeshMessage(serialized);
         if (!validated) return;
@@ -838,10 +838,25 @@ class GhostMesh {
     // ============================================
 
     async _initBleDeviceKey() {
-        const keyMaterial = await crypto.subtle.digest('SHA-256',
-            new TextEncoder().encode('ghostnet-ble-devices-' + this.identity.id));
-        this._bleDeviceKey = await crypto.subtle.importKey(
-            'raw', keyMaterial, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']
+        // [RT-10] Use random salt stored alongside encrypted data, not deterministic from localStorage
+        let salt;
+        const storedSalt = localStorage.getItem('ghostnet_ble_key_salt');
+        if (storedSalt) {
+            salt = new Uint8Array(JSON.parse(storedSalt));
+        } else {
+            salt = crypto.getRandomValues(new Uint8Array(16));
+            localStorage.setItem('ghostnet_ble_key_salt', JSON.stringify(Array.from(salt)));
+        }
+        const baseKey = await crypto.subtle.importKey(
+            'raw',
+            new TextEncoder().encode('ghostnet-ble-devices-' + this.identity.id),
+            'HKDF', false, ['deriveKey']
+        );
+        this._bleDeviceKey = await crypto.subtle.deriveKey(
+            { name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('ble-device-enc') },
+            baseKey,
+            { name: 'AES-GCM', length: 256 },
+            false, ['encrypt', 'decrypt']
         );
     }
 
@@ -880,7 +895,8 @@ class GhostMesh {
     // ============================================
 
     _isDuplicate(msgId) {
-        if (!msgId) return false;
+        // [RT-02] Reject messages with missing/falsy ID — no ID means no dedup possible
+        if (!msgId || typeof msgId !== 'string') return true;
         if (this._seenMsgIds.has(msgId)) return true;
         this._seenMsgIds.add(msgId);
         if (this._seenMsgIds.size > this._seenMsgIdsMax) {
@@ -891,7 +907,8 @@ class GhostMesh {
     }
 
     _isTimestampValid(ts) {
-        if (typeof ts !== 'number') return false;
+        // [RT-03] Reject non-numeric or falsy timestamps — no timestamp = no time validation
+        if (typeof ts !== 'number' || ts <= 0) return false;
         const now = Date.now();
         return ts > now - 300000 && ts < now + 30000;
     }
@@ -938,7 +955,9 @@ class GhostMesh {
     async _signMeshPayload(payload) {
         if (!this.identity.privateKey) return payload;
         try {
-            const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}`;
+            // [RT-05] Include enc hash in signature so payload can't be substituted
+            const encHash = payload.enc ? JSON.stringify(payload.enc) : '';
+            const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}|${encHash}`;
             const sig = await crypto.subtle.sign(
                 { name: 'ECDSA', hash: 'SHA-256' },
                 this.identity.privateKey,
@@ -953,9 +972,12 @@ class GhostMesh {
     async _verifyMeshSignature(msg) {
         if (!msg.meshSig || !msg.from) return false;
         const peer = this.peers.get(msg.from);
-        if (!peer || !peer.pubKey) return true; // no pubKey cached — allow (graceful degradation)
+        // [RT-04] If message has meshSig but we have no pubKey to verify, reject — no auto-pass
+        if (!peer || !peer.pubKey) return false;
         try {
-            const canonical = `${msg.id}|${msg.from}|${msg.ts}|${msg.type}`;
+            // [RT-05] Must match sign canonical — includes enc hash
+            const encHash = msg.enc ? JSON.stringify(msg.enc) : '';
+            const canonical = `${msg.id}|${msg.from}|${msg.ts}|${msg.type}|${encHash}`;
             const keyBytes = new Uint8Array(peer.pubKey.match(/.{1,2}/g).map(b => parseInt(b, 16)));
             const pubKey = await crypto.subtle.importKey(
                 'spki', keyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
