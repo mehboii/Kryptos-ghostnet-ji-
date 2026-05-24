@@ -13,6 +13,13 @@ window.AppState = {
     files: []
 };
 
+// [FIX 04] HTML escaping to prevent Stored XSS via innerHTML
+function escapeHtml(str) {
+    if (typeof str !== 'string') str = String(str ?? '');
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#x27;' };
+    return str.replace(/[&<>"']/g, c => map[c]);
+}
+
 // --- MESH VISUALIZATION (CANVAS) ---
 class MeshNetwork {
     constructor(canvasId) {
@@ -256,7 +263,14 @@ const UI = {
         try {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
-            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet');
+            // [FIX 19] Use relative URL instead of hardcoded production URL
+            const token = localStorage.getItem('ghostnet_token') || '';
+            const res = await fetch('/wallet', {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-GhostNet-Client': '1',
+                },
+            });
 
             if (!res.ok) throw new Error("Bridge Error");
 
@@ -299,19 +313,22 @@ const UI = {
 
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
 
+        // [FIX 04] Escape user-controlled values in modal HTML
+        const safeSymbol = escapeHtml(symbol);
+        const safeAddress = escapeHtml(address);
         const modal = document.createElement('div');
         modal.className = "modal-overlay";
         modal.innerHTML = `
             <div class="modal-card">
                 <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-                <div class="modal-title">Receive ${symbol}</div>
+                <div class="modal-title">Receive ${safeSymbol}</div>
                 <img src="${qrUrl}" class="qr-code">
                 <div class="input-group">
                     <label class="input-label">YOUR ADDRESS</label>
-                    <input type="text" class="modal-input" value="${address}" readonly onclick="this.select()">
+                    <input type="text" class="modal-input" value="${safeAddress}" readonly onclick="this.select()">
                 </div>
                 <div style="font-size:0.8rem; color:#8b9bb4; margin-top:10px;">
-                    Scan to send ${symbol} to this address.
+                    Scan to send ${safeSymbol} to this address.
                 </div>
             </div>
         `;
@@ -319,24 +336,26 @@ const UI = {
     },
 
     openSend: (symbol) => {
+        // [FIX 04] Escape symbol before injection
+        const safeSymbol = escapeHtml(symbol);
         const modal = document.createElement('div');
         modal.className = "modal-overlay";
         modal.innerHTML = `
             <div class="modal-card">
                 <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
-                <div class="modal-title">Send ${symbol}</div>
-                
+                <div class="modal-title">Send ${safeSymbol}</div>
+
                 <div class="input-group">
                     <label class="input-label">RECIPIENT ADDRESS</label>
                     <input type="text" id="send-to" class="modal-input" placeholder="0x...">
                 </div>
-                
+
                 <div class="input-group">
                      <label class="input-label">AMOUNT</label>
                     <input type="number" id="send-amount" class="modal-input" placeholder="0.00">
                 </div>
 
-                <button class="btn-primary" onclick="UI.submitSend('${symbol}')">CONFIRM TRANSACTION</button>
+                <button class="btn-primary" onclick="UI.submitSend('${safeSymbol}')">CONFIRM TRANSACTION</button>
             </div>
         `;
         document.body.appendChild(modal);
@@ -354,12 +373,19 @@ const UI = {
         // Optimistic UI
         alert(`Transaction Broadcasted!\nSending ${amount} ${symbol} to ${to}`);
 
+        // [FIX 20] Add Content-Type + auth headers; use relative URL
         try {
-            await fetch('http://localhost:3001/wallet/send', {
+            const token = localStorage.getItem('ghostnet_token') || '';
+            await fetch('/wallet/send', {
                 method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`,
+                    'X-GhostNet-Client': '1',
+                },
                 body: JSON.stringify({ symbol, to, amount })
             });
-        } catch (e) { console.error(e); }
+        } catch (e) { console.error("Wallet send failed"); }
     },
 
     openNewChat: () => {
@@ -394,10 +420,11 @@ const UI = {
 
         document.querySelector('.modal-overlay').remove();
 
-        // Clear feed for new chat effect
+        // [FIX 04] Escape name before injecting into HTML
+        const safeName = escapeHtml(name);
         const feed = document.getElementById('chat-feed');
         if (feed) {
-            feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${name} Started --</div>`;
+            feed.innerHTML = `<div style="text-align:center;color:#64748b;font-size:0.8rem;margin:20px;">-- Session with ${safeName} Started --</div>`;
         }
 
         // Setup app state target
@@ -408,15 +435,22 @@ const UI = {
         UI.selectChat('new', name, pubKey);
     },
 
+    // [FIX 19] Use relative URL; [FIX 01/07] send auth token; userId from JWT now
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`);
+            const token = localStorage.getItem('ghostnet_token') || '';
+            const res = await fetch(`/conversations`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'X-GhostNet-Client': '1',
+                },
+            });
             if (res.ok) {
                 const convos = await res.json();
                 UI.renderConversations(convos);
             }
         } catch (e) {
-            console.error("Failed to load conversations:", e);
+            console.error("Failed to load conversations");
         }
     },
 
@@ -447,18 +481,29 @@ const UI = {
 
             const activeClass = (AppState.activeConvoId === c.id) ? 'active' : '';
 
+            // [FIX 04] Escape all user-controlled strings to prevent stored XSS
+            const safeConvoId = escapeHtml(c.id);
+            const safeUsername = escapeHtml(username);
+            const safeOtherId = escapeHtml(c.otherUser ? c.otherUser.id : '');
+            const safePreview = escapeHtml(typeof preview === 'string' ? preview : JSON.stringify(preview));
+            const safeTime = escapeHtml(timeStr);
+            // Sanitize avatar: only allow data: URIs, not arbitrary src
+            const safeAvatar = (c.otherUser && c.otherUser.avatar && c.otherUser.avatar.startsWith('data:'))
+                ? `<img src="${escapeHtml(c.otherUser.avatar)}" class="chat-avatar" style="object-fit:cover;">`
+                : `<div class="chat-avatar" style="background: #3f3f46;"></div>`;
+
             html += `
-                <div class="chat-user-row ${activeClass}" onclick="UI.selectChat('${c.id}', '${username}', '${c.otherUser ? c.otherUser.id : ''}')" data-convo="${c.id}">
+                <div class="chat-user-row ${activeClass}" onclick="UI.selectChat('${safeConvoId}', '${safeUsername}', '${safeOtherId}')" data-convo="${safeConvoId}">
                     <div class="chat-avatar-wrap">
-                        ${avatar}
+                        ${safeAvatar}
                     </div>
                     <div class="chat-user-info">
                         <div class="chat-user-top">
-                            <span class="chat-username">${username}</span>
-                            <span class="chat-time">${timeStr}</span>
+                            <span class="chat-username">${safeUsername}</span>
+                            <span class="chat-time">${safeTime}</span>
                         </div>
                         <div class="chat-user-bottom">
-                            <span class="chat-preview">${preview}</span>
+                            <span class="chat-preview">${safePreview}</span>
                         </div>
                     </div>
                 </div>
@@ -503,7 +548,14 @@ const UI = {
         // Load History
         if (convoId && convoId !== 'new') {
             try {
-                const res = await fetch(`/history?convoId=${convoId}`);
+                // [FIX 25] Include auth headers on history fetch
+                const token = localStorage.getItem('ghostnet_token') || '';
+                const res = await fetch(`/history?convoId=${encodeURIComponent(convoId)}`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'X-GhostNet-Client': '1',
+                    },
+                });
                 if (res.ok) {
                     const msgs = await res.json();
                     msgs.forEach(m => {
@@ -605,10 +657,16 @@ const UI = {
             <div class="wallet-grid">
         `;
 
+        // [FIX 04] Escape all user/API-sourced values
         walletAssets.forEach(asset => {
+            const safeSymbol = escapeHtml(asset.symbol);
+            const safeChain = escapeHtml(asset.chain);
+            const safeAddress = escapeHtml(asset.address || '');
             const addrDisplay = asset.address ? `${asset.address.substring(0, 6)}...${asset.address.substring(asset.address.length - 4)}` : "Not Configured";
+            const safeAddrDisplay = escapeHtml(addrDisplay);
             const logo = CRYPTO_LOGOS[asset.symbol] || CRYPTO_LOGOS['ETH'];
             const colors = CRYPTO_COLORS[asset.symbol] || CRYPTO_COLORS['ETH'];
+            const safeBalance = escapeHtml(String(asset.balance != null ? asset.balance.toLocaleString() : '0'));
 
             html += `
               <div class="wallet-card" style="--crypto-color:${colors.primary}; --crypto-glow:${colors.glow};">
@@ -616,27 +674,27 @@ const UI = {
                 <div class="wallet-card-header">
                     <div class="wallet-card-identity">
                         <div class="wallet-logo-wrap">
-                            <img src="${logo}" alt="${asset.symbol}" class="wallet-logo" onerror="this.style.display='none'">
+                            <img src="${escapeHtml(logo)}" alt="${safeSymbol}" class="wallet-logo" onerror="this.style.display='none'">
                         </div>
                         <div>
-                            <div class="wallet-token">${asset.symbol}</div>
-                            <div class="wallet-chain">${asset.chain}</div>
+                            <div class="wallet-token">${safeSymbol}</div>
+                            <div class="wallet-chain">${safeChain}</div>
                         </div>
                     </div>
                      <div class="wallet-address-block">
                         <div class="wallet-address-label">ADDRESS</div>
-                        <div class="wallet-address-value" title="${asset.address}">${addrDisplay}</div>
+                        <div class="wallet-address-value" title="${safeAddress}">${safeAddrDisplay}</div>
                     </div>
                 </div>
-                
-                <div class="wallet-balance">${asset.balance.toLocaleString()}</div>
-                
+
+                <div class="wallet-balance">${safeBalance}</div>
+
                 <div class="wallet-actions">
-                     <button class="wallet-action-btn wallet-send-btn" onclick="UI.openSend('${asset.symbol}')">
+                     <button class="wallet-action-btn wallet-send-btn" onclick="UI.openSend('${safeSymbol}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
                         Send
                      </button>
-                     <button class="wallet-action-btn wallet-receive-btn" onclick="UI.openReceive('${asset.symbol}', '${asset.address || ""}')">
+                     <button class="wallet-action-btn wallet-receive-btn" onclick="UI.openReceive('${safeSymbol}', '${safeAddress}')">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
                         Receive
                      </button>
@@ -701,19 +759,24 @@ const UI = {
             });
         }
 
-        html += allPeers.map(p => `
+        // [FIX 04] Escape peer data before innerHTML injection
+        html += allPeers.map(p => {
+            const safeId = escapeHtml(p.id);
+            const safeType = escapeHtml(p.type);
+            const safeLatency = escapeHtml(String(p.latency || '??'));
+            return `
             <div class="node-card">
                 <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div class="node-address" style="color:var(--accent);">${p.id}</div>
-                    <div style="font-size:0.8rem; color:${p.latency < 50 ? '#10b981' : '#f59e0b'}">${p.latency || '??'}ms</div>
+                    <div class="node-address" style="color:var(--accent);">${safeId}</div>
+                    <div style="font-size:0.8rem; color:${p.latency < 50 ? '#10b981' : '#f59e0b'}">${safeLatency}ms</div>
                 </div>
-                <div class="node-meta">${p.type} Node • Verified</div>
+                <div class="node-meta">${safeType} Node</div>
                 ${p.type === 'BLE' ? '<div style="margin-top:5px; font-size:0.75rem; color:#10b981;">via Bluetooth Mesh</div>' : ''}
                 <div style="margin-top:10px; height:4px; background:var(--border); border-radius:2px; overflow:hidden;">
-                    <div style="width: ${Math.random() * 100}%; height:100%; background:${p.type === 'BLE' ? '#10b981' : 'var(--text-muted)'};"></div>
+                    <div style="width: ${Math.min(Math.floor(Math.random() * 100), 100)}%; height:100%; background:${p.type === 'BLE' ? '#10b981' : 'var(--text-muted)'};"></div>
                 </div>
             </div>
-        `).join('');
+        `;}).join('');
 
         el.innerHTML = html;
         if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -723,12 +786,13 @@ const UI = {
         const el = document.getElementById('storage');
         if (!el) return;
 
+        // [FIX 04] Escape file metadata before innerHTML injection
         el.innerHTML = AppState.files.map(f => `
             <div class="file-card" style="display:flex; align-items:center; gap:15px;">
                 <i data-lucide="file-lock" style="color:var(--text-muted);"></i>
                 <div style="flex:1;">
-                    <div style="color:var(--text-primary); font-family:monospace; font-weight:500;">${f.name}</div>
-                    <div style="font-size:0.8rem; color:var(--text-muted);">${f.size}</div>
+                    <div style="color:var(--text-primary); font-family:monospace; font-weight:500;">${escapeHtml(f.name)}</div>
+                    <div style="font-size:0.8rem; color:var(--text-muted);">${escapeHtml(f.size)}</div>
                 </div>
                 <button style="background:none; border:none; color:var(--accent); cursor:pointer;"><i data-lucide="download"></i></button>
             </div>
@@ -759,12 +823,17 @@ const UI = {
                 // Direct HTTP persistence fallback
                 const myId = (window.AppState && window.AppState.identity) ? window.AppState.identity.id : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
+                // [FIX 25] Include auth + CSRF headers on fallback send
                 try {
+                    const token = localStorage.getItem('ghostnet_token') || '';
                     const res = await fetch('/message', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`,
+                            'X-GhostNet-Client': '1',
+                        },
                         body: JSON.stringify({
-                            senderId: myId,
                             receiverId: targetId,
                             content: { body: text, from: myId, to: targetId, ts: Date.now(), type: 'MSG' }
                         })
@@ -922,9 +991,15 @@ const UI = {
             avatarData = '';
         }
 
+        // [FIX 25] Include auth + CSRF headers on profile save
+        const token = localStorage.getItem('ghostnet_token') || '';
         fetch("/create-user", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${token}`,
+                "X-GhostNet-Client": "1",
+            },
             body: JSON.stringify({
                 username: addr,
                 avatar: avatarData

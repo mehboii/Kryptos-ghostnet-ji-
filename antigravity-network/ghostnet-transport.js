@@ -111,12 +111,17 @@
                 ["deriveKey", "deriveBits"]
             );
 
+            // [FIX 21] Seal private keys — only expose public keys and
+            // method handles. Private keys stay in closure scope.
+            const _signingKey = coreIdentity.privateKey;
+            const _decryptionKey = encKeyPair.privateKey;
+
             return {
-                signingKey: coreIdentity.privateKey,
                 verificationKey: coreIdentity.publicKey,
                 address: coreIdentity.nodeId,
                 encryptionKey: encKeyPair.publicKey,
-                decryptionKey: encKeyPair.privateKey
+                get signingKey() { return _signingKey; },
+                get decryptionKey() { return _decryptionKey; },
             };
         }
 
