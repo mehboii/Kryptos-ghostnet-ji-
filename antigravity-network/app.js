@@ -88,16 +88,14 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log("🆔 Identity:", myId);
 
     // --- 2. HTTP PERSISTENCE (always works) ---
-    // [DAST-09] Storage key in IndexedDB as non-extractable CryptoKey (not sessionStorage)
-    if (!window.app._storageKey) {
-        window.app._storageKey = await _getOrCreateStorageKey();
-    }
+    // [RT-12] Storage key held in closure — not on window.app — so XSS cannot access it
+    const _storageKey = await _getOrCreateStorageKey();
 
-    window.app._encryptForStorage = async (text) => {
+    const _encryptForStorage = async (text) => {
         try {
             const iv = crypto.getRandomValues(new Uint8Array(12));
             const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, window.app._storageKey, new TextEncoder().encode(text)
+                { name: 'AES-GCM', iv }, _storageKey, new TextEncoder().encode(text)
             );
             return JSON.stringify({
                 enc: true,
@@ -113,7 +111,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         const myId = window.app.identity.id;
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
-        const encryptedContent = await window.app._encryptForStorage(text);
+        const encryptedContent = await _encryptForStorage(text);
         // [DAST-10] Single JWT source — sessionStorage only (never localStorage)
         const token = sessionStorage.getItem('ghostnet_jwt') || '';
 
