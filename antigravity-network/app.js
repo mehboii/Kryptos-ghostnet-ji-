@@ -35,7 +35,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     // --- 1. IDENTITY ---
     let myId = localStorage.getItem('ghostnet_user_id');
     if (!myId) {
-        myId = "user_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        myId = "user_" + crypto.randomUUID();
         localStorage.setItem('ghostnet_user_id', myId);
     }
 
@@ -57,19 +57,57 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log("🆔 Identity:", myId);
 
     // --- 2. HTTP PERSISTENCE (always works) ---
+    if (!window.app._storageKey) {
+        const storedKey = sessionStorage.getItem('ghostnet_storage_key');
+        if (storedKey) {
+            const keyBytes = new Uint8Array(JSON.parse(storedKey));
+            window.app._storageKey = await crypto.subtle.importKey(
+                'raw', keyBytes, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']
+            );
+        } else {
+            window.app._storageKey = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
+            );
+            const exported = await crypto.subtle.exportKey('raw', window.app._storageKey);
+            sessionStorage.setItem('ghostnet_storage_key', JSON.stringify(Array.from(new Uint8Array(exported))));
+        }
+    }
+
+    window.app._encryptForStorage = async (text) => {
+        try {
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const cipherBuf = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, window.app._storageKey, new TextEncoder().encode(text)
+            );
+            return JSON.stringify({
+                enc: true,
+                iv: Array.from(iv),
+                data: Array.from(new Uint8Array(cipherBuf))
+            });
+        } catch (e) {
+            return text;
+        }
+    };
+
     window.app.persistMessage = async (text, targetId) => {
         const myId = window.app.identity.id;
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
+        const encryptedContent = await window.app._encryptForStorage(text);
+        const token = sessionStorage.getItem('ghostnet_jwt') || localStorage.getItem('ghost_token') || '';
+
         try {
             const response = await fetch('/message', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     senderId: myId,
                     receiverId: targetId,
                     contactName: window.app.chatContactName || targetId,
-                    content: { body: text, from: myId, to: targetId, ts: Date.now(), type: 'MSG' }
+                    content: encryptedContent
                 })
             });
 
@@ -83,9 +121,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 return result;
             }
-        } catch (e) {
-            console.error("HTTP Persistence failed:", e);
-        }
+        } catch (e) { }
         return null;
     };
 
@@ -103,38 +139,34 @@ window.addEventListener('DOMContentLoaded', async () => {
             const text = input.value.trim();
             if (!text) return;
 
-            // Immediately show in UI
             if (window.UI) UI.addMessage(text, 'me');
             input.value = '';
 
-            // 1. Persist via HTTP (always)
             await window.app.persistMessage(text, window.app.chatTarget);
 
-            // 2. Broadcast via mesh (if available)
-            if (window.app.mesh) {
+            if (window.app.chat && window.app.chat.sendMessage) {
                 try {
-                    window.app.mesh.broadcast({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast',
-                        type: 'MSG'
-                    });
+                    await window.app.chat.sendMessage(
+                        text,
+                        window.app.chatTarget || 'broadcast',
+                        'PERSIST'
+                    );
                 } catch (e) {
-                    console.warn("Mesh broadcast failed:", e);
+                    console.warn("GhostChat encrypted send failed, falling back to mesh:", e);
+                    if (window.app.mesh) {
+                        window.app.mesh.broadcast({
+                            from: window.app.identity.id,
+                            to: window.app.chatTarget || 'broadcast',
+                            type: 'MSG'
+                        });
+                    }
                 }
-            }
-
-            // 3. Forward via GhostChat encryption (if available)
-            if (window.app.chat && window.app.chat.sendToNetwork) {
-                try {
-                    await window.app.chat.sendToNetwork(JSON.stringify({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast'
-                    }));
-                } catch (e) {
-                    console.warn("GhostChat send failed:", e);
-                }
+            } else if (window.app.mesh) {
+                window.app.mesh.broadcast({
+                    from: window.app.identity.id,
+                    to: window.app.chatTarget || 'broadcast',
+                    type: 'MSG'
+                });
             }
         };
 
@@ -246,10 +278,16 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
             ws.onmessage = (event) => {
                 try {
-                    const msg = JSON.parse(event.data);
+                    const raw = event.data;
+                    if (typeof raw !== 'string' || raw.length > 65536) return;
+                    const msg = JSON.parse(raw);
+                    if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+                    const allowedTypes = new Set(['PEER_JOIN', 'PEER_LEAVE', 'MESH_PEERS', 'welcome', 'HEARTBEAT']);
+                    if (!allowedTypes.has(msg.type)) return;
                     if (msg.type === 'PEER_JOIN') {
+                        if (typeof msg.id !== 'string' || msg.id.length > 128) return;
                         if (window.AppState) {
-                            window.AppState.peers.push({ id: msg.id, type: 'Wi-Fi', latency: 5 });
+                            window.AppState.peers.push({ id: String(msg.id), type: 'Wi-Fi', latency: 5 });
                             window.dispatchEvent(new Event("app:state"));
                         }
                     }

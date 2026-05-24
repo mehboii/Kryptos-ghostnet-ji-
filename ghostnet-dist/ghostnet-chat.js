@@ -142,29 +142,38 @@
      * exchanged out-of-band (e.g. via a signed DH handshake packet). The
      * integration point is marked below.
      */
-    async function _deriveSharedSecret(myPub, peerPub, sessionSalt) {
+    async function _deriveSharedSecret(ecdhPrivateKey, peerEcdhPubKeyHex, sessionSalt) {
         const enc = new TextEncoder();
 
-        // ── REPLACE THIS BLOCK with real ECDH ────────────────────────────────
-        // In a real deployment:
-        //   const sharedPoint = ecdhDerive(myPrivateKey, peerPublicKey);
-        //   const ikm = sharedPoint; // 32 bytes
-        // For now, we use a sorted, length-prefixed canonical representation
-        // so that at minimum myPub + peerPub ≠ peerPub + myPub:
-        const [a, b] = [myPub, peerPub].sort();
-        const ikmStr = `${a.length}:${a}|${b.length}:${b}`;
-        const ikmKey = await crypto.subtle.importKey(
-            'raw', enc.encode(ikmStr), 'HKDF', false, ['deriveKey']
-        );
-        // ── END REPLACE BLOCK ─────────────────────────────────────────────────
+        let ikmKey;
 
-        // HKDF: info provides domain separation; salt prevents related-key attacks.
+        if (ecdhPrivateKey && peerEcdhPubKeyHex && typeof peerEcdhPubKeyHex === 'string') {
+            const peerKeyBytes = new Uint8Array(
+                peerEcdhPubKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16))
+            );
+            const peerPubCryptoKey = await crypto.subtle.importKey(
+                'raw', peerKeyBytes,
+                { name: 'ECDH', namedCurve: 'P-256' },
+                false, []
+            );
+            const sharedBits = await crypto.subtle.deriveBits(
+                { name: 'ECDH', public: peerPubCryptoKey },
+                ecdhPrivateKey,
+                256
+            );
+            ikmKey = await crypto.subtle.importKey(
+                'raw', sharedBits, 'HKDF', false, ['deriveKey']
+            );
+        } else {
+            throw new Error('ECDH key exchange requires both private key and peer public key');
+        }
+
         const sessionKey = await crypto.subtle.deriveKey(
             {
                 name: 'HKDF',
                 hash: 'SHA-256',
-                salt: sessionSalt,                         // per-session random bytes
-                info: enc.encode('GhostChat-v1-session'),  // domain separation
+                salt: sessionSalt,
+                info: enc.encode('GhostChat-v1-session'),
             },
             ikmKey,
             { name: 'AES-GCM', length: 256 },
@@ -172,13 +181,12 @@
             ['encrypt', 'decrypt']
         );
 
-        // Derive a separate HMAC key from the same IKM for packet authentication.
         const hmacKey = await crypto.subtle.deriveKey(
             {
                 name: 'HKDF',
                 hash: 'SHA-256',
                 salt: sessionSalt,
-                info: enc.encode('GhostChat-v1-hmac'),     // different domain
+                info: enc.encode('GhostChat-v1-hmac'),
             },
             ikmKey,
             { name: 'HMAC', hash: 'SHA-256', length: 256 },
@@ -279,16 +287,18 @@
 
     class GhostChat {
         constructor(myIdentity, transportSender) {
-            // [FIX F] Strip private key — transport layer must never hold it.
             const { pub, nodeId } = myIdentity || {};
             this.myIdentity = { pub, nodeId };
 
             this.sendToNetwork = transportSender;
 
-            // PeerPubKey -> { sessionKey, hmacKey }
             this.sessions = new Map();
-            // MsgID -> encrypted message object (no plaintext body)
             this.messages = new Map();
+            this.peerEcdhKeys = new Map();
+
+            this._ecdhKeyPair = null;
+            this._ecdhPubHex = null;
+            this._initPromise = this._initEcdh();
 
             this.onMessage = () => { };
             this.onDelete = null;
@@ -296,19 +306,39 @@
             this._loadPersistedMessages();
         }
 
-        // ── Session Management ──────────────────────────────────────────────
+        async _initEcdh() {
+            this._ecdhKeyPair = await crypto.subtle.generateKey(
+                { name: 'ECDH', namedCurve: 'P-256' },
+                false,
+                ['deriveBits']
+            );
+            const rawPub = await crypto.subtle.exportKey('raw', this._ecdhKeyPair.publicKey);
+            this._ecdhPubHex = Array.from(new Uint8Array(rawPub))
+                .map(b => b.toString(16).padStart(2, '0')).join('');
+        }
 
-        async getSession(peerPubKey, salt) {
-            // Each unique salt produces a distinct session.
-            // Cache keyed by peerPubKey — refreshed when a new salt is received.
-            const cacheKey = `${peerPubKey}:${salt ? salt.join(',') : 'default'}`;
+        async getSession(peerIdentityKey, salt, peerEcdhPubHex) {
+            await this._initPromise;
+
+            if (peerEcdhPubHex) {
+                this.peerEcdhKeys.set(peerIdentityKey, peerEcdhPubHex);
+            }
+            const resolvedPeerEcdh = this.peerEcdhKeys.get(peerIdentityKey) || peerEcdhPubHex;
+
+            const cacheKey = `${peerIdentityKey}:${salt ? salt.join(',') : 'default'}:${resolvedPeerEcdh || 'no-ecdh'}`;
             if (this.sessions.has(cacheKey)) return this.sessions.get(cacheKey);
 
             const saltBytes = salt
                 ? new Uint8Array(salt)
                 : crypto.getRandomValues(new Uint8Array(16));
 
-            const session = await _deriveSharedSecret(this.myIdentity.pub, peerPubKey, saltBytes);
+            if (!resolvedPeerEcdh) {
+                return null;
+            }
+
+            const session = await _deriveSharedSecret(
+                this._ecdhKeyPair.privateKey, resolvedPeerEcdh, saltBytes
+            );
             this.sessions.set(cacheKey, { ...session, salt: Array.from(saltBytes) });
             return this.sessions.get(cacheKey);
         }
@@ -316,12 +346,13 @@
         // ── Sending Messages ────────────────────────────────────────────────
 
         async sendMessage(body, toPubKey, mode = 'PERSIST', ttl = 0) {
+            await this._initPromise;
+
             if (typeof body !== 'string' || body.length === 0) {
                 throw new Error('Message body must be a non-empty string.');
             }
 
             const encodedBody = new TextEncoder().encode(body);
-            // [FIX J] Enforce max body size before encryption.
             if (encodedBody.length > MAX_BODY_BYTES) {
                 throw new Error(`Message too large (max ${MAX_BODY_BYTES} bytes).`);
             }
@@ -330,9 +361,14 @@
             const ts = Date.now();
             const iv = crypto.getRandomValues(new Uint8Array(12));
 
-            // Fresh salt per message for forward-secrecy benefit.
             const salt = crypto.getRandomValues(new Uint8Array(16));
             const session = await this.getSession(toPubKey, Array.from(salt));
+
+            if (!session) {
+                if (!this._pendingMessages) this._pendingMessages = [];
+                this._pendingMessages.push({ body, toPubKey, mode, ttl });
+                return { id: null, from: this.myIdentity.pub, to: toPubKey, ts: Date.now(), mode, status: 'pending_key_exchange' };
+            }
 
             const ciphertext = await crypto.subtle.encrypt(
                 { name: 'AES-GCM', iv },
@@ -340,7 +376,6 @@
                 encodedBody
             );
 
-            // [FIX A] body is NOT included in the payload — only ciphertext.
             const payload = {
                 id: msgId,
                 type: 'MSG',
@@ -352,10 +387,9 @@
                 iv: Array.from(iv),
                 data: Array.from(new Uint8Array(ciphertext)),
                 salt: Array.from(salt),
-                // hmac added below
+                dhPub: this._ecdhPubHex,
             };
 
-            // [FIX E] Sign the packet so the receiver can verify sender authenticity.
             payload.hmac = await _signPacket(session.hmacKey, payload);
 
             this.sendToNetwork(JSON.stringify(payload));
@@ -368,6 +402,17 @@
             }
 
             return { id: msgId, from: this.myIdentity.pub, to: toPubKey, ts, mode, status: 'sent' };
+        }
+
+        async _flushPending(peerKey) {
+            if (!this._pendingMessages || this._pendingMessages.length === 0) return;
+            const toSend = this._pendingMessages.filter(m => m.toPubKey === peerKey);
+            this._pendingMessages = this._pendingMessages.filter(m => m.toPubKey !== peerKey);
+            for (const msg of toSend) {
+                try {
+                    await this.sendMessage(msg.body, msg.toPubKey, msg.mode, msg.ttl);
+                } catch { }
+            }
         }
 
         async sendDeleteRequest(targetMsgId, toPubKey) {
@@ -421,10 +466,14 @@
         }
 
         async _handleMessage(packet) {
-            // [FIX K] Reject replay: duplicate message IDs discarded.
             if (this.messages.has(packet.id)) return;
 
-            const session = await this.getSession(packet.from, packet.salt);
+            const peerEcdh = (typeof packet.dhPub === 'string' && packet.dhPub.length > 0) ? packet.dhPub : undefined;
+            if (peerEcdh) {
+                this.peerEcdhKeys.set(packet.from, peerEcdh);
+                this._flushPending(packet.from);
+            }
+            const session = await this.getSession(packet.from, packet.salt, peerEcdh);
 
             // [FIX E] Verify HMAC before attempting decryption.
             const valid = await _verifyPacket(session.hmacKey, packet);

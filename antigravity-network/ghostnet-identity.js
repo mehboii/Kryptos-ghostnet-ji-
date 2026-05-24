@@ -26,11 +26,11 @@
                 ["sign", "verify"]
             );
 
-            // Generate a deterministic Node ID from public key
-            // (We export SPKI to get a consistent unique string representation)
             const pubBuffer = await window.crypto.subtle.exportKey("spki", keys.publicKey);
             const pubHex = bufferToHex(pubBuffer);
-            const nodeId = "node_" + pubHex.substring(pubHex.length - 8);
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', pubBuffer);
+            const hashHex = bufferToHex(hashBuffer);
+            const nodeId = "0x" + hashHex.substring(0, 40);
 
             return {
                 id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString()),
