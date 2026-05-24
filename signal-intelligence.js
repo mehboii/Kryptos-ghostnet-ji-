@@ -7,6 +7,7 @@ class SignalIntelligenceEngine {
     constructor() {
         this.signals = new Map();
         this.classificationHistory = [];
+        this.inboundFlags = [];
         this.ghostNetChannel = 6; // Example default mesh channel
     }
 
@@ -173,6 +174,30 @@ class SignalIntelligenceEngine {
             return optimalNodes[0];
         }
         return null;
+    }
+
+    flagInboundAnomaly(source, reason, details = {}) {
+        const event = {
+            source: typeof source === 'string' ? source : 'unknown',
+            reason: typeof reason === 'string' ? reason : 'unknown',
+            details: details && typeof details === 'object' ? details : {},
+            timestamp: Date.now(),
+            threatLevel: 'WARNING',
+            type: 'Inbound Anomaly'
+        };
+        this.inboundFlags.push(event);
+        if (this.inboundFlags.length > 500) {
+            this.inboundFlags = this.inboundFlags.slice(-500);
+        }
+        this.classificationHistory.push(event);
+        if (this.classificationHistory.length > 1000) {
+            this.classificationHistory = this.classificationHistory.slice(-1000);
+        }
+        return event;
+    }
+
+    getInboundFlags() {
+        return this.inboundFlags.slice().sort((a, b) => b.timestamp - a.timestamp);
     }
 }
 

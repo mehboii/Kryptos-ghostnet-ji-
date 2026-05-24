@@ -39,6 +39,9 @@
             this.processedCacheSize = 1000;
             this.MAX_TTL = 20;
 
+            // [DAST-15] Session cache keyed by peer identity (transport-independent)
+            this._sessionCache = new Map();
+
             // Constants
             this.ALGO_ENCRYPT = { name: "ECDH", namedCurve: "P-256" };
             this.ALGO_AES = "AES-GCM";
@@ -102,8 +105,6 @@
                 throw new Error("GhostIdentity dependency missing");
             }
 
-            // 2. Encryption Keys (ECDH P-256)
-            // [FIX 21] extractable: false — private ECDH key cannot be exported
             const encKeyPair = await subtle.generateKey(
                 { name: "ECDH", namedCurve: "P-256" },
                 false,
@@ -119,8 +120,6 @@
                 verificationKey: coreIdentity.publicKey,
                 address: coreIdentity.nodeId,
                 encryptionKey: encKeyPair.publicKey,
-                // Accessor needed internally by GhostTransport — not directly
-                // exposed as a plain property to prevent accidental serialization.
                 get signingKey() { return _signingKey; },
                 get decryptionKey() { return _decryptionKey; },
             };
@@ -141,12 +140,26 @@
             let isBroadcast = (receiverPubKeyHex === "broadcast");
 
             if (isBroadcast) {
-                encryptedPayloadHex = this._arrayBufferToHex(payloadBytes);
+                if (!this._broadcastKey) {
+                    this._broadcastKey = await subtle.generateKey(
+                        { name: "AES-GCM", length: 256 },
+                        false,
+                        ["encrypt", "decrypt"]
+                    );
+                }
+                const iv = _getRandomValues(12);
+                ivHex = this._arrayBufferToHex(iv);
+                const cipherBuffer = await subtle.encrypt(
+                    { name: "AES-GCM", iv: iv },
+                    this._broadcastKey,
+                    payloadBytes
+                );
+                encryptedPayloadHex = this._arrayBufferToHex(cipherBuffer);
+                encryptedKeyHex = null;
             } else {
-                // P2P Hybrid Encrypt
                 const ephemeralKeyPair = await subtle.generateKey(
                     { name: "ECDH", namedCurve: "P-256" },
-                    true,
+                    false,
                     ["deriveKey"]
                 );
                 ephemeralPubKeyHex = await this._exportKey(ephemeralKeyPair.publicKey, 'spki');
@@ -157,7 +170,7 @@
                     { name: "ECDH", public: receiverKey },
                     ephemeralKeyPair.privateKey,
                     { name: "AES-KW", length: 256 },
-                    true,
+                    false,
                     ["wrapKey"]
                 );
 
@@ -249,8 +262,13 @@
         async decryptEnvelope(envelope) {
             try {
                 if (envelope.to === "broadcast") {
-                    const bytes = this._hexToArrayBuffer(envelope.payload);
-                    const str = new TextDecoder().decode(bytes);
+                    if (!this._broadcastKey || !envelope.iv) return null;
+                    const iv = this._hexToArrayBuffer(envelope.iv);
+                    const payloadBuf = this._hexToArrayBuffer(envelope.payload);
+                    const decrypted = await subtle.decrypt(
+                        { name: "AES-GCM", iv: iv }, this._broadcastKey, payloadBuf
+                    );
+                    const str = new TextDecoder().decode(decrypted);
                     try { return JSON.parse(str); } catch (e) { return str; }
                 }
 
@@ -262,7 +280,7 @@
                     { name: "ECDH", public: senderEphemeralKey },
                     this.identity.decryptionKey,
                     { name: "AES-KW", length: 256 },
-                    true,
+                    false,
                     ["unwrapKey"]
                 );
 
@@ -273,7 +291,7 @@
                     sharedKEK,
                     "AES-KW",
                     { name: "AES-GCM" },
-                    true,
+                    false,
                     ["decrypt"]
                 );
 

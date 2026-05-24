@@ -119,6 +119,7 @@ window.app = {
     chatTarget: null,
     chatContactName: null,
     mesh: null,
+    nat: null,
     _sendAbort: null,
     transport: {
         ble: null,
@@ -219,6 +220,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                 nodeId: window.app.identity.nodeId,
                 capabilities: { ble: false, ws: true }
             });
+            if (window.app.nat?.attachMesh) {
+                window.app.nat.attachMesh(window.app.mesh).catch(() => {});
+            }
         } else if (window.app.mesh && !window.app.mesh.wsReady) {
             // Mesh was deferred because no auth token was present at startup — retry now.
             let token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
@@ -496,10 +500,27 @@ window.addEventListener('DOMContentLoaded', async () => {
                 if (status?.state === 'error') {
                     log.error('Mesh error occurred:', status?.message || '');
                 }
+                if (status?.state === 'connected' && status?.transport === 'ws' && window.app.nat?.attachMesh) {
+                    window.app.nat.attachMesh(mesh).catch(() => {});
+                }
             };
 
             await mesh.start();
             log.info('GhostMesh started.');
+
+            if (window.GhostNAT?.attachMesh) {
+                try {
+                    window.app.nat = window.GhostNAT;
+                    await window.GhostNAT.attachMesh(mesh);
+                    window.app.startSecurePunch = async (targetNodeId) =>
+                        window.GhostNAT.startSecurePunch(mesh, targetNodeId);
+                    window.app.getSecurePunchStatus = (targetNodeId) =>
+                        window.GhostNAT.getPunchStatus(targetNodeId);
+                    log.info('GhostNAT secure endpoint binding enabled.');
+                } catch (natErr) {
+                    log.warn('GhostNAT init failed (mesh continues):', natErr.message);
+                }
+            }
 
         } catch (e) {
             log.warn('GhostMesh init failed:', e.message);
