@@ -231,7 +231,7 @@ app.post('/message', authenticateToken, (req, res) => {
             id: "convo_" + crypto.randomUUID(),
             participants: [senderId, receiverId],
             contactName: (typeof contactName === 'string' && contactName.length <= 64) ? contactName : null,
-            lastMessage: content.slice(0, 200),
+            lastMessage: '[encrypted]',
             updated: Date.now()
         };
         conversations.push(convo);
@@ -259,10 +259,9 @@ app.post('/message', authenticateToken, (req, res) => {
     }
     debouncedWriteDb();
 
-    // Broadcast to authenticated WS clients only
-    for (const [, peer] of meshPeers) {
-        if (peer.ws.readyState === 1) {
-            peer.ws.send(JSON.stringify({ type: 'MSG', ...msg }));
+    for (const [peerId, peer] of meshPeers) {
+        if (peer.ws.readyState === 1 && (peerId === senderId || peerId === receiverId)) {
+            peer.ws.send(JSON.stringify({ type: 'MSG', id: msg.id, convoId: msg.convoId, senderId: msg.senderId, timestamp: msg.timestamp }));
         }
     }
 

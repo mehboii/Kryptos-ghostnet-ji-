@@ -57,19 +57,46 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log("🆔 Identity:", myId);
 
     // --- 2. HTTP PERSISTENCE (always works) ---
+    window.app._encryptForStorage = async (text) => {
+        try {
+            const key = await crypto.subtle.generateKey(
+                { name: 'AES-GCM', length: 256 }, true, ['encrypt']
+            );
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const cipherBuf = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv }, key, new TextEncoder().encode(text)
+            );
+            const rawKey = await crypto.subtle.exportKey('raw', key);
+            return JSON.stringify({
+                enc: true,
+                iv: Array.from(iv),
+                data: Array.from(new Uint8Array(cipherBuf)),
+                k: Array.from(new Uint8Array(rawKey))
+            });
+        } catch (e) {
+            return text;
+        }
+    };
+
     window.app.persistMessage = async (text, targetId) => {
         const myId = window.app.identity.id;
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
+        const encryptedContent = await window.app._encryptForStorage(text);
+        const token = sessionStorage.getItem('ghostnet_jwt') || localStorage.getItem('ghost_token') || '';
+
         try {
             const response = await fetch('/message', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     senderId: myId,
                     receiverId: targetId,
                     contactName: window.app.chatContactName || targetId,
-                    content: { body: text, from: myId, to: targetId, ts: Date.now(), type: 'MSG' }
+                    content: encryptedContent
                 })
             });
 
@@ -83,9 +110,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 }
                 return result;
             }
-        } catch (e) {
-            console.error("HTTP Persistence failed:", e);
-        }
+        } catch (e) { }
         return null;
     };
 
@@ -103,38 +128,34 @@ window.addEventListener('DOMContentLoaded', async () => {
             const text = input.value.trim();
             if (!text) return;
 
-            // Immediately show in UI
             if (window.UI) UI.addMessage(text, 'me');
             input.value = '';
 
-            // 1. Persist via HTTP (always)
             await window.app.persistMessage(text, window.app.chatTarget);
 
-            // 2. Broadcast via mesh (if available)
-            if (window.app.mesh) {
+            if (window.app.chat && window.app.chat.sendMessage) {
                 try {
-                    window.app.mesh.broadcast({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast',
-                        type: 'MSG'
-                    });
+                    await window.app.chat.sendMessage(
+                        text,
+                        window.app.chatTarget || 'broadcast',
+                        'PERSIST'
+                    );
                 } catch (e) {
-                    console.warn("Mesh broadcast failed:", e);
+                    console.warn("GhostChat encrypted send failed, falling back to mesh:", e);
+                    if (window.app.mesh) {
+                        window.app.mesh.broadcast({
+                            from: window.app.identity.id,
+                            to: window.app.chatTarget || 'broadcast',
+                            type: 'MSG'
+                        });
+                    }
                 }
-            }
-
-            // 3. Forward via GhostChat encryption (if available)
-            if (window.app.chat && window.app.chat.sendToNetwork) {
-                try {
-                    await window.app.chat.sendToNetwork(JSON.stringify({
-                        body: text,
-                        from: window.app.identity.id,
-                        to: window.app.chatTarget || 'broadcast'
-                    }));
-                } catch (e) {
-                    console.warn("GhostChat send failed:", e);
-                }
+            } else if (window.app.mesh) {
+                window.app.mesh.broadcast({
+                    from: window.app.identity.id,
+                    to: window.app.chatTarget || 'broadcast',
+                    type: 'MSG'
+                });
             }
         };
 
