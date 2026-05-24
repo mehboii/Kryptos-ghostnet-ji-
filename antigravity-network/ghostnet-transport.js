@@ -39,6 +39,9 @@
             this.processedCacheSize = 1000;
             this.MAX_TTL = 20;
 
+            // [DAST-15] Session cache keyed by peer identity (transport-independent)
+            this._sessionCache = new Map();
+
             // Constants
             this.ALGO_ENCRYPT = { name: "ECDH", namedCurve: "P-256" };
             this.ALGO_AES = "AES-GCM";

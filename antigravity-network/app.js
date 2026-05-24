@@ -28,6 +28,37 @@ window.app = {
     }
 };
 
+// [DAST-09] IndexedDB-backed non-extractable storage key
+async function _getOrCreateStorageKey() {
+    return new Promise((resolve, reject) => {
+        const req = indexedDB.open('ghostnet_keys', 1);
+        req.onupgradeneeded = (e) => {
+            e.target.result.createObjectStore('keys');
+        };
+        req.onerror = () => reject(req.error);
+        req.onsuccess = async () => {
+            const db = req.result;
+            const tx = db.transaction('keys', 'readonly');
+            const store = tx.objectStore('keys');
+            const getReq = store.get('storage_key');
+            getReq.onsuccess = async () => {
+                if (getReq.result) {
+                    resolve(getReq.result);
+                } else {
+                    const key = await crypto.subtle.generateKey(
+                        { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
+                    );
+                    const wtx = db.transaction('keys', 'readwrite');
+                    wtx.objectStore('keys').put(key, 'storage_key');
+                    wtx.oncomplete = () => resolve(key);
+                    wtx.onerror = () => reject(wtx.error);
+                }
+            };
+            getReq.onerror = () => reject(getReq.error);
+        };
+    });
+}
+
 // Initialize App on Load
 window.addEventListener('DOMContentLoaded', async () => {
     console.log("🚀 System: Initializing GhostNet...");
@@ -57,20 +88,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.log("🆔 Identity:", myId);
 
     // --- 2. HTTP PERSISTENCE (always works) ---
+    // [DAST-09] Storage key in IndexedDB as non-extractable CryptoKey (not sessionStorage)
     if (!window.app._storageKey) {
-        const storedKey = sessionStorage.getItem('ghostnet_storage_key');
-        if (storedKey) {
-            const keyBytes = new Uint8Array(JSON.parse(storedKey));
-            window.app._storageKey = await crypto.subtle.importKey(
-                'raw', keyBytes, { name: 'AES-GCM' }, true, ['encrypt', 'decrypt']
-            );
-        } else {
-            window.app._storageKey = await crypto.subtle.generateKey(
-                { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
-            );
-            const exported = await crypto.subtle.exportKey('raw', window.app._storageKey);
-            sessionStorage.setItem('ghostnet_storage_key', JSON.stringify(Array.from(new Uint8Array(exported))));
-        }
+        window.app._storageKey = await _getOrCreateStorageKey();
     }
 
     window.app._encryptForStorage = async (text) => {
@@ -94,7 +114,8 @@ window.addEventListener('DOMContentLoaded', async () => {
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
         const encryptedContent = await window.app._encryptForStorage(text);
-        const token = sessionStorage.getItem('ghostnet_jwt') || localStorage.getItem('ghost_token') || '';
+        // [DAST-10] Single JWT source — sessionStorage only (never localStorage)
+        const token = sessionStorage.getItem('ghostnet_jwt') || '';
 
         try {
             const response = await fetch('/message', {
@@ -270,10 +291,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.warn("⚠️ GhostMesh not loaded, using direct WebSocket fallback");
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsToken = sessionStorage.getItem('ghost_token') || localStorage.getItem('ghost_token') || '';
-            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws?token=${encodeURIComponent(wsToken)}`;
+            // [DAST-10] Single JWT source — sessionStorage only
+            // [DAST-17] No JWT in URL — authenticate via first message
+            const wsToken = sessionStorage.getItem('ghostnet_jwt') || '';
+            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'AUTH', token: wsToken }));
                 ws.send(JSON.stringify({ type: 'HELLO', id: myId }));
             };
             ws.onmessage = (event) => {
