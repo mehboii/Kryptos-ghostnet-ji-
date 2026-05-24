@@ -102,10 +102,9 @@
                 throw new Error("GhostIdentity dependency missing");
             }
 
-            // 2. Encryption Keys (ECDH P-256)
             const encKeyPair = await subtle.generateKey(
                 { name: "ECDH", namedCurve: "P-256" },
-                true,
+                false,
                 ["deriveKey", "deriveBits"]
             );
 
@@ -133,12 +132,26 @@
             let isBroadcast = (receiverPubKeyHex === "broadcast");
 
             if (isBroadcast) {
-                encryptedPayloadHex = this._arrayBufferToHex(payloadBytes);
+                if (!this._broadcastKey) {
+                    this._broadcastKey = await subtle.generateKey(
+                        { name: "AES-GCM", length: 256 },
+                        false,
+                        ["encrypt", "decrypt"]
+                    );
+                }
+                const iv = _getRandomValues(12);
+                ivHex = this._arrayBufferToHex(iv);
+                const cipherBuffer = await subtle.encrypt(
+                    { name: "AES-GCM", iv: iv },
+                    this._broadcastKey,
+                    payloadBytes
+                );
+                encryptedPayloadHex = this._arrayBufferToHex(cipherBuffer);
+                encryptedKeyHex = null;
             } else {
-                // P2P Hybrid Encrypt
                 const ephemeralKeyPair = await subtle.generateKey(
                     { name: "ECDH", namedCurve: "P-256" },
-                    true,
+                    false,
                     ["deriveKey"]
                 );
                 ephemeralPubKeyHex = await this._exportKey(ephemeralKeyPair.publicKey, 'spki');
@@ -149,7 +162,7 @@
                     { name: "ECDH", public: receiverKey },
                     ephemeralKeyPair.privateKey,
                     { name: "AES-KW", length: 256 },
-                    true,
+                    false,
                     ["wrapKey"]
                 );
 
@@ -241,8 +254,13 @@
         async decryptEnvelope(envelope) {
             try {
                 if (envelope.to === "broadcast") {
-                    const bytes = this._hexToArrayBuffer(envelope.payload);
-                    const str = new TextDecoder().decode(bytes);
+                    if (!this._broadcastKey || !envelope.iv) return null;
+                    const iv = this._hexToArrayBuffer(envelope.iv);
+                    const payloadBuf = this._hexToArrayBuffer(envelope.payload);
+                    const decrypted = await subtle.decrypt(
+                        { name: "AES-GCM", iv: iv }, this._broadcastKey, payloadBuf
+                    );
+                    const str = new TextDecoder().decode(decrypted);
                     try { return JSON.parse(str); } catch (e) { return str; }
                 }
 
@@ -254,7 +272,7 @@
                     { name: "ECDH", public: senderEphemeralKey },
                     this.identity.decryptionKey,
                     { name: "AES-KW", length: 256 },
-                    true,
+                    false,
                     ["unwrapKey"]
                 );
 
@@ -265,7 +283,7 @@
                     sharedKEK,
                     "AES-KW",
                     { name: "AES-GCM" },
-                    true,
+                    false,
                     ["decrypt"]
                 );
 
