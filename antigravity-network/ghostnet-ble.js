@@ -293,16 +293,17 @@ export default class GhostBLE {
         if (!peer) throw new Error("Peer not connected");
 
         const dataStr = JSON.stringify(payload);
-        if (dataStr.length > MAX_BLE_PAYLOAD) throw new Error("Payload too large for BLE");
+        // [DAST-06] Enforce BLE payload size at transport layer
         const dataBytes = new TextEncoder().encode(dataStr);
+        if (dataBytes.length > MAX_BLE_PAYLOAD) throw new Error("Payload too large for BLE");
 
         if (this.mode === 'browser') {
-            // WebBluetooth writes are limited in size (MTU). 
-            // Simple implementation assumes small packets or handled by browser.
             await peer.writeChar.writeValue(dataBytes);
-        } else {
-            // Node
-            // Noble write logic would go here
+        } else if (this.mode === 'node' && peer.writeChar) {
+            // [DAST-06] Node: enforce buffer size before writing
+            const buf = Buffer.from(dataStr, 'utf-8');
+            if (buf.length > MAX_BLE_PAYLOAD) throw new Error("Payload too large for BLE");
+            peer.writeChar.write(buf, true);
         }
     }
 
