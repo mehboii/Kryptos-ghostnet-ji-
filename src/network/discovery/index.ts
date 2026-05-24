@@ -128,7 +128,17 @@ export class PeerDiscovery extends EventEmitter<PeerDiscoveryEvents> {
   async switchTransport(mode: TransportMode): Promise<void> {
     if (mode === this.transport) return;
 
+    const previousTransport = this.transport;
     await this.stopCurrentTransport();
+
+    for (const [nodeId, peer] of this.discoveredPeers) {
+      if (peer.discoveredVia === previousTransport ||
+          (previousTransport === 'internet' && (peer.discoveredVia === 'dht' || peer.discoveredVia === 'mdns' || peer.discoveredVia === 'bootstrap'))) {
+        this.discoveredPeers.delete(nodeId);
+        this.emit('discovery:peer_lost', nodeId);
+      }
+    }
+
     this.transport = mode;
     this.emit('discovery:mode_changed', mode);
 
