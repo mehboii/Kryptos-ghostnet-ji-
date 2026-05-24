@@ -16,7 +16,7 @@
 
     const GhostIdentity = {
         async generateIdentity() {
-            // Using ECDSA P-256 for browser compatibility
+            // [DAST-08] Generate extractable to export pubkey, then re-import private key as non-extractable
             const keys = await window.crypto.subtle.generateKey(
                 {
                     name: "ECDSA",
@@ -32,11 +32,22 @@
             const hashHex = bufferToHex(hashBuffer);
             const nodeId = "0x" + hashHex.substring(0, 40);
 
+            // [DAST-08] Re-import private key as non-extractable so exportKey('pkcs8') is blocked
+            const privBuffer = await window.crypto.subtle.exportKey("pkcs8", keys.privateKey);
+            const nonExtractablePrivKey = await window.crypto.subtle.importKey(
+                "pkcs8", privBuffer,
+                { name: "ECDSA", namedCurve: "P-256" },
+                false,
+                ["sign"]
+            );
+            // Zero out exported private key material
+            new Uint8Array(privBuffer).fill(0);
+
             return {
                 id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString()),
                 nodeId: nodeId,
                 publicKey: keys.publicKey,
-                privateKey: keys.privateKey
+                privateKey: nonExtractablePrivKey
             };
         },
 
