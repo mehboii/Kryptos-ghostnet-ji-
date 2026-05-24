@@ -57,7 +57,12 @@
             const allPeers = Array.from(this.knownPeers.values());
             const subset = allPeers
                 .filter(p => p.isConnected)
-                .sort(() => 0.5 - Math.random())
+                // [FIX 22] Use crypto.getRandomValues instead of Math.random for shuffle
+                .sort(() => {
+                    const buf = new Uint8Array(1);
+                    (typeof crypto !== 'undefined' ? crypto : globalThis.crypto).getRandomValues(buf);
+                    return buf[0] - 128;
+                })
                 .slice(0, 5)
                 .map(p => ({
                     id: p.id,

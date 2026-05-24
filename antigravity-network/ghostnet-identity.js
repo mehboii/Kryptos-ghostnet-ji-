@@ -1,5 +1,11 @@
-/* GhostIdentity.js - Browser Compatible Identity Module */
-(function (window) {
+/* GhostIdentity.js - Browser Compatible Identity Module
+ *
+ * SECURITY FIXES:
+ * [FIX 05-A] Private key generated with extractable: false
+ * [FIX 05-B] Private key NOT returned in identity object — sealed in closure
+ * [FIX 05-C] sign() method exposed instead of raw CryptoKey
+ */
+(function (root) {
 
     function bufferToHex(buffer) {
         return Array.from(new Uint8Array(buffer))
@@ -16,35 +22,42 @@
 
     const GhostIdentity = {
         async generateIdentity() {
-            // Using ECDSA P-256 for browser compatibility
-            const keys = await window.crypto.subtle.generateKey(
+            // [FIX 05-A] extractable: false — private key cannot be exported
+            const keys = await root.crypto.subtle.generateKey(
                 {
                     name: "ECDSA",
                     namedCurve: "P-256",
                 },
-                true,
+                false,
                 ["sign", "verify"]
             );
 
-            // Generate a deterministic Node ID from public key
-            // (We export SPKI to get a consistent unique string representation)
-            const pubBuffer = await window.crypto.subtle.exportKey("spki", keys.publicKey);
+            const pubBuffer = await root.crypto.subtle.exportKey("spki", keys.publicKey);
             const pubHex = bufferToHex(pubBuffer);
             const nodeId = "node_" + pubHex.substring(pubHex.length - 8);
+
+            // [FIX 05-B] Seal private key in closure — never returned
+            const _privateKey = keys.privateKey;
 
             return {
                 id: crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString()),
                 nodeId: nodeId,
                 publicKey: keys.publicKey,
-                privateKey: keys.privateKey
+                publicKeyHex: pubHex,
+                // [FIX 05-C] Only way to use the private key
+                sign: (message) => GhostIdentity.signMessage(message, _privateKey),
+                // privateKey intentionally absent
             };
         },
 
         async signMessage(messageStr, privateKey) {
+            if (!privateKey || typeof privateKey !== 'object') {
+                throw new TypeError('signMessage: privateKey must be a CryptoKey object.');
+            }
             const encoder = new TextEncoder();
             const data = typeof messageStr === 'string' ? encoder.encode(messageStr) : messageStr;
 
-            const signature = await window.crypto.subtle.sign(
+            const signature = await root.crypto.subtle.sign(
                 {
                     name: "ECDSA",
                     hash: { name: "SHA-256" },
@@ -56,12 +69,19 @@
         },
 
         async verifySignature(messageStr, signatureHex, publicKey) {
+            if (!publicKey) {
+                throw new TypeError('verifySignature: publicKey is required.');
+            }
             const encoder = new TextEncoder();
             const data = typeof messageStr === 'string' ? encoder.encode(messageStr) : messageStr;
+
+            if (typeof signatureHex !== 'string' || !/^[0-9a-fA-F]+$/.test(signatureHex)) {
+                return false;
+            }
             const signature = hexToBuffer(signatureHex);
 
             try {
-                const isValid = await window.crypto.subtle.verify(
+                const isValid = await root.crypto.subtle.verify(
                     {
                         name: "ECDSA",
                         hash: { name: "SHA-256" },
@@ -72,12 +92,22 @@
                 );
                 return isValid;
             } catch (e) {
-                console.error("Signature Verify Failed:", e);
-                return false;
+                if (e instanceof DOMException) {
+                    return false;
+                }
+                throw e;
             }
         }
     };
 
-    window.GhostIdentity = GhostIdentity;
+    // Immutable global — cannot be overwritten by later scripts
+    if (typeof root !== 'undefined' && root !== null) {
+        Object.defineProperty(root, 'GhostIdentity', {
+            value: GhostIdentity,
+            writable: false,
+            configurable: false,
+            enumerable: true,
+        });
+    }
 
 })(typeof window !== 'undefined' ? window : this);

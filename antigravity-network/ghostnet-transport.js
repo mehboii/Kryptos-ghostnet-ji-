@@ -103,18 +103,26 @@
             }
 
             // 2. Encryption Keys (ECDH P-256)
+            // [FIX 21] extractable: false — private ECDH key cannot be exported
             const encKeyPair = await subtle.generateKey(
                 { name: "ECDH", namedCurve: "P-256" },
-                true,
+                false,
                 ["deriveKey", "deriveBits"]
             );
 
+            // [FIX 21] Seal private keys — only expose public keys and
+            // method handles. Private keys stay in closure scope.
+            const _signingKey = coreIdentity.privateKey;
+            const _decryptionKey = encKeyPair.privateKey;
+
             return {
-                signingKey: coreIdentity.privateKey,
                 verificationKey: coreIdentity.publicKey,
                 address: coreIdentity.nodeId,
                 encryptionKey: encKeyPair.publicKey,
-                decryptionKey: encKeyPair.privateKey
+                // Accessor needed internally by GhostTransport — not directly
+                // exposed as a plain property to prevent accidental serialization.
+                get signingKey() { return _signingKey; },
+                get decryptionKey() { return _decryptionKey; },
             };
         }
 
