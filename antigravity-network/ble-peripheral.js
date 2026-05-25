@@ -57,8 +57,10 @@ const PubKeyChar = new bleno.Characteristic({
     value: nodePublicKey
 });
 
-// [DAST-F10] Track per-connection authentication state
-let _clientAuthenticated = false;
+// [RT2-08] Per-connection authentication state — prevents multi-client auth confusion
+// bleno serializes connections, so track the current subscriber's auth state
+let _currentClientAddress = null;
+let _authenticatedClients = new Set();
 
 const DataChar = new bleno.Characteristic({
     uuid: CHAR_DATA,
@@ -81,14 +83,14 @@ const DataChar = new bleno.Characteristic({
                 if (updateCallback) {
                     updateCallback(Buffer.from(response));
                 }
-                // [DAST-F10] Mark connection as authenticated after responding to challenge
-                _clientAuthenticated = true;
+                // [RT2-08] Mark specific connection as authenticated
+                if (_currentClientAddress) _authenticatedClients.add(_currentClientAddress);
                 callback(bleno.Characteristic.RESULT_SUCCESS);
                 return;
             }
 
-            // [DAST-F10] Reject all non-auth messages from unauthenticated clients
-            if (!_clientAuthenticated) {
+            // [RT2-08] Reject non-auth messages from unauthenticated connections
+            if (!_currentClientAddress || !_authenticatedClients.has(_currentClientAddress)) {
                 console.warn(`[Recv] Rejected: client not authenticated — complete AUTH_CHALLENGE first`);
                 callback(bleno.Characteristic.RESULT_SUCCESS);
                 return;
@@ -167,13 +169,15 @@ bleno.on('advertisingStart', (error) => {
 });
 
 bleno.on('accept', (clientAddress) => {
-    // [FIX 09-C] Log but require auth handshake before trusting data
+    // [RT2-08] Track current client address for per-connection auth
+    _currentClientAddress = clientAddress;
     console.log(`Connection from: ${clientAddress} (pending authentication)`);
 });
 
 bleno.on('disconnect', (clientAddress) => {
     console.log(`Client ${clientAddress} disconnected. Restarting advertising...`);
-    // [DAST-F10] Reset authentication state on disconnect
-    _clientAuthenticated = false;
+    // [RT2-08] Remove specific client's auth state on disconnect
+    _authenticatedClients.delete(clientAddress);
+    if (_currentClientAddress === clientAddress) _currentClientAddress = null;
     bleno.startAdvertising(myName, [SERVICE_UUID]);
 });
