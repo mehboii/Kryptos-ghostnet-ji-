@@ -86,23 +86,25 @@
             const ecdhState = this._callECDH ? this._callECDH.get(callId) : null;
             if (!ecdhState) return null;
 
-            // Verify signature on ECDH public key if identity key available
-            if (ecdhSig && peerIdentityPubKey) {
-                try {
-                    const valid = await crypto.subtle.verify(
-                        { name: 'ECDSA', hash: 'SHA-256' },
-                        peerIdentityPubKey,
-                        new Uint8Array(ecdhSig.match(/.{2}/g).map(b => parseInt(b, 16))),
-                        new TextEncoder().encode(callId + '|' + remotePubKeyHex)
-                    );
-                    if (!valid) {
-                        console.error('[RT-BREAK-02] ECDH key signature invalid — possible MITM');
-                        return null;
-                    }
-                } catch {
-                    console.error('[RT-BREAK-02] ECDH signature verification failed');
+            // [DAST-F18] ECDH signature verification is MANDATORY — reject unsigned key exchange
+            if (!ecdhSig || !peerIdentityPubKey) {
+                console.error('[DAST-F18] ECDH key must be identity-signed — refusing unsigned key exchange');
+                return null;
+            }
+            try {
+                const valid = await crypto.subtle.verify(
+                    { name: 'ECDSA', hash: 'SHA-256' },
+                    peerIdentityPubKey,
+                    new Uint8Array(ecdhSig.match(/.{2}/g).map(b => parseInt(b, 16))),
+                    new TextEncoder().encode(callId + '|' + remotePubKeyHex)
+                );
+                if (!valid) {
+                    console.error('[DAST-F18] ECDH key signature invalid — possible MITM');
                     return null;
                 }
+            } catch {
+                console.error('[DAST-F18] ECDH signature verification failed');
+                return null;
             }
 
             const remoteBytes = new Uint8Array(remotePubKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
