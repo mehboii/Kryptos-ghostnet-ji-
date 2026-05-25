@@ -70,12 +70,24 @@ function _sanitizeMeshMessage(raw) {
     if (msg.ts) sanitized.ts = msg.ts;
     if (msg.hops !== undefined) sanitized.hops = typeof msg.hops === 'number' ? Math.min(msg.hops, 10) : 0;
     if (msg.maxHops !== undefined) sanitized.maxHops = typeof msg.maxHops === 'number' ? Math.min(msg.maxHops, 10) : 5;
-    if (msg.enc && typeof msg.enc === 'object') sanitized.enc = msg.enc;
+    // [RT-BREAK-04] Validate enc structure — prevent prototype pollution and deep nesting
+    if (msg.enc && typeof msg.enc === 'object' && !Array.isArray(msg.enc)) {
+        const encStr = JSON.stringify(msg.enc);
+        if (encStr.length <= 131072) {
+            sanitized.enc = JSON.parse(encStr);
+        }
+    }
     if (msg.data !== undefined) sanitized.data = msg.data;
     if (msg.content !== undefined) sanitized.content = msg.content;
     if (msg.peers && Array.isArray(msg.peers)) sanitized.peers = msg.peers;
-    if (msg.capabilities && typeof msg.capabilities === 'object') sanitized.capabilities = msg.capabilities;
+    if (msg.capabilities && typeof msg.capabilities === 'object' && !Array.isArray(msg.capabilities)) {
+        sanitized.capabilities = JSON.parse(JSON.stringify(msg.capabilities));
+    }
     if (msg.name) sanitized.name = String(msg.name).slice(0, 64);
+    // [RT-BREAK-04] Preserve meshSig through sanitizer — required for signature verification
+    if (msg.meshSig && typeof msg.meshSig === 'string' && /^[0-9a-f]+$/i.test(msg.meshSig) && msg.meshSig.length <= 256) {
+        sanitized.meshSig = msg.meshSig;
+    }
 
     return sanitized;
 }
@@ -225,8 +237,13 @@ class GhostMesh {
             maxHops: 5
         };
 
-        // [DAST-04] Sign mesh message with identity key
-        payload = await this._signMeshPayload(payload);
+        // [IAST-09] Sign mesh message — abort send on failure
+        try {
+            payload = await this._signMeshPayload(payload);
+        } catch (e) {
+            console.error('[IAST-09] Mesh signing failed — message not sent:', e.message);
+            return;
+        }
 
         if (this.ws && this.wsReady) {
             try {
@@ -285,7 +302,7 @@ class GhostMesh {
             return;
         }
 
-        const payload = {
+        let payload = {
             type: 'MESH_DIRECT',
             id: crypto.randomUUID(),
             from: this.identity.id,
@@ -293,6 +310,14 @@ class GhostMesh {
             enc: encryptedData,
             ts: Date.now()
         };
+
+        // [RT-BREAK-05] Sign direct messages — all mesh messages must be signed
+        try {
+            payload = await this._signMeshPayload(payload);
+        } catch (e) {
+            console.error('[RT-BREAK-05] Direct message signing failed:', e.message);
+            return;
+        }
 
         if (peer && peer.transport === 'ble' && peer.connected && peer.writeChar) {
             const data = new TextEncoder().encode(JSON.stringify(payload));
@@ -344,8 +369,10 @@ class GhostMesh {
                 console.warn('[Mesh] No auth token — cannot connect');
                 return;
             }
-            // [DAST-17] Connect without JWT in URL — authenticate via first message
-            const baseUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
+            // [IAST-16] Load WS URL from config — never hardcode production endpoints
+            const baseUrl = (typeof GHOSTNET_WS_URL !== 'undefined' && GHOSTNET_WS_URL)
+                || (typeof window !== 'undefined' && window.GHOSTNET_CONFIG && window.GHOSTNET_CONFIG.wsUrl)
+                || `wss://${location.host}/ws`;
             console.log('Mesh: Connecting WebSocket');
 
             this.ws = new WebSocket(baseUrl);
@@ -460,12 +487,11 @@ class GhostMesh {
             case 'MESH_MSG':
             case 'MSG':
                 if (msg.from !== this.identity.id) {
-                    // [DAST-02][RT-02][RT-03] Dedup + mandatory timestamp validation
                     if (this._isDuplicate(msg.id)) break;
                     if (!this._isTimestampValid(msg.ts)) break;
 
-                    // [DAST-04] Verify mesh signature if present
-                    if (msg.meshSig && !await this._verifyMeshSignature(msg)) break;
+                    // [IAST-04] Mesh signature is MANDATORY — reject unsigned messages
+                    if (!msg.meshSig || !await this._verifyMeshSignature(msg)) break;
 
                     if (this.peers.has(msg.from)) {
                         this.peers.get(msg.from).lastSeen = Date.now();
@@ -618,11 +644,10 @@ class GhostMesh {
                     if (!msg) return;
                     if (msg.from === this.identity.id) return;
 
-                    // [DAST-02][RT-02][RT-03] Dedup + mandatory timestamp
                     if (this._isDuplicate(msg.id)) return;
                     if (!this._isTimestampValid(msg.ts)) return;
-                    // [DAST-04] Verify signature if present
-                    if (msg.meshSig && !await this._verifyMeshSignature(msg)) return;
+                    // [IAST-04] Mesh signature is MANDATORY — reject unsigned messages
+                    if (!msg.meshSig || !await this._verifyMeshSignature(msg)) return;
 
                     let msgContent = msg.data || msg;
                     if (msg.enc) {
@@ -767,8 +792,8 @@ class GhostMesh {
     }
 
     relayToWS(msg) {
-        // [DAST-05] Strip cleartext metadata before relay
-        const relayMsg = { type: msg.type, id: msg.id, enc: msg.enc, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
+        // [RT-BREAK-10] Preserve from+meshSig for signature verification at destination
+        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
         const serialized = JSON.stringify(relayMsg);
         const validated = _sanitizeMeshMessage(serialized);
         if (!validated) return;
@@ -837,8 +862,8 @@ class GhostMesh {
     // [DAST-11] ENCRYPTED BLE DEVICE STORAGE
     // ============================================
 
+    // [IAST-10] Use a random base key stored in localStorage, not deterministic identity.id
     async _initBleDeviceKey() {
-        // [RT-10] Use random salt stored alongside encrypted data, not deterministic from localStorage
         let salt;
         const storedSalt = localStorage.getItem('ghostnet_ble_key_salt');
         if (storedSalt) {
@@ -847,9 +872,17 @@ class GhostMesh {
             salt = crypto.getRandomValues(new Uint8Array(16));
             localStorage.setItem('ghostnet_ble_key_salt', JSON.stringify(Array.from(salt)));
         }
+        // [IAST-10] Use a random base secret instead of public identity.id
+        let baseKeyBytes;
+        const storedBaseKey = localStorage.getItem('ghostnet_ble_base_key');
+        if (storedBaseKey) {
+            baseKeyBytes = new Uint8Array(JSON.parse(storedBaseKey));
+        } else {
+            baseKeyBytes = crypto.getRandomValues(new Uint8Array(32));
+            localStorage.setItem('ghostnet_ble_base_key', JSON.stringify(Array.from(baseKeyBytes)));
+        }
         const baseKey = await crypto.subtle.importKey(
-            'raw',
-            new TextEncoder().encode('ghostnet-ble-devices-' + this.identity.id),
+            'raw', baseKeyBytes,
             'HKDF', false, ['deriveKey']
         );
         this._bleDeviceKey = await crypto.subtle.deriveKey(
@@ -952,21 +985,21 @@ class GhostMesh {
     // [DAST-04] SIGN MESH MESSAGES
     // ============================================
 
+    // [IAST-09] Signing failure is fatal — never send unsigned mesh messages
     async _signMeshPayload(payload) {
-        if (!this.identity.privateKey) return payload;
-        try {
-            // [RT-05] Include enc hash in signature so payload can't be substituted
-            const encHash = payload.enc ? JSON.stringify(payload.enc) : '';
-            const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}|${encHash}`;
-            const sig = await crypto.subtle.sign(
-                { name: 'ECDSA', hash: 'SHA-256' },
-                this.identity.privateKey,
-                new TextEncoder().encode(canonical)
-            );
-            payload.meshSig = Array.from(new Uint8Array(sig))
-                .map(b => b.toString(16).padStart(2, '0')).join('');
-            return payload;
-        } catch { return payload; }
+        if (!this.identity.privateKey) {
+            throw new Error('Cannot send mesh message: no signing key available');
+        }
+        const encHash = payload.enc ? JSON.stringify(payload.enc) : '';
+        const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}|${encHash}`;
+        const sig = await crypto.subtle.sign(
+            { name: 'ECDSA', hash: 'SHA-256' },
+            this.identity.privateKey,
+            new TextEncoder().encode(canonical)
+        );
+        payload.meshSig = Array.from(new Uint8Array(sig))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+        return payload;
     }
 
     async _verifyMeshSignature(msg) {

@@ -53,38 +53,73 @@
             return this.localStream;
         }
 
-        // [FIX 13] Generate a per-call AES-GCM-256 key
-        async _generateCallKey(callId) {
-            const key = await crypto.subtle.generateKey(
-                { name: 'AES-GCM', length: 256 },
-                true,
-                ['encrypt', 'decrypt']
+        // [IAST-07][RT-BREAK-02] ECDH key agreement with identity-signed public keys
+        async _generateCallKeyPair(callId) {
+            const keyPair = await crypto.subtle.generateKey(
+                { name: 'ECDH', namedCurve: 'P-256' },
+                false,
+                ['deriveKey']
             );
-            this._callKeys.set(callId, key);
-            return key;
+            if (!this._callECDH) this._callECDH = new Map();
+            this._callECDH.set(callId, keyPair);
+            const exported = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+            const pubKeyHex = Array.from(new Uint8Array(exported)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+            // [RT-BREAK-02] Sign the ECDH public key with identity key to prevent MITM substitution
+            let ecdhSig = null;
+            if (this._identityKey) {
+                try {
+                    const sigBuf = await crypto.subtle.sign(
+                        { name: 'ECDSA', hash: 'SHA-256' },
+                        this._identityKey,
+                        new TextEncoder().encode(callId + '|' + pubKeyHex)
+                    );
+                    ecdhSig = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+                } catch {}
+            }
+            this._lastEcdhSig = ecdhSig;
+            return pubKeyHex;
         }
 
-        // [FIX 13] Exchange the call key with the remote peer via signaling
-        // In production, this should use the ECDH shared secret from the
-        // peer's public key. For now, we export and send via the signaling channel.
-        async _exportCallKey(callId) {
-            const key = this._callKeys.get(callId);
-            if (!key) return null;
-            const raw = await crypto.subtle.exportKey('raw', key);
-            return Array.from(new Uint8Array(raw)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
+        // [RT-BREAK-02] Verify remote ECDH public key is signed by the peer's identity
+        async _deriveCallKey(callId, remotePubKeyHex, ecdhSig, peerIdentityPubKey) {
+            const ecdhState = this._callECDH ? this._callECDH.get(callId) : null;
+            if (!ecdhState) return null;
 
-        async _importCallKey(callId, keyHex) {
-            const bytes = new Uint8Array(keyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
-            const key = await crypto.subtle.importKey(
-                'raw',
-                bytes,
+            // Verify signature on ECDH public key if identity key available
+            if (ecdhSig && peerIdentityPubKey) {
+                try {
+                    const valid = await crypto.subtle.verify(
+                        { name: 'ECDSA', hash: 'SHA-256' },
+                        peerIdentityPubKey,
+                        new Uint8Array(ecdhSig.match(/.{2}/g).map(b => parseInt(b, 16))),
+                        new TextEncoder().encode(callId + '|' + remotePubKeyHex)
+                    );
+                    if (!valid) {
+                        console.error('[RT-BREAK-02] ECDH key signature invalid — possible MITM');
+                        return null;
+                    }
+                } catch {
+                    console.error('[RT-BREAK-02] ECDH signature verification failed');
+                    return null;
+                }
+            }
+
+            const remoteBytes = new Uint8Array(remotePubKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
+            const remotePubKey = await crypto.subtle.importKey(
+                'raw', remoteBytes,
+                { name: 'ECDH', namedCurve: 'P-256' },
+                false, []
+            );
+            const derivedKey = await crypto.subtle.deriveKey(
+                { name: 'ECDH', public: remotePubKey },
+                ecdhState.privateKey,
                 { name: 'AES-GCM', length: 256 },
                 false,
                 ['encrypt', 'decrypt']
             );
-            this._callKeys.set(callId, key);
-            return key;
+            this._callKeys.set(callId, derivedKey);
+            return derivedKey;
         }
 
         async createCall(targetPeerId) {
@@ -92,9 +127,8 @@
             const callId = crypto.randomUUID();
             this.activeCalls.set(targetPeerId, pc);
 
-            // [FIX 13] Generate encryption key for this call
-            await this._generateCallKey(callId);
-            const keyHex = await this._exportCallKey(callId);
+            // [IAST-07] Generate ECDH keypair — only public key is sent
+            const myPubKeyHex = await this._generateCallKeyPair(callId);
 
             const stream = await this.getLocalStream();
             stream.getTracks().forEach(track => {
@@ -131,7 +165,8 @@
                 type: "offer",
                 sdp: offer,
                 callId,
-                encryptionKey: keyHex,
+                ecdhPubKey: myPubKeyHex,
+                ecdhSig: this._lastEcdhSig,
             });
 
             return { callId, pc };
@@ -143,9 +178,10 @@
 
             const callId = offerData.callId;
 
-            // [FIX 13] Import the caller's encryption key
-            if (offerData.encryptionKey) {
-                await this._importCallKey(callId, offerData.encryptionKey);
+            // [RT-BREAK-02] Generate our ECDH keypair and derive shared key with sig verification
+            const myPubKeyHex = await this._generateCallKeyPair(callId);
+            if (offerData.ecdhPubKey) {
+                await this._deriveCallKey(callId, offerData.ecdhPubKey, offerData.ecdhSig, null);
             }
 
             pc.ontrack = (event) => {
@@ -175,7 +211,9 @@
             this.signaling.sendMessage(fromPeerId, {
                 type: "answer",
                 sdp: answer,
-                callId
+                callId,
+                ecdhPubKey: myPubKeyHex,
+                ecdhSig: this._lastEcdhSig,
             });
 
             return pc;
@@ -268,6 +306,10 @@
                 await this.acceptCall(from, msg);
             }
             else if (msg.type === "answer" && pc) {
+                // [RT-BREAK-02] Derive shared call key with sig verification
+                if (msg.ecdhPubKey && msg.callId) {
+                    await this._deriveCallKey(msg.callId, msg.ecdhPubKey, msg.ecdhSig, null);
+                }
                 await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
             }
             else if (msg.type === "candidate" && pc) {
