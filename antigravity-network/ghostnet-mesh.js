@@ -207,31 +207,13 @@ class GhostMesh {
 
     /** Send a message to all connected peers via all transports */
     async broadcast(message) {
-        let encryptedData;
-        let ivHex;
-        try {
-            if (!this._broadcastKey) {
-                this._broadcastKey = await crypto.subtle.generateKey(
-                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-                );
-            }
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const plainBytes = new TextEncoder().encode(JSON.stringify(message));
-            const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, this._broadcastKey, plainBytes
-            );
-            encryptedData = Array.from(new Uint8Array(cipherBuf));
-            ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
-        } catch (e) {
-            console.error('Broadcast encryption failed:', e);
-            return;
-        }
-
+        // [DAST-F19] Broadcast as signed plaintext — local-only keys can't be decrypted by peers.
+        // E2E encryption is handled by GhostChat/GhostTransport at the application layer.
         let payload = {
             type: 'MESH_MSG',
             id: crypto.randomUUID(),
             from: this.identity.id,
-            enc: { data: encryptedData, iv: ivHex },
+            data: message,
             ts: Date.now(),
             hops: 0,
             maxHops: 5
@@ -280,34 +262,14 @@ class GhostMesh {
     async sendToPeer(peerId, message) {
         const peer = this.peers.get(peerId);
 
-        let encryptedData;
-        try {
-            if (!this._peerKeys) this._peerKeys = new Map();
-            if (!this._peerKeys.has(peerId)) {
-                this._peerKeys.set(peerId, await crypto.subtle.generateKey(
-                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-                ));
-            }
-            const peerKey = this._peerKeys.get(peerId);
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const plainBytes = new TextEncoder().encode(JSON.stringify(message));
-            const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, peerKey, plainBytes
-            );
-            encryptedData = {
-                data: Array.from(new Uint8Array(cipherBuf)),
-                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('')
-            };
-        } catch (e) {
-            return;
-        }
-
+        // [DAST-F19] Send as signed plaintext — per-peer keys were local-only and undecryptable.
+        // E2E encryption is handled by GhostChat/GhostTransport at the application layer.
         let payload = {
             type: 'MESH_DIRECT',
             id: crypto.randomUUID(),
             from: this.identity.id,
             to: peerId,
-            enc: encryptedData,
+            data: message,
             ts: Date.now()
         };
 
@@ -364,12 +326,7 @@ class GhostMesh {
 
     connectWebSocket() {
         try {
-            const token = sessionStorage.getItem('ghostnet_jwt');
-            if (!token) {
-                console.warn('[Mesh] No auth token — cannot connect');
-                return;
-            }
-            // [IAST-16] Load WS URL from config — never hardcode production endpoints
+            // [DAST-F13] Cookie-based auth — no token in JS, cookie sent automatically with upgrade
             const baseUrl = (typeof GHOSTNET_WS_URL !== 'undefined' && GHOSTNET_WS_URL)
                 || (typeof window !== 'undefined' && window.GHOSTNET_CONFIG && window.GHOSTNET_CONFIG.wsUrl)
                 || `wss://${location.host}/ws`;
@@ -381,10 +338,6 @@ class GhostMesh {
                 console.log('Mesh: WebSocket connected');
                 this.wsReady = true;
 
-                // [DAST-17] Send JWT in first message instead of URL
-                this.ws.send(JSON.stringify({ type: 'AUTH', token }));
-
-                // [DAST-07] Register without exposing static nodeId in hello
                 this.ws.send(JSON.stringify({
                     type: 'MESH_HELLO',
                     id: this.identity.id,
@@ -497,11 +450,11 @@ class GhostMesh {
                         this.peers.get(msg.from).lastSeen = Date.now();
                     }
 
+                    // [DAST-F19] Broadcasts are signed plaintext; enc field is for future E2E use
                     let msgContent = msg.data || msg.content || msg;
                     if (msg.enc) {
                         const decrypted = await this._decryptMeshPayload(msg.enc);
-                        if (!decrypted) break;
-                        msgContent = decrypted;
+                        if (decrypted) msgContent = decrypted;
                     }
                     this.onMessage(msgContent, msg.from, 'ws');
 
@@ -652,8 +605,7 @@ class GhostMesh {
                     let msgContent = msg.data || msg;
                     if (msg.enc) {
                         const decrypted = await this._decryptMeshPayload(msg.enc);
-                        if (!decrypted) return;
-                        msgContent = decrypted;
+                        if (decrypted) msgContent = decrypted;
                     }
                     this.onMessage(msgContent, msg.from || peerId, 'ble');
 
@@ -954,6 +906,8 @@ class GhostMesh {
         const nonce = crypto.getRandomValues(new Uint8Array(32));
         const nonceHex = Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('');
         const challenge = JSON.stringify({ type: 'AUTH_CHALLENGE', nonce: nonceHex });
+        // [DAST-F09] Record challenge send time for replay protection
+        const challengeSentAt = Date.now();
         await writeChar.writeValue(new TextEncoder().encode(challenge));
 
         return new Promise((resolve) => {
@@ -965,6 +919,13 @@ class GhostMesh {
                     if (resp.type !== 'AUTH_RESPONSE' || !resp.sig) return;
                     writeChar.removeEventListener('characteristicvaluechanged', handler);
                     clearTimeout(timeout);
+
+                    // [DAST-F09] Reject responses with stale timestamps (>2s from challenge)
+                    if (resp.ts && Math.abs(resp.ts - challengeSentAt) > 2000) {
+                        console.warn('[DAST-F09] BLE auth response timestamp too far from challenge — possible replay');
+                        resolve(false);
+                        return;
+                    }
 
                     const keyBytes = new Uint8Array(peerKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
                     const pubKey = await crypto.subtle.importKey(

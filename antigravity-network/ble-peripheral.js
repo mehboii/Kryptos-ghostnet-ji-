@@ -57,8 +57,8 @@ const PubKeyChar = new bleno.Characteristic({
     value: nodePublicKey
 });
 
-// Track authenticated clients
-const authenticatedClients = new Set();
+// [DAST-F10] Track per-connection authentication state
+let _clientAuthenticated = false;
 
 const DataChar = new bleno.Characteristic({
     uuid: CHAR_DATA,
@@ -69,11 +69,9 @@ const DataChar = new bleno.Characteristic({
         try {
             const msg = JSON.parse(msgStr);
 
-            // [FIX 09-B] Handle authentication challenges
             if (msg.type === 'AUTH_CHALLENGE' && msg.nonce) {
                 console.log(`[Auth] Challenge received, signing nonce`);
                 const signature = signChallenge(msg.nonce);
-                // [RT-BREAK-13] Field name must be 'sig' to match mesh challenge handler
                 const response = JSON.stringify({
                     type: 'AUTH_RESPONSE',
                     nonce: msg.nonce,
@@ -83,14 +81,19 @@ const DataChar = new bleno.Characteristic({
                 if (updateCallback) {
                     updateCallback(Buffer.from(response));
                 }
+                // [DAST-F10] Mark connection as authenticated after responding to challenge
+                _clientAuthenticated = true;
                 callback(bleno.Characteristic.RESULT_SUCCESS);
                 return;
             }
 
-            // [FIX 09-C] Reject data messages from unauthenticated clients
-            // In a full implementation, track per-client auth state.
-            // For now, log the received data but only process if it has
-            // valid schema fields.
+            // [DAST-F10] Reject all non-auth messages from unauthenticated clients
+            if (!_clientAuthenticated) {
+                console.warn(`[Recv] Rejected: client not authenticated — complete AUTH_CHALLENGE first`);
+                callback(bleno.Characteristic.RESULT_SUCCESS);
+                return;
+            }
+
             if (!msg.type || typeof msg.type !== 'string') {
                 console.warn(`[Recv] Rejected: missing or invalid type field`);
                 callback(bleno.Characteristic.RESULT_SUCCESS);
@@ -170,6 +173,7 @@ bleno.on('accept', (clientAddress) => {
 
 bleno.on('disconnect', (clientAddress) => {
     console.log(`Client ${clientAddress} disconnected. Restarting advertising...`);
-    authenticatedClients.delete(clientAddress);
+    // [DAST-F10] Reset authentication state on disconnect
+    _clientAuthenticated = false;
     bleno.startAdvertising(myName, [SERVICE_UUID]);
 });
