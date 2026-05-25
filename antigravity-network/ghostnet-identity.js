@@ -83,7 +83,8 @@
                 );
                 return isValid;
             } catch (e) {
-                console.error("Signature Verify Failed:", e);
+                // [RT-BREAK-14] Log only message, not full error with key material
+                console.error("Signature Verify Failed:", e.message || 'unknown');
                 return false;
             }
         }

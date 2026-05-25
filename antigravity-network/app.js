@@ -70,8 +70,42 @@ window.addEventListener('DOMContentLoaded', async () => {
         localStorage.setItem('ghostnet_user_id', myId);
     }
 
+    // [RT-BREAK-12] Persist identity keypair in IndexedDB across page loads
     if (window.GhostIdentity) {
-        window.app.identity = await window.GhostIdentity.generateIdentity();
+        let storedIdentity = null;
+        try {
+            storedIdentity = await new Promise((resolve, reject) => {
+                const req = indexedDB.open('ghostnet_keys', 1);
+                req.onerror = () => reject(req.error);
+                req.onsuccess = () => {
+                    const db = req.result;
+                    const tx = db.transaction('keys', 'readonly');
+                    const store = tx.objectStore('keys');
+                    const getReq = store.get('identity');
+                    getReq.onsuccess = () => resolve(getReq.result || null);
+                    getReq.onerror = () => reject(getReq.error);
+                };
+            });
+        } catch {}
+
+        if (storedIdentity && storedIdentity.privateKey && storedIdentity.publicKey) {
+            window.app.identity = storedIdentity;
+        } else {
+            window.app.identity = await window.GhostIdentity.generateIdentity();
+            try {
+                await new Promise((resolve, reject) => {
+                    const req = indexedDB.open('ghostnet_keys', 1);
+                    req.onerror = () => reject(req.error);
+                    req.onsuccess = () => {
+                        const db = req.result;
+                        const tx = db.transaction('keys', 'readwrite');
+                        tx.objectStore('keys').put(window.app.identity, 'identity');
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    };
+                });
+            } catch {}
+        }
         window.app.identity.id = myId;
         window.app.identity.pub = myId;
         window.app.identity.nodeId = myId;
@@ -91,20 +125,17 @@ window.addEventListener('DOMContentLoaded', async () => {
     // [RT-12] Storage key held in closure — not on window.app — so XSS cannot access it
     const _storageKey = await _getOrCreateStorageKey();
 
+    // [RT-BREAK-11] Never fall back to plaintext — throw on encryption failure
     const _encryptForStorage = async (text) => {
-        try {
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, _storageKey, new TextEncoder().encode(text)
-            );
-            return JSON.stringify({
-                enc: true,
-                iv: Array.from(iv),
-                data: Array.from(new Uint8Array(cipherBuf))
-            });
-        } catch (e) {
-            return text;
-        }
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const cipherBuf = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv }, _storageKey, new TextEncoder().encode(text)
+        );
+        return JSON.stringify({
+            enc: true,
+            iv: Array.from(iv),
+            data: Array.from(new Uint8Array(cipherBuf))
+        });
     };
 
     window.app.persistMessage = async (text, targetId) => {
@@ -292,7 +323,9 @@ window.addEventListener('DOMContentLoaded', async () => {
             // [DAST-10] Single JWT source — sessionStorage only
             // [DAST-17] No JWT in URL — authenticate via first message
             const wsToken = sessionStorage.getItem('ghostnet_jwt') || '';
-            const wsUrl = `wss://ghostnet-ji-production.up.railway.app/ws`;
+            // [RT-BREAK-15] Use config or same-host, not hardcoded URL
+            const wsUrl = (window.GHOSTNET_CONFIG && window.GHOSTNET_CONFIG.wsUrl)
+                || `${protocol}//${window.location.host}/ws`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
                 ws.send(JSON.stringify({ type: 'AUTH', token: wsToken }));

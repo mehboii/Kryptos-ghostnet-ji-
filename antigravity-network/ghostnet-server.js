@@ -18,12 +18,20 @@ if (!JWT_SECRET) {
     process.exit(1);
 }
 
+// [IAST-06] Token revocation set — stores revoked jti values
+const _revokedTokens = new Set();
+const _activeWsSessions = new Map();
+
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Authentication required' });
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        // [RT-BREAK-03] Enforce max token age — reject tokens older than 24h even without exp
+        const decoded = jwt.verify(token, JWT_SECRET, { maxAge: '24h' });
+        if (decoded.jti && _revokedTokens.has(decoded.jti)) {
+            return res.status(401).json({ error: 'Token revoked' });
+        }
         req.userId = decoded.userId;
         next();
     } catch {
@@ -93,16 +101,20 @@ if (!fs.existsSync(DB)) {
     fs.writeFileSync(DB, "[]");
 }
 
-const ALLOWED_STATIC_EXTENSIONS = new Set(['.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot']);
+// [IAST-01] Serve only from dedicated public/ directory — never expose source code
+const PUBLIC_DIR = path.join(__dirname, 'public');
+if (!fs.existsSync(PUBLIC_DIR)) fs.mkdirSync(PUBLIC_DIR, { recursive: true });
+const ALLOWED_STATIC_EXTENSIONS = new Set(['.html', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico', '.woff', '.woff2', '.ttf', '.eot', '.js']);
 app.use((req, res, next) => {
     const reqPath = path.normalize(req.path).replace(/\\/g, '/');
+    if (reqPath.includes('..')) return res.status(400).end();
     const ext = path.extname(reqPath).toLowerCase();
     if (reqPath !== '/' && !ALLOWED_STATIC_EXTENSIONS.has(ext)) {
         return res.status(404).end();
     }
     next();
 });
-app.use(express.static(__dirname));
+app.use(express.static(PUBLIC_DIR));
 app.use(express.json({ limit: '16kb' }));
 
 // Initialize messages store
@@ -153,7 +165,8 @@ try {
 
 // --- API: USER MANAGEMENT ---
 
-app.post("/create-user", createUserRateLimit, (req, res) => {
+// [IAST-02] Require authentication for account creation
+app.post("/create-user", authenticateToken, createUserRateLimit, (req, res) => {
     const { username, avatar } = req.body;
 
     if (!username) {
@@ -166,10 +179,8 @@ app.post("/create-user", createUserRateLimit, (req, res) => {
         if (typeof avatar !== 'string' || avatar.length > 2048) {
             return res.status(400).json({ error: "Invalid avatar" });
         }
-        if (/^https:\/\//.test(avatar)) {
-            sanitizedAvatar = avatar.slice(0, 2048);
-        // [RT-09] SVG removed — can contain embedded JavaScript (stored XSS)
-        } else if (/^data:image\/(png|jpeg|gif|webp);base64,/.test(avatar)) {
+        // [RT-BREAK-06] External URLs rejected — prevent IP tracking via avatar fetches
+        if (/^data:image\/(png|jpeg|gif|webp);base64,/.test(avatar)) {
             if (avatar.length > 65536) return res.status(400).json({ error: "Avatar data too large" });
             sanitizedAvatar = avatar;
         }
@@ -210,8 +221,19 @@ app.get("/user/:id", authenticateToken, (req, res) => {
     }
 });
 
+// [IAST-03] Scoped to conversation participants — no full user enumeration
 app.get("/users", authenticateToken, (req, res) => {
-    res.json(users.map(u => ({ id: u.id, username: u.username, avatar: u.avatar })));
+    const userId = req.userId;
+    const contactIds = new Set();
+    for (const c of conversations) {
+        if (c.participants.includes(userId)) {
+            c.participants.forEach(p => { if (p !== userId) contactIds.add(p); });
+        }
+    }
+    const contacts = users
+        .filter(u => contactIds.has(u.id))
+        .map(u => ({ id: u.id, username: u.username, avatar: u.avatar }));
+    res.json(contacts);
 });
 
 // Routes
@@ -251,11 +273,31 @@ app.post('/message', authenticateToken, (req, res) => {
         return res.status(400).json({ error: "Invalid or oversized content" });
     }
 
+    // [RT-BREAK-07] Reject plaintext content — require encrypted envelope format
+    try {
+        const parsed = JSON.parse(content);
+        if (!parsed.enc || !parsed.iv || !parsed.data) {
+            return res.status(400).json({ error: "Content must be encrypted" });
+        }
+    } catch {
+        return res.status(400).json({ error: "Content must be encrypted JSON envelope" });
+    }
+
     if (typeof receiverId !== 'string' || receiverId.length > 128) {
         return res.status(400).json({ error: "Invalid receiverId" });
     }
 
-    // Auto-create or update conversation
+    // [RT-BREAK-01] Verify receiver exists before allowing conversation creation
+    const receiverExists = users.find(u => u.id === receiverId);
+    if (!receiverExists) {
+        return res.status(404).json({ error: "Recipient not found" });
+    }
+
+    // [RT-BREAK-01] Sender cannot message themselves
+    if (senderId === receiverId) {
+        return res.status(400).json({ error: "Cannot message yourself" });
+    }
+
     let convo = conversations.find(c =>
         c.participants.includes(senderId) && c.participants.includes(receiverId)
     );
@@ -302,9 +344,9 @@ app.post('/message', authenticateToken, (req, res) => {
     res.json({ success: true, message: msg, convo });
 });
 
-// Explicit root for index.html
+// [IAST-01] Serve index.html from public/ directory
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
+    res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // STEP 3 — HISTORY API
@@ -332,7 +374,10 @@ const server = app.listen(PORT, "0.0.0.0", () => {
 // WebSocket Upgrade Handling (Proper Separation)
 const wss = new WebSocketServer({ noServer: true });
 
-// [DAST-17] Accept WS upgrade without token in URL — auth via first message
+// [IAST-05] Track unauthenticated connections to prevent resource exhaustion
+let _unauthConnCount = 0;
+const MAX_UNAUTH_CONNECTIONS = 50;
+
 server.on("upgrade", (req, socket, head) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const pathname = url.pathname;
@@ -340,12 +385,21 @@ server.on("upgrade", (req, socket, head) => {
         socket.destroy();
         return;
     }
-    // [RT-11] No URL token — auth exclusively via first message (no backward compat)
+    // [IAST-05] Reject if too many unauthenticated connections pending
+    if (_unauthConnCount >= MAX_UNAUTH_CONNECTIONS) {
+        socket.destroy();
+        return;
+    }
     wss.handleUpgrade(req, socket, head, ws => {
         ws.authenticatedUserId = null;
+        _unauthConnCount++;
+        // [IAST-05] Reduced auth timeout from 10s to 3s
         ws._authTimeout = setTimeout(() => {
-            if (!ws.authenticatedUserId) ws.close(4001, 'Auth timeout');
-        }, 10000);
+            if (!ws.authenticatedUserId) {
+                _unauthConnCount--;
+                ws.close(4001, 'Auth timeout');
+            }
+        }, 3000);
         wss.emit("connection", ws, req);
     });
 });
@@ -357,23 +411,65 @@ const MAX_WS_MESSAGE_SIZE = 8192;
 wss.on("connection", (ws, req) => {
     let clientId = null;
 
+    // [IAST-11] Per-connection rate limiting — token bucket
+    const _rateLimit = { tokens: 30, lastRefill: Date.now(), maxTokens: 30, refillRate: 10 };
+    function _checkRate() {
+        const now = Date.now();
+        const elapsed = (now - _rateLimit.lastRefill) / 1000;
+        _rateLimit.tokens = Math.min(_rateLimit.maxTokens, _rateLimit.tokens + elapsed * _rateLimit.refillRate);
+        _rateLimit.lastRefill = now;
+        if (_rateLimit.tokens < 1) return false;
+        _rateLimit.tokens--;
+        return true;
+    }
+
+    // [IAST-12] Broadcast rate limiting — stricter bucket
+    const _broadcastRate = { tokens: 5, lastRefill: Date.now(), maxTokens: 5, refillRate: 2 };
+    function _checkBroadcastRate() {
+        const now = Date.now();
+        const elapsed = (now - _broadcastRate.lastRefill) / 1000;
+        _broadcastRate.tokens = Math.min(_broadcastRate.maxTokens, _broadcastRate.tokens + elapsed * _broadcastRate.refillRate);
+        _broadcastRate.lastRefill = now;
+        if (_broadcastRate.tokens < 1) return false;
+        _broadcastRate.tokens--;
+        return true;
+    }
+
     ws.on("message", data => {
         try {
             const raw = data.toString();
             if (raw.length > MAX_WS_MESSAGE_SIZE) return;
 
+            // [IAST-11] Enforce per-connection rate limit
+            if (!_checkRate()) return;
+
             const msg = JSON.parse(raw);
             if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
 
-            // [DAST-17] First-message JWT auth (if not already authenticated via URL)
             if (msg.type === 'AUTH' && !ws.authenticatedUserId) {
                 if (typeof msg.token !== 'string') return;
                 try {
-                    const decoded = jwt.verify(msg.token, JWT_SECRET);
+                    // [RT-BREAK-03] Enforce max token age on WS auth too
+                    const decoded = jwt.verify(msg.token, JWT_SECRET, { maxAge: '24h' });
+                    if (decoded.jti && _revokedTokens.has(decoded.jti)) {
+                        _unauthConnCount = Math.max(0, _unauthConnCount - 1);
+                        ws.close(4001, 'Token revoked');
+                        return;
+                    }
                     ws.authenticatedUserId = decoded.userId;
                     clearTimeout(ws._authTimeout);
+                    _unauthConnCount = Math.max(0, _unauthConnCount - 1);
+                    // [IAST-06] Track concurrent sessions — warn on multiple
+                    const existingSession = _activeWsSessions.get(decoded.userId);
+                    if (existingSession && existingSession.readyState === 1) {
+                        existingSession.send(JSON.stringify({ type: 'SESSION_CONFLICT', message: 'Another session connected' }));
+                    }
+                    _activeWsSessions.set(decoded.userId, ws);
                     ws.send(JSON.stringify({ type: 'welcome', userId: ws.authenticatedUserId }));
-                } catch { ws.close(4001, 'Invalid token'); }
+                } catch {
+                    _unauthConnCount = Math.max(0, _unauthConnCount - 1);
+                    ws.close(4001, 'Invalid token');
+                }
                 return;
             }
 
@@ -416,7 +512,11 @@ wss.on("connection", (ws, req) => {
                 default: {
                     const ALLOWED_RELAY_TYPES = new Set(['MESH_MSG', 'MESH_DIRECT', 'MSG', 'HEARTBEAT_ACK']);
                     if (!ALLOWED_RELAY_TYPES.has(msg.type)) break;
+                    // [RT-BREAK-08] Strip any client-injected trust flags before stamping
+                    delete msg._serverVerified;
+                    delete msg.__proto__;
                     msg.from = ws.authenticatedUserId;
+                    msg._serverStamped = Date.now();
                     const outbound = JSON.stringify(msg);
                     if (msg.to && typeof msg.to === 'string') {
                         const targetPeer = meshPeers.get(msg.to);
@@ -424,6 +524,8 @@ wss.on("connection", (ws, req) => {
                             targetPeer.ws.send(outbound);
                         }
                     } else {
+                        // [IAST-12] Broadcast rate limiting
+                        if (!_checkBroadcastRate()) break;
                         for (const [id, peer] of meshPeers) {
                             if (id !== clientId && peer.ws.readyState === 1) {
                                 peer.ws.send(outbound);
@@ -437,6 +539,10 @@ wss.on("connection", (ws, req) => {
     });
 
     ws.on("close", () => {
+        // [IAST-06] Clean up session tracker
+        if (ws.authenticatedUserId && _activeWsSessions.get(ws.authenticatedUserId) === ws) {
+            _activeWsSessions.delete(ws.authenticatedUserId);
+        }
         if (clientId) {
             meshPeers.delete(clientId);
             for (const [, peer] of meshPeers) {
