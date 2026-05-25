@@ -36,6 +36,9 @@
             // [FIX 13] Per-call encryption keys
             this._callKeys = new Map();
 
+            // [RT2-01] Per-peer identity public keys for ECDH signature verification
+            this._peerIdentityKeys = new Map();
+
             this.rtcConfig = {
                 iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
                 encodedInsertableStreams: true
@@ -44,6 +47,24 @@
             if (this.signaling) {
                 this.signaling.onSignal = (msg, from) => this.handleSignal(msg, from);
             }
+        }
+
+        // [RT2-01] Register a peer's identity public key for ECDH verification
+        async registerPeerIdentity(peerId, publicKeyRaw) {
+            if (!publicKeyRaw) return;
+            try {
+                let key = publicKeyRaw;
+                if (!(publicKeyRaw instanceof CryptoKey)) {
+                    const keyBytes = typeof publicKeyRaw === 'string'
+                        ? new Uint8Array(publicKeyRaw.match(/.{2}/g).map(b => parseInt(b, 16)))
+                        : new Uint8Array(publicKeyRaw);
+                    key = await crypto.subtle.importKey(
+                        'spki', keyBytes,
+                        { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']
+                    );
+                }
+                this._peerIdentityKeys.set(peerId, key);
+            } catch {}
         }
 
         async getLocalStream(video = false, audio = true) {
@@ -86,23 +107,25 @@
             const ecdhState = this._callECDH ? this._callECDH.get(callId) : null;
             if (!ecdhState) return null;
 
-            // Verify signature on ECDH public key if identity key available
-            if (ecdhSig && peerIdentityPubKey) {
-                try {
-                    const valid = await crypto.subtle.verify(
-                        { name: 'ECDSA', hash: 'SHA-256' },
-                        peerIdentityPubKey,
-                        new Uint8Array(ecdhSig.match(/.{2}/g).map(b => parseInt(b, 16))),
-                        new TextEncoder().encode(callId + '|' + remotePubKeyHex)
-                    );
-                    if (!valid) {
-                        console.error('[RT-BREAK-02] ECDH key signature invalid — possible MITM');
-                        return null;
-                    }
-                } catch {
-                    console.error('[RT-BREAK-02] ECDH signature verification failed');
+            // [DAST-F18] ECDH signature verification is MANDATORY — reject unsigned key exchange
+            if (!ecdhSig || !peerIdentityPubKey) {
+                console.error('[DAST-F18] ECDH key must be identity-signed — refusing unsigned key exchange');
+                return null;
+            }
+            try {
+                const valid = await crypto.subtle.verify(
+                    { name: 'ECDSA', hash: 'SHA-256' },
+                    peerIdentityPubKey,
+                    new Uint8Array(ecdhSig.match(/.{2}/g).map(b => parseInt(b, 16))),
+                    new TextEncoder().encode(callId + '|' + remotePubKeyHex)
+                );
+                if (!valid) {
+                    console.error('[DAST-F18] ECDH key signature invalid — possible MITM');
                     return null;
                 }
+            } catch {
+                console.error('[DAST-F18] ECDH signature verification failed');
+                return null;
             }
 
             const remoteBytes = new Uint8Array(remotePubKeyHex.match(/.{2}/g).map(b => parseInt(b, 16)));
@@ -178,10 +201,11 @@
 
             const callId = offerData.callId;
 
-            // [RT-BREAK-02] Generate our ECDH keypair and derive shared key with sig verification
+            // [RT2-01] Generate our ECDH keypair and derive shared key with peer's identity key
             const myPubKeyHex = await this._generateCallKeyPair(callId);
             if (offerData.ecdhPubKey) {
-                await this._deriveCallKey(callId, offerData.ecdhPubKey, offerData.ecdhSig, null);
+                const peerIdKey = this._peerIdentityKeys.get(fromPeerId) || null;
+                await this._deriveCallKey(callId, offerData.ecdhPubKey, offerData.ecdhSig, peerIdKey);
             }
 
             pc.ontrack = (event) => {
@@ -306,9 +330,10 @@
                 await this.acceptCall(from, msg);
             }
             else if (msg.type === "answer" && pc) {
-                // [RT-BREAK-02] Derive shared call key with sig verification
+                // [RT2-01] Derive shared call key using peer's registered identity key
                 if (msg.ecdhPubKey && msg.callId) {
-                    await this._deriveCallKey(msg.callId, msg.ecdhPubKey, msg.ecdhSig, null);
+                    const peerIdKey = this._peerIdentityKeys.get(from) || null;
+                    await this._deriveCallKey(msg.callId, msg.ecdhPubKey, msg.ecdhSig, peerIdKey);
                 }
                 await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
             }

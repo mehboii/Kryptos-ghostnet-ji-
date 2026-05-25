@@ -57,8 +57,10 @@ const PubKeyChar = new bleno.Characteristic({
     value: nodePublicKey
 });
 
-// Track authenticated clients
-const authenticatedClients = new Set();
+// [RT2-08] Per-connection authentication state — prevents multi-client auth confusion
+// bleno serializes connections, so track the current subscriber's auth state
+let _currentClientAddress = null;
+let _authenticatedClients = new Set();
 
 const DataChar = new bleno.Characteristic({
     uuid: CHAR_DATA,
@@ -69,11 +71,9 @@ const DataChar = new bleno.Characteristic({
         try {
             const msg = JSON.parse(msgStr);
 
-            // [FIX 09-B] Handle authentication challenges
             if (msg.type === 'AUTH_CHALLENGE' && msg.nonce) {
                 console.log(`[Auth] Challenge received, signing nonce`);
                 const signature = signChallenge(msg.nonce);
-                // [RT-BREAK-13] Field name must be 'sig' to match mesh challenge handler
                 const response = JSON.stringify({
                     type: 'AUTH_RESPONSE',
                     nonce: msg.nonce,
@@ -83,14 +83,19 @@ const DataChar = new bleno.Characteristic({
                 if (updateCallback) {
                     updateCallback(Buffer.from(response));
                 }
+                // [RT2-08] Mark specific connection as authenticated
+                if (_currentClientAddress) _authenticatedClients.add(_currentClientAddress);
                 callback(bleno.Characteristic.RESULT_SUCCESS);
                 return;
             }
 
-            // [FIX 09-C] Reject data messages from unauthenticated clients
-            // In a full implementation, track per-client auth state.
-            // For now, log the received data but only process if it has
-            // valid schema fields.
+            // [RT2-08] Reject non-auth messages from unauthenticated connections
+            if (!_currentClientAddress || !_authenticatedClients.has(_currentClientAddress)) {
+                console.warn(`[Recv] Rejected: client not authenticated — complete AUTH_CHALLENGE first`);
+                callback(bleno.Characteristic.RESULT_SUCCESS);
+                return;
+            }
+
             if (!msg.type || typeof msg.type !== 'string') {
                 console.warn(`[Recv] Rejected: missing or invalid type field`);
                 callback(bleno.Characteristic.RESULT_SUCCESS);
@@ -164,12 +169,15 @@ bleno.on('advertisingStart', (error) => {
 });
 
 bleno.on('accept', (clientAddress) => {
-    // [FIX 09-C] Log but require auth handshake before trusting data
+    // [RT2-08] Track current client address for per-connection auth
+    _currentClientAddress = clientAddress;
     console.log(`Connection from: ${clientAddress} (pending authentication)`);
 });
 
 bleno.on('disconnect', (clientAddress) => {
     console.log(`Client ${clientAddress} disconnected. Restarting advertising...`);
-    authenticatedClients.delete(clientAddress);
+    // [RT2-08] Remove specific client's auth state on disconnect
+    _authenticatedClients.delete(clientAddress);
+    if (_currentClientAddress === clientAddress) _currentClientAddress = null;
     bleno.startAdvertising(myName, [SERVICE_UUID]);
 });

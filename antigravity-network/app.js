@@ -143,15 +143,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         targetId = targetId || window.app.chatTarget || 'broadcast';
 
         const encryptedContent = await _encryptForStorage(text);
-        // [DAST-10] Single JWT source — sessionStorage only (never localStorage)
-        const token = sessionStorage.getItem('ghostnet_jwt') || '';
 
         try {
+            // [DAST-F13] Auth via HttpOnly cookie — sent automatically by browser
             const response = await fetch('/message', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     senderId: myId,
@@ -320,15 +318,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         console.warn("⚠️ GhostMesh not loaded, using direct WebSocket fallback");
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // [DAST-10] Single JWT source — sessionStorage only
-            // [DAST-17] No JWT in URL — authenticate via first message
-            const wsToken = sessionStorage.getItem('ghostnet_jwt') || '';
-            // [RT-BREAK-15] Use config or same-host, not hardcoded URL
+            // [DAST-F13] Cookie-based auth — cookie sent automatically with upgrade request
             const wsUrl = (window.GHOSTNET_CONFIG && window.GHOSTNET_CONFIG.wsUrl)
                 || `${protocol}//${window.location.host}/ws`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
-                ws.send(JSON.stringify({ type: 'AUTH', token: wsToken }));
                 ws.send(JSON.stringify({ type: 'HELLO', id: myId }));
             };
             ws.onmessage = (event) => {
