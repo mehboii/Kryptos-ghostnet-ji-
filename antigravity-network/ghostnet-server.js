@@ -233,8 +233,18 @@ app.use(express.json({ limit: '16kb' }));
 
 // --- API: AUTHENTICATION ---
 
+// [RT2-07] Async scrypt helper — prevents event loop blocking
+function _scryptAsync(password, salt, keylen) {
+    return new Promise((resolve, reject) => {
+        crypto.scrypt(password, salt, keylen, (err, derivedKey) => {
+            if (err) reject(err);
+            else resolve(derivedKey);
+        });
+    });
+}
+
 // [DAST-F11] Public registration — rate-limited, no auth required
-app.post("/register", createUserRateLimit, (req, res) => {
+app.post("/register", createUserRateLimit, async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ error: 'Username and password required' });
@@ -259,7 +269,8 @@ app.post("/register", createUserRateLimit, (req, res) => {
     }
 
     const passwordSalt = crypto.randomBytes(16).toString('hex');
-    const passwordHash = crypto.scryptSync(password, passwordSalt, 64).toString('hex');
+    // [RT2-07] Async scrypt — non-blocking password hashing
+    const passwordHash = (await _scryptAsync(password, passwordSalt, 64)).toString('hex');
 
     const newUser = {
         id: 'user_' + crypto.randomUUID(),
@@ -275,7 +286,7 @@ app.post("/register", createUserRateLimit, (req, res) => {
 });
 
 // [DAST-F11] Login — issues JWT as HttpOnly cookie
-app.post("/login", createUserRateLimit, (req, res) => {
+app.post("/login", createUserRateLimit, async (req, res) => {
     const { username, password } = req.body;
     if (!username || !password || typeof username !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ error: 'Username and password required' });
@@ -287,7 +298,8 @@ app.post("/login", createUserRateLimit, (req, res) => {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const hash = crypto.scryptSync(password, user.passwordSalt, 64).toString('hex');
+    // [RT2-07] Async scrypt — non-blocking password verification
+    const hash = (await _scryptAsync(password, user.passwordSalt, 64)).toString('hex');
     if (!crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(user.passwordHash, 'hex'))) {
         return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -299,10 +311,11 @@ app.post("/login", createUserRateLimit, (req, res) => {
         { algorithm: 'HS256', issuer: 'ghostnet', audience: 'ghostnet-api', expiresIn: '24h' }
     );
 
-    // [DAST-F13] Set as HttpOnly cookie — not accessible to JavaScript
+    // [RT2-11] Secure flag always on — only allow insecure cookies on explicit localhost
+    const _isLocalhost = BIND_ADDR === '127.0.0.1' || BIND_ADDR === 'localhost';
     res.cookie('ghostnet_jwt', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: !_isLocalhost,
         sameSite: 'lax',
         maxAge: 86400000,
         path: '/'
@@ -321,14 +334,15 @@ app.post("/logout", (req, res) => {
             if (decoded.jti) _revokedTokens.set(decoded.jti, Date.now());
         } catch {}
     }
-    res.clearCookie('ghostnet_jwt', { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' });
+    const _isLocalhost = BIND_ADDR === '127.0.0.1' || BIND_ADDR === 'localhost';
+    res.clearCookie('ghostnet_jwt', { httpOnly: true, secure: !_isLocalhost, sameSite: 'lax', path: '/' });
     res.json({ success: true });
 });
 
 // --- API: USER MANAGEMENT ---
 
 // [IAST-02] Require authentication for account management
-app.post("/create-user", authenticateToken, createUserRateLimit, (req, res) => {
+app.post("/create-user", authenticateToken, createUserRateLimit, async (req, res) => {
     const { username, avatar, password } = req.body;
 
     if (!username) {
@@ -368,7 +382,8 @@ app.post("/create-user", authenticateToken, createUserRateLimit, (req, res) => {
     let passwordSalt = null;
     if (password && typeof password === 'string' && password.length >= 8) {
         passwordSalt = crypto.randomBytes(16).toString('hex');
-        passwordHash = crypto.scryptSync(password, passwordSalt, 64).toString('hex');
+        // [RT2-07] Async scrypt — non-blocking
+        passwordHash = (await _scryptAsync(password, passwordSalt, 64)).toString('hex');
     }
 
     const newUser = {
@@ -387,7 +402,15 @@ app.post("/create-user", authenticateToken, createUserRateLimit, (req, res) => {
 
 app.get("/user/:id", authenticateToken, (req, res) => {
     try {
-        const user = users.find(u => u.id === req.params.id);
+        // [RT2-09] Allow self-lookup or conversation participants only — prevents user enumeration
+        const targetId = req.params.id;
+        if (targetId !== req.userId) {
+            const hasConvo = conversations.some(c =>
+                c.participants.includes(req.userId) && c.participants.includes(targetId)
+            );
+            if (!hasConvo) return res.status(404).json({ error: "User not found" });
+        }
+        const user = users.find(u => u.id === targetId);
         if (user) {
             const { passwordHash, passwordSalt, ...safeUser } = user;
             res.json(safeUser);
@@ -648,24 +671,31 @@ wss.on("connection", (ws, req) => {
                 case 'HELLO':
                 case 'MESH_HELLO': {
                     clientId = ws.authenticatedUserId;
+                    // [RT2-04] Validate and store pubKey for signature verification
+                    let peerPubKey = null;
+                    if (msg.pubKey && typeof msg.pubKey === 'string' && /^[0-9a-f]+$/i.test(msg.pubKey) && msg.pubKey.length >= 16 && msg.pubKey.length <= 512) {
+                        peerPubKey = msg.pubKey;
+                    }
                     meshPeers.set(clientId, {
                         id: clientId,
                         ws: ws,
+                        pubKey: peerPubKey,
                         capabilities: msg.capabilities || {},
                         lastSeen: Date.now()
                     });
 
+                    // [RT2-04] Include pubKey in peer list so peers can verify each other's signatures
                     const peerList = [];
                     for (const [id, peer] of meshPeers) {
                         if (id !== clientId) {
-                            peerList.push({ id: peer.id, capabilities: peer.capabilities, lastSeen: peer.lastSeen });
+                            peerList.push({ id: peer.id, pubKey: peer.pubKey, capabilities: peer.capabilities, lastSeen: peer.lastSeen });
                         }
                     }
                     ws.send(JSON.stringify({ type: 'MESH_PEERS', peers: peerList }));
 
                     for (const [id, peer] of meshPeers) {
                         if (id !== clientId && peer.ws.readyState === 1) {
-                            peer.ws.send(JSON.stringify({ type: 'PEER_JOIN', id: clientId, capabilities: msg.capabilities }));
+                            peer.ws.send(JSON.stringify({ type: 'PEER_JOIN', id: clientId, pubKey: peerPubKey, capabilities: msg.capabilities }));
                         }
                     }
                     break;
@@ -682,7 +712,9 @@ wss.on("connection", (ws, req) => {
                     if (!ALLOWED_RELAY_TYPES.has(msg.type)) break;
                     delete msg._serverVerified;
                     delete msg.__proto__;
-                    msg.from = ws.authenticatedUserId;
+                    // [RT2-05] Preserve original from for meshSig verification — add server-verified sender separately
+                    msg._serverFrom = ws.authenticatedUserId;
+                    if (!msg.from) msg.from = ws.authenticatedUserId;
                     msg._serverStamped = Date.now();
                     const outbound = JSON.stringify(msg);
                     if (msg.to && typeof msg.to === 'string') {
