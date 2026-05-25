@@ -23,6 +23,16 @@
         throw new Error("WebCrypto API not supported here");
     }
 
+    // [RASP-10] Constant-time comparison — prevents timing side-channel attacks on signature/HMAC bytes
+    function _constantTimeEqual(a, b) {
+        if (a.length !== b.length) return false;
+        let result = 0;
+        for (let i = 0; i < a.length; i++) {
+            result |= a[i] ^ b[i];
+        }
+        return result === 0;
+    }
+
     // Helper: Buffer Compat
     const _getRandomValues = (len) => {
         if (cryptoImpl.getRandomValues) {
@@ -226,8 +236,13 @@
 
         async verifyEnvelope(envelope) {
             if (!envelope.id || !envelope.signature || !envelope.fromPubKey) return false;
-            // [IAST-13] Time-based dedup — prune expired entries, then check
+            // [RASP-10] Reject envelopes with stale timestamps (>5min old or >30s in future)
             const now = Date.now();
+            if (envelope.timestamp) {
+                const age = now - envelope.timestamp;
+                if (age > 300000 || age < -30000) return false;
+            }
+            // [IAST-13] Time-based dedup — prune expired entries, then check
             if (this.seenMessages.size > this.processedCacheSize / 2) {
                 for (const [id, ts] of this.seenMessages) {
                     if (now - ts > this.DEDUP_TTL) this.seenMessages.delete(id);

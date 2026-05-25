@@ -121,6 +121,25 @@ class GhostMesh {
         // [DAST-16] Transport downgrade tracking
         this._transportConsent = { bleOnly: false, downgradeAcked: false };
 
+        // [RASP-07] Peer trust scoring — auto-quarantine misbehaving peers
+        this._peerTrust = new Map();
+        this._quarantinedPeers = new Set();
+        this._TRUST_INITIAL = 50;
+        this._TRUST_MIN = 0;
+        this._TRUST_MAX = 100;
+        this._TRUST_QUARANTINE_THRESHOLD = 15;
+
+        // [RASP-08] Routing anomaly detection
+        this._routeHistory = new Map();
+        this._ROUTE_CHANGE_WINDOW = 30000;
+        this._ROUTE_CHANGE_MAX = 5;
+
+        // [RASP-09] Mesh surveillance/mapping detection
+        this._connectionLog = [];
+        this._SURVEILLANCE_WINDOW = 60000;
+        this._SURVEILLANCE_SPIKE_THRESHOLD = 10;
+        this._SURVEILLANCE_UNIQUE_THRESHOLD = 8;
+
         this.SERVICE_UUID = '67686f73-746e-6574-2d6d-657368000000';
         this.CHAR_DATA = '67686f73-746e-6574-2d64-617461000000';
         this.CHAR_PEER_ID = '67686f73-746e-6574-2d69-640000000000';
@@ -344,7 +363,7 @@ class GhostMesh {
 
             this.ws = new WebSocket(baseUrl);
 
-            this.ws.onopen = () => {
+            this.ws.onopen = async () => {
                 console.log('Mesh: WebSocket connected');
                 this.wsReady = true;
 
@@ -461,11 +480,25 @@ class GhostMesh {
             case 'MESH_MSG':
             case 'MSG':
                 if (msg.from !== this.identity.id) {
+                    // [RASP-07] Reject messages from quarantined peers
+                    if (this._isPeerQuarantined(msg.from)) break;
                     if (this._isDuplicate(msg.id)) break;
-                    if (!this._isTimestampValid(msg.ts)) break;
+                    if (!this._isTimestampValid(msg.ts)) {
+                        this._adjustTrust(msg.from, -5, 'invalid_timestamp');
+                        break;
+                    }
 
                     // [IAST-04] Mesh signature is MANDATORY — reject unsigned messages
-                    if (!msg.meshSig || !await this._verifyMeshSignature(msg)) break;
+                    if (!msg.meshSig || !await this._verifyMeshSignature(msg)) {
+                        this._adjustTrust(msg.from, -10, 'invalid_signature');
+                        break;
+                    }
+
+                    // [RASP-07] Reward valid signed messages
+                    this._adjustTrust(msg.from, 1, 'valid_message');
+
+                    // [RASP-08] Track routing changes
+                    if (msg.hops > 0) this._trackRouteChange(msg.from);
 
                     if (this.peers.has(msg.from)) {
                         this.peers.get(msg.from).lastSeen = Date.now();
@@ -542,6 +575,18 @@ class GhostMesh {
                 setTimeout(() => this.tryReconnectBLEDevice(device), 2000);
             });
 
+            // [RASP-07] Reject quarantined peers
+            if (this._isPeerQuarantined(device.id)) {
+                console.warn(`[RASP-07] Rejecting quarantined device ${device.id}`);
+                return;
+            }
+
+            // [RASP-09] Log connection for surveillance detection
+            if (this._logConnection(device.id)) {
+                console.warn('[RASP-09] Entering stealth mode — suppressing further connections');
+                return;
+            }
+
             console.log(`📲 BLE: Connecting GATT to ${device.name || device.id}...`);
             const server = await device.gatt.connect();
 
@@ -616,6 +661,8 @@ class GhostMesh {
                 if (!charData._notificationsStarted) await charData.startNotifications();
                 charData.addEventListener('characteristicvaluechanged', async (event) => {
                     const val = new TextDecoder().decode(event.target.value);
+                    // [RASP-06] BLE packet inspection gate
+                    if (!this._inspectBlePacket(val, peerId)) return;
                     const msg = _sanitizeMeshMessage(val);
                     if (!msg) return;
                     if (msg.from === this.identity.id) return;
@@ -1016,6 +1063,112 @@ class GhostMesh {
         payload.meshSig = Array.from(new Uint8Array(sig))
             .map(b => b.toString(16).padStart(2, '0')).join('');
         return payload;
+    }
+
+    // ============================================
+    // [RASP-06] BLE PACKET INSPECTION GATE
+    // ============================================
+
+    _inspectBlePacket(data, peerId) {
+        if (!data || data.length === 0) {
+            this._adjustTrust(peerId, -5, 'empty_packet');
+            return false;
+        }
+        if (data.length > 8192) {
+            this._adjustTrust(peerId, -10, 'oversized_packet');
+            return false;
+        }
+        let msg;
+        try {
+            msg = JSON.parse(typeof data === 'string' ? data : new TextDecoder().decode(data));
+        } catch {
+            this._adjustTrust(peerId, -5, 'malformed_json');
+            return false;
+        }
+        if (!msg || typeof msg !== 'object' || !msg.type) {
+            this._adjustTrust(peerId, -5, 'missing_type');
+            return false;
+        }
+        if (!_ALLOWED_MESH_TYPES.has(msg.type)) {
+            this._adjustTrust(peerId, -10, 'disallowed_type');
+            return false;
+        }
+        return true;
+    }
+
+    // ============================================
+    // [RASP-07] PEER TRUST SCORING
+    // ============================================
+
+    _getPeerTrust(peerId) {
+        if (!this._peerTrust.has(peerId)) {
+            this._peerTrust.set(peerId, this._TRUST_INITIAL);
+        }
+        return this._peerTrust.get(peerId);
+    }
+
+    _adjustTrust(peerId, delta, reason) {
+        const current = this._getPeerTrust(peerId);
+        const newScore = Math.max(this._TRUST_MIN, Math.min(this._TRUST_MAX, current + delta));
+        this._peerTrust.set(peerId, newScore);
+        if (newScore <= this._TRUST_QUARANTINE_THRESHOLD && !this._quarantinedPeers.has(peerId)) {
+            this._quarantinedPeers.add(peerId);
+            console.warn(`[RASP-07] Peer ${peerId.slice(0, 12)} quarantined (trust=${newScore}, reason=${reason})`);
+            const peer = this.peers.get(peerId);
+            if (peer && peer.device && peer.device.gatt && peer.device.gatt.connected) {
+                try { peer.device.gatt.disconnect(); } catch {}
+            }
+            this.peers.delete(peerId);
+            this.onPeerLeave({ id: peerId });
+            this.onMeshUpdate(this.getPeers());
+        }
+    }
+
+    _isPeerQuarantined(peerId) {
+        return this._quarantinedPeers.has(peerId);
+    }
+
+    // ============================================
+    // [RASP-08] ROUTING ANOMALY DETECTION
+    // ============================================
+
+    _trackRouteChange(peerId) {
+        const now = Date.now();
+        if (!this._routeHistory.has(peerId)) {
+            this._routeHistory.set(peerId, []);
+        }
+        const history = this._routeHistory.get(peerId);
+        history.push(now);
+        // Prune old entries
+        while (history.length > 0 && history[0] < now - this._ROUTE_CHANGE_WINDOW) {
+            history.shift();
+        }
+        if (history.length > this._ROUTE_CHANGE_MAX) {
+            console.warn(`[RASP-08] Routing anomaly: peer ${peerId.slice(0, 12)} changed routes ${history.length} times in ${this._ROUTE_CHANGE_WINDOW / 1000}s`);
+            this._adjustTrust(peerId, -15, 'routing_anomaly');
+            return true;
+        }
+        return false;
+    }
+
+    // ============================================
+    // [RASP-09] MESH SURVEILLANCE DETECTION
+    // ============================================
+
+    _logConnection(peerId) {
+        const now = Date.now();
+        this._connectionLog.push({ peerId, ts: now });
+        // Prune old entries
+        this._connectionLog = this._connectionLog.filter(e => e.ts > now - this._SURVEILLANCE_WINDOW);
+        // Check for connection spikes
+        if (this._connectionLog.length > this._SURVEILLANCE_SPIKE_THRESHOLD) {
+            const uniquePeers = new Set(this._connectionLog.map(e => e.peerId));
+            if (uniquePeers.size >= this._SURVEILLANCE_UNIQUE_THRESHOLD) {
+                console.warn(`[RASP-09] Surveillance pattern detected: ${uniquePeers.size} unique peers in ${this._SURVEILLANCE_WINDOW / 1000}s`);
+                return true;
+            }
+        }
+        return false;
     }
 
     async _verifyMeshSignature(msg) {
