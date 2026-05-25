@@ -77,8 +77,18 @@ function _sanitizeMeshMessage(raw) {
             sanitized.enc = JSON.parse(encStr);
         }
     }
-    if (msg.data !== undefined) sanitized.data = msg.data;
-    if (msg.content !== undefined) sanitized.content = msg.content;
+    // [RT2-06] Validate data field — must be string or plain object, size-limited
+    if (msg.data !== undefined) {
+        if (typeof msg.data === 'string') {
+            if (msg.data.length <= 8192) sanitized.data = msg.data;
+        } else if (typeof msg.data === 'object' && msg.data !== null && !Array.isArray(msg.data)) {
+            const dataStr = JSON.stringify(msg.data);
+            if (dataStr.length <= 8192) sanitized.data = JSON.parse(dataStr);
+        }
+    }
+    if (msg.content !== undefined && typeof msg.content === 'string') {
+        sanitized.content = msg.content.slice(0, 8192);
+    }
     if (msg.peers && Array.isArray(msg.peers)) sanitized.peers = msg.peers;
     if (msg.capabilities && typeof msg.capabilities === 'object' && !Array.isArray(msg.capabilities)) {
         sanitized.capabilities = JSON.parse(JSON.stringify(msg.capabilities));
@@ -207,31 +217,13 @@ class GhostMesh {
 
     /** Send a message to all connected peers via all transports */
     async broadcast(message) {
-        let encryptedData;
-        let ivHex;
-        try {
-            if (!this._broadcastKey) {
-                this._broadcastKey = await crypto.subtle.generateKey(
-                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-                );
-            }
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const plainBytes = new TextEncoder().encode(JSON.stringify(message));
-            const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, this._broadcastKey, plainBytes
-            );
-            encryptedData = Array.from(new Uint8Array(cipherBuf));
-            ivHex = Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('');
-        } catch (e) {
-            console.error('Broadcast encryption failed:', e);
-            return;
-        }
-
+        // [DAST-F19] Broadcast as signed plaintext — local-only keys can't be decrypted by peers.
+        // E2E encryption is handled by GhostChat/GhostTransport at the application layer.
         let payload = {
             type: 'MESH_MSG',
             id: crypto.randomUUID(),
             from: this.identity.id,
-            enc: { data: encryptedData, iv: ivHex },
+            data: message,
             ts: Date.now(),
             hops: 0,
             maxHops: 5
@@ -280,34 +272,14 @@ class GhostMesh {
     async sendToPeer(peerId, message) {
         const peer = this.peers.get(peerId);
 
-        let encryptedData;
-        try {
-            if (!this._peerKeys) this._peerKeys = new Map();
-            if (!this._peerKeys.has(peerId)) {
-                this._peerKeys.set(peerId, await crypto.subtle.generateKey(
-                    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
-                ));
-            }
-            const peerKey = this._peerKeys.get(peerId);
-            const iv = crypto.getRandomValues(new Uint8Array(12));
-            const plainBytes = new TextEncoder().encode(JSON.stringify(message));
-            const cipherBuf = await crypto.subtle.encrypt(
-                { name: 'AES-GCM', iv }, peerKey, plainBytes
-            );
-            encryptedData = {
-                data: Array.from(new Uint8Array(cipherBuf)),
-                iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join('')
-            };
-        } catch (e) {
-            return;
-        }
-
+        // [DAST-F19] Send as signed plaintext — per-peer keys were local-only and undecryptable.
+        // E2E encryption is handled by GhostChat/GhostTransport at the application layer.
         let payload = {
             type: 'MESH_DIRECT',
             id: crypto.randomUUID(),
             from: this.identity.id,
             to: peerId,
-            enc: encryptedData,
+            data: message,
             ts: Date.now()
         };
 
@@ -364,12 +336,7 @@ class GhostMesh {
 
     connectWebSocket() {
         try {
-            const token = sessionStorage.getItem('ghostnet_jwt');
-            if (!token) {
-                console.warn('[Mesh] No auth token — cannot connect');
-                return;
-            }
-            // [IAST-16] Load WS URL from config — never hardcode production endpoints
+            // [DAST-F13] Cookie-based auth — no token in JS, cookie sent automatically with upgrade
             const baseUrl = (typeof GHOSTNET_WS_URL !== 'undefined' && GHOSTNET_WS_URL)
                 || (typeof window !== 'undefined' && window.GHOSTNET_CONFIG && window.GHOSTNET_CONFIG.wsUrl)
                 || `wss://${location.host}/ws`;
@@ -381,13 +348,18 @@ class GhostMesh {
                 console.log('Mesh: WebSocket connected');
                 this.wsReady = true;
 
-                // [DAST-17] Send JWT in first message instead of URL
-                this.ws.send(JSON.stringify({ type: 'AUTH', token }));
-
-                // [DAST-07] Register without exposing static nodeId in hello
+                // [RT2-04] Include public key in MESH_HELLO for signature verification by peers
+                let pubKeyHex = null;
+                if (this.identity.publicKey) {
+                    try {
+                        const exported = await crypto.subtle.exportKey('spki', this.identity.publicKey);
+                        pubKeyHex = Array.from(new Uint8Array(exported)).map(b => b.toString(16).padStart(2, '0')).join('');
+                    } catch {}
+                }
                 this.ws.send(JSON.stringify({
                     type: 'MESH_HELLO',
                     id: this.identity.id,
+                    pubKey: pubKeyHex,
                     capabilities: {
                         ble: this.bleAvailable,
                         ws: true
@@ -467,7 +439,9 @@ class GhostMesh {
                         transport: 'ws',
                         connected: true,
                         lastSeen: Date.now(),
-                        name: msg.name || msg.id.substr(-8)
+                        name: msg.name || msg.id.substr(-8),
+                        // [RT2-04] Store peer's public key for mesh signature verification
+                        pubKey: (msg.pubKey && typeof msg.pubKey === 'string' && /^[0-9a-f]+$/i.test(msg.pubKey)) ? msg.pubKey : null
                     };
                     this.peers.set(msg.id, peer);
                     this.onPeerJoin(peer);
@@ -497,11 +471,11 @@ class GhostMesh {
                         this.peers.get(msg.from).lastSeen = Date.now();
                     }
 
+                    // [DAST-F19] Broadcasts are signed plaintext; enc field is for future E2E use
                     let msgContent = msg.data || msg.content || msg;
                     if (msg.enc) {
                         const decrypted = await this._decryptMeshPayload(msg.enc);
-                        if (!decrypted) break;
-                        msgContent = decrypted;
+                        if (decrypted) msgContent = decrypted;
                     }
                     this.onMessage(msgContent, msg.from, 'ws');
 
@@ -521,7 +495,9 @@ class GhostMesh {
                                 transport: 'ws',
                                 connected: true,
                                 lastSeen: p.lastSeen || Date.now(),
-                                name: p.name || p.id.substr(-8)
+                                name: p.name || p.id.substr(-8),
+                                // [RT2-04] Store peer's public key for mesh signature verification
+                                pubKey: (p.pubKey && typeof p.pubKey === 'string' && /^[0-9a-f]+$/i.test(p.pubKey)) ? p.pubKey : null
                             };
                             this.peers.set(p.id, peer);
                             this.onPeerJoin(peer);
@@ -652,8 +628,7 @@ class GhostMesh {
                     let msgContent = msg.data || msg;
                     if (msg.enc) {
                         const decrypted = await this._decryptMeshPayload(msg.enc);
-                        if (!decrypted) return;
-                        msgContent = decrypted;
+                        if (decrypted) msgContent = decrypted;
                     }
                     this.onMessage(msgContent, msg.from || peerId, 'ble');
 
@@ -775,8 +750,8 @@ class GhostMesh {
     // ============================================
 
     relayToBLE(msg) {
-        // [DAST-05][RT-06] Strip cleartext metadata but preserve from+meshSig for verification
-        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
+        // [RT2-02] Include data field in relay — required for signed plaintext messages
+        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, data: msg.data, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
         const serialized = JSON.stringify(relayMsg);
         const validated = _sanitizeMeshMessage(serialized);
         if (!validated) return;
@@ -792,8 +767,8 @@ class GhostMesh {
     }
 
     relayToWS(msg) {
-        // [RT-BREAK-10] Preserve from+meshSig for signature verification at destination
-        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
+        // [RT2-02] Include data field in relay — required for signed plaintext messages
+        const relayMsg = { type: msg.type, id: msg.id, from: msg.from, data: msg.data, enc: msg.enc, meshSig: msg.meshSig, hops: msg.hops, maxHops: msg.maxHops, ts: msg.ts };
         const serialized = JSON.stringify(relayMsg);
         const validated = _sanitizeMeshMessage(serialized);
         if (!validated) return;
@@ -862,7 +837,7 @@ class GhostMesh {
     // [DAST-11] ENCRYPTED BLE DEVICE STORAGE
     // ============================================
 
-    // [IAST-10] Use a random base key stored in localStorage, not deterministic identity.id
+    // [RT2-10] Store BLE base key in IndexedDB as non-extractable CryptoKey — XSS cannot read it
     async _initBleDeviceKey() {
         let salt;
         const storedSalt = localStorage.getItem('ghostnet_ble_key_salt');
@@ -872,19 +847,49 @@ class GhostMesh {
             salt = crypto.getRandomValues(new Uint8Array(16));
             localStorage.setItem('ghostnet_ble_key_salt', JSON.stringify(Array.from(salt)));
         }
-        // [IAST-10] Use a random base secret instead of public identity.id
-        let baseKeyBytes;
-        const storedBaseKey = localStorage.getItem('ghostnet_ble_base_key');
-        if (storedBaseKey) {
-            baseKeyBytes = new Uint8Array(JSON.parse(storedBaseKey));
-        } else {
-            baseKeyBytes = crypto.getRandomValues(new Uint8Array(32));
-            localStorage.setItem('ghostnet_ble_base_key', JSON.stringify(Array.from(baseKeyBytes)));
+        // [RT2-10] Base key in IndexedDB — non-extractable, not accessible via XSS
+        let baseKey;
+        try {
+            baseKey = await new Promise((resolve, reject) => {
+                const req = indexedDB.open('ghostnet_ble_keys', 1);
+                req.onupgradeneeded = (e) => e.target.result.createObjectStore('keys');
+                req.onerror = () => reject(req.error);
+                req.onsuccess = async () => {
+                    const db = req.result;
+                    const tx = db.transaction('keys', 'readonly');
+                    const store = tx.objectStore('keys');
+                    const getReq = store.get('ble_base_key');
+                    getReq.onsuccess = async () => {
+                        if (getReq.result) {
+                            resolve(getReq.result);
+                        } else {
+                            const newKey = await crypto.subtle.generateKey(
+                                { name: 'HKDF' }, false, ['deriveKey']
+                            ).catch(() => null);
+                            if (!newKey) {
+                                const rawKey = crypto.getRandomValues(new Uint8Array(32));
+                                const imported = await crypto.subtle.importKey('raw', rawKey, 'HKDF', false, ['deriveKey']);
+                                const wtx = db.transaction('keys', 'readwrite');
+                                wtx.objectStore('keys').put(imported, 'ble_base_key');
+                                wtx.oncomplete = () => resolve(imported);
+                                wtx.onerror = () => reject(wtx.error);
+                            } else {
+                                const wtx = db.transaction('keys', 'readwrite');
+                                wtx.objectStore('keys').put(newKey, 'ble_base_key');
+                                wtx.oncomplete = () => resolve(newKey);
+                                wtx.onerror = () => reject(wtx.error);
+                            }
+                        }
+                    };
+                    getReq.onerror = () => reject(getReq.error);
+                };
+            });
+        } catch {
+            const rawKey = crypto.getRandomValues(new Uint8Array(32));
+            baseKey = await crypto.subtle.importKey('raw', rawKey, 'HKDF', false, ['deriveKey']);
         }
-        const baseKey = await crypto.subtle.importKey(
-            'raw', baseKeyBytes,
-            'HKDF', false, ['deriveKey']
-        );
+        // Migrate: remove old localStorage key if present
+        localStorage.removeItem('ghostnet_ble_base_key');
         this._bleDeviceKey = await crypto.subtle.deriveKey(
             { name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('ble-device-enc') },
             baseKey,
@@ -954,6 +959,8 @@ class GhostMesh {
         const nonce = crypto.getRandomValues(new Uint8Array(32));
         const nonceHex = Array.from(nonce).map(b => b.toString(16).padStart(2, '0')).join('');
         const challenge = JSON.stringify({ type: 'AUTH_CHALLENGE', nonce: nonceHex });
+        // [DAST-F09] Record challenge send time for replay protection
+        const challengeSentAt = Date.now();
         await writeChar.writeValue(new TextEncoder().encode(challenge));
 
         return new Promise((resolve) => {
@@ -965,6 +972,13 @@ class GhostMesh {
                     if (resp.type !== 'AUTH_RESPONSE' || !resp.sig) return;
                     writeChar.removeEventListener('characteristicvaluechanged', handler);
                     clearTimeout(timeout);
+
+                    // [DAST-F09] Reject responses with stale timestamps (>2s from challenge)
+                    if (resp.ts && Math.abs(resp.ts - challengeSentAt) > 2000) {
+                        console.warn('[DAST-F09] BLE auth response timestamp too far from challenge — possible replay');
+                        resolve(false);
+                        return;
+                    }
 
                     const keyBytes = new Uint8Array(peerKeyHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
                     const pubKey = await crypto.subtle.importKey(
@@ -991,7 +1005,9 @@ class GhostMesh {
             throw new Error('Cannot send mesh message: no signing key available');
         }
         const encHash = payload.enc ? JSON.stringify(payload.enc) : '';
-        const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}|${encHash}`;
+        // [RT2-03] Include data hash in canonical — prevents undetected content tampering
+        const dataHash = payload.data ? JSON.stringify(payload.data) : '';
+        const canonical = `${payload.id}|${payload.from}|${payload.ts}|${payload.type}|${encHash}|${dataHash}`;
         const sig = await crypto.subtle.sign(
             { name: 'ECDSA', hash: 'SHA-256' },
             this.identity.privateKey,
@@ -1008,9 +1024,10 @@ class GhostMesh {
         // [RT-04] If message has meshSig but we have no pubKey to verify, reject — no auto-pass
         if (!peer || !peer.pubKey) return false;
         try {
-            // [RT-05] Must match sign canonical — includes enc hash
+            // [RT2-03] Must match sign canonical — includes enc hash and data hash
             const encHash = msg.enc ? JSON.stringify(msg.enc) : '';
-            const canonical = `${msg.id}|${msg.from}|${msg.ts}|${msg.type}|${encHash}`;
+            const dataHash = msg.data ? JSON.stringify(msg.data) : '';
+            const canonical = `${msg.id}|${msg.from}|${msg.ts}|${msg.type}|${encHash}|${dataHash}`;
             const keyBytes = new Uint8Array(peer.pubKey.match(/.{1,2}/g).map(b => parseInt(b, 16)));
             const pubKey = await crypto.subtle.importKey(
                 'spki', keyBytes, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']

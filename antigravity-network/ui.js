@@ -264,10 +264,9 @@ const UI = {
             console.log("🔗 Connecting to GhostNet Bridge...");
 
             // [FIX 19] Use relative URL instead of hardcoded production URL
-            const token = sessionStorage.getItem('ghostnet_jwt') || '';
+            // [DAST-F13] Auth via HttpOnly cookie — sent automatically
             const res = await fetch('/wallet', {
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'X-GhostNet-Client': '1',
                 },
             });
@@ -375,12 +374,10 @@ const UI = {
 
         // [FIX 20] Add Content-Type + auth headers; use relative URL
         try {
-            const token = sessionStorage.getItem('ghostnet_jwt') || '';
             await fetch('/wallet/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`,
                     'X-GhostNet-Client': '1',
                 },
                 body: JSON.stringify({ symbol, to, amount })
@@ -438,10 +435,8 @@ const UI = {
     // [FIX 19] Use relative URL; [FIX 01/07] send auth token; userId from JWT now
     loadConversations: async (userId) => {
         try {
-            const token = sessionStorage.getItem('ghostnet_jwt') || '';
-            const res = await fetch(`/conversations`, {
+            const res = await fetch('/conversations', {
                 headers: {
-                    'Authorization': `Bearer ${token}`,
                     'X-GhostNet-Client': '1',
                 },
             });
@@ -549,10 +544,8 @@ const UI = {
         if (convoId && convoId !== 'new') {
             try {
                 // [FIX 25] Include auth headers on history fetch
-                const token = sessionStorage.getItem('ghostnet_jwt') || '';
                 const res = await fetch(`/history?convoId=${encodeURIComponent(convoId)}`, {
                     headers: {
-                        'Authorization': `Bearer ${token}`,
                         'X-GhostNet-Client': '1',
                     },
                 });
@@ -825,12 +818,10 @@ const UI = {
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 // [FIX 25] Include auth + CSRF headers on fallback send
                 try {
-                    const token = sessionStorage.getItem('ghostnet_jwt') || '';
                     const res = await fetch('/message', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`,
                             'X-GhostNet-Client': '1',
                         },
                         body: JSON.stringify({
@@ -992,12 +983,11 @@ const UI = {
         }
 
         // [FIX 25] Include auth + CSRF headers on profile save
-        const token = sessionStorage.getItem('ghostnet_jwt') || '';
+        // [DAST-F13] Auth via HttpOnly cookie — sent automatically
         fetch("/create-user", {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "Authorization": `Bearer ${token}`,
                 "X-GhostNet-Client": "1",
             },
             body: JSON.stringify({
