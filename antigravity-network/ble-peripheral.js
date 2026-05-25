@@ -73,10 +73,11 @@ const DataChar = new bleno.Characteristic({
             if (msg.type === 'AUTH_CHALLENGE' && msg.nonce) {
                 console.log(`[Auth] Challenge received, signing nonce`);
                 const signature = signChallenge(msg.nonce);
+                // [RT-BREAK-13] Field name must be 'sig' to match mesh challenge handler
                 const response = JSON.stringify({
                     type: 'AUTH_RESPONSE',
                     nonce: msg.nonce,
-                    signature: signature,
+                    sig: signature,
                     ts: Date.now(),
                 });
                 if (updateCallback) {

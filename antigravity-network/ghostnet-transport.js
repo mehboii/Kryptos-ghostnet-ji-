@@ -35,8 +35,10 @@
     class GhostTransport {
         constructor(identity) {
             this.identity = identity;
-            this.seenMessages = new Set();
+            // [IAST-13] Time-based dedup cache — entries expire after 5 minutes
+            this.seenMessages = new Map();
             this.processedCacheSize = 1000;
+            this.DEDUP_TTL = 300000;
             this.MAX_TTL = 20;
 
             // [DAST-15] Session cache keyed by peer identity (transport-independent)
@@ -140,21 +142,9 @@
             let isBroadcast = (receiverPubKeyHex === "broadcast");
 
             if (isBroadcast) {
-                if (!this._broadcastKey) {
-                    this._broadcastKey = await subtle.generateKey(
-                        { name: "AES-GCM", length: 256 },
-                        false,
-                        ["encrypt", "decrypt"]
-                    );
-                }
-                const iv = _getRandomValues(12);
-                ivHex = this._arrayBufferToHex(iv);
-                const cipherBuffer = await subtle.encrypt(
-                    { name: "AES-GCM", iv: iv },
-                    this._broadcastKey,
-                    payloadBytes
-                );
-                encryptedPayloadHex = this._arrayBufferToHex(cipherBuffer);
+                // [IAST-08] Broadcast messages are signed but not encrypted — no group key agreement exists.
+                // Payload is sent as hex-encoded plaintext with signature for authenticity.
+                encryptedPayloadHex = this._arrayBufferToHex(payloadBytes);
                 encryptedKeyHex = null;
             } else {
                 const ephemeralKeyPair = await subtle.generateKey(
@@ -236,25 +226,32 @@
 
         async verifyEnvelope(envelope) {
             if (!envelope.id || !envelope.signature || !envelope.fromPubKey) return false;
+            // [IAST-13] Time-based dedup — prune expired entries, then check
+            const now = Date.now();
+            if (this.seenMessages.size > this.processedCacheSize / 2) {
+                for (const [id, ts] of this.seenMessages) {
+                    if (now - ts > this.DEDUP_TTL) this.seenMessages.delete(id);
+                }
+            }
             if (this.seenMessages.has(envelope.id)) return false;
 
             try {
                 const pubKey = await this._importKey(envelope.fromPubKey, 'verify', 'spki');
                 const signData = `${envelope.id}:${envelope.from}:${envelope.to}:${envelope.timestamp}:${envelope.payload}`;
 
-                // Using GhostIdentity helper
                 const isValid = await GhostIdentity.verifySignature(signData, envelope.signature, pubKey);
 
                 if (isValid) {
-                    this.seenMessages.add(envelope.id);
+                    this.seenMessages.set(envelope.id, now);
                     if (this.seenMessages.size > this.processedCacheSize) {
-                        const it = this.seenMessages.values();
+                        const it = this.seenMessages.keys();
                         this.seenMessages.delete(it.next().value);
                     }
                 }
                 return isValid;
             } catch (e) {
-                console.error("Verify Error", e);
+                // [IAST-15] Log only message, not full error object (may contain key material)
+                console.error("Verify Error:", e.message || 'unknown');
                 return false;
             }
         }
@@ -262,13 +259,10 @@
         async decryptEnvelope(envelope) {
             try {
                 if (envelope.to === "broadcast") {
-                    if (!this._broadcastKey || !envelope.iv) return null;
-                    const iv = this._hexToArrayBuffer(envelope.iv);
+                    // [IAST-08] Broadcast payloads are signed plaintext (hex-encoded), not encrypted
+                    if (!envelope.payload) return null;
                     const payloadBuf = this._hexToArrayBuffer(envelope.payload);
-                    const decrypted = await subtle.decrypt(
-                        { name: "AES-GCM", iv: iv }, this._broadcastKey, payloadBuf
-                    );
-                    const str = new TextDecoder().decode(decrypted);
+                    const str = new TextDecoder().decode(payloadBuf);
                     try { return JSON.parse(str); } catch (e) { return str; }
                 }
 
