@@ -200,9 +200,12 @@ app.use((req, res, next) => {
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://assets.coingecko.com https://api.qrserver.com; connect-src 'self' wss: ws:; font-src 'self'");
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    res.setHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    // [RASP-12] Cross-origin isolation headers
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     // [DAST-F02] CORS — restrict to configured origins
     const origin = req.headers.origin;
     if (origin && ALLOWED_ORIGINS.has(origin)) {
@@ -614,6 +617,12 @@ server.on("upgrade", (req, socket, head) => {
             return;
         }
 
+        // [RASP-09] Reject rapid WS reconnections
+        if (!_checkWsConnRate(decoded.userId)) {
+            socket.destroy();
+            return;
+        }
+
         wss.handleUpgrade(req, socket, head, ws => {
             ws.authenticatedUserId = decoded.userId;
             const existing = _activeWsSessions.get(decoded.userId);
@@ -629,6 +638,23 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 const MAX_WS_MESSAGE_SIZE = 8192;
+
+// [RASP-09] WS connection rate limiter — prevent rapid reconnect/mapping attacks
+const _wsConnRate = new Map();
+function _checkWsConnRate(userId) {
+    const now = Date.now();
+    const entry = _wsConnRate.get(userId) || { count: 0, resetAt: now + 60000 };
+    if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 60000; }
+    entry.count++;
+    _wsConnRate.set(userId, entry);
+    return entry.count <= 10;
+}
+setInterval(() => {
+    const now = Date.now();
+    for (const [uid, entry] of _wsConnRate) {
+        if (now > entry.resetAt) _wsConnRate.delete(uid);
+    }
+}, 120000);
 
 wss.on("connection", (ws, req) => {
     let clientId = null;

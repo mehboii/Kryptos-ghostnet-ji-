@@ -342,17 +342,23 @@
             }
         }
 
-        // Clean up call keys when a call ends
+        // [RASP-10] Set identity signing key for ECDH signature binding
+        setIdentityKey(privateKey) {
+            this._identityKey = privateKey;
+        }
+
+        // Clean up call keys and ECDH state when a call ends
         endCall(peerId) {
             const pc = this.activeCalls.get(peerId);
             if (pc) {
                 pc.close();
                 this.activeCalls.delete(peerId);
             }
-            // Find and delete associated call key
+            // Clean up associated call keys and ECDH state
             for (const [callId] of this._callKeys) {
                 if (!this.activeCalls.size) {
                     this._callKeys.delete(callId);
+                    if (this._callECDH) this._callECDH.delete(callId);
                 }
             }
         }

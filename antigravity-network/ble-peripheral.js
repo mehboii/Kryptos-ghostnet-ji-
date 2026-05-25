@@ -62,10 +62,35 @@ const PubKeyChar = new bleno.Characteristic({
 let _currentClientAddress = null;
 let _authenticatedClients = new Set();
 
+// [RASP-06] Per-client rate limiting for BLE writes
+const _bleWriteRates = new Map();
+function _checkBleWriteRate(clientAddr) {
+    const now = Date.now();
+    const entry = _bleWriteRates.get(clientAddr) || { count: 0, resetAt: now + 10000 };
+    if (now > entry.resetAt) { entry.count = 0; entry.resetAt = now + 10000; }
+    entry.count++;
+    _bleWriteRates.set(clientAddr, entry);
+    return entry.count <= 20;
+}
+
 const DataChar = new bleno.Characteristic({
     uuid: CHAR_DATA,
     properties: ['read', 'write', 'notify'],
     onWriteRequest: (data, offset, withoutResponse, callback) => {
+        // [RASP-06] Packet size gate
+        if (data.length > 8192) {
+            console.warn(`[RASP-06] Oversized BLE write rejected (${data.length} bytes)`);
+            callback(bleno.Characteristic.RESULT_SUCCESS);
+            return;
+        }
+
+        // [RASP-06] Rate limit per client
+        if (_currentClientAddress && !_checkBleWriteRate(_currentClientAddress)) {
+            console.warn(`[RASP-06] BLE write rate limit exceeded for ${_currentClientAddress}`);
+            callback(bleno.Characteristic.RESULT_SUCCESS);
+            return;
+        }
+
         const msgStr = data.toString('utf-8');
 
         try {
