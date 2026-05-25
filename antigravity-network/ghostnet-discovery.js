@@ -20,8 +20,15 @@
             this.GOSSIP_INTERVAL = 15000;
             this.PRUNE_TIMEOUT = 300000;
 
-            setInterval(() => this.exchangePeers(), this.GOSSIP_INTERVAL);
-            setInterval(() => this.prunePeers(), this.PRUNE_TIMEOUT);
+            // [IAST-14] Store interval IDs for cleanup
+            this._gossipInterval = setInterval(() => this.exchangePeers(), this.GOSSIP_INTERVAL);
+            this._pruneInterval = setInterval(() => this.prunePeers(), this.PRUNE_TIMEOUT);
+        }
+
+        destroy() {
+            clearInterval(this._gossipInterval);
+            clearInterval(this._pruneInterval);
+            this.knownPeers.clear();
         }
 
         _validatePeerId(peerId) {
