@@ -59,10 +59,20 @@ export default function App() {
             domStorageEnabled={true}
             cacheEnabled={true}
             cacheMode="LOAD_DEFAULT"
-            originWhitelist={['*']}
+            originWhitelist={['file://', 'about:blank']}
             allowFileAccess={true}
             allowFileAccessFromFileURLs={true}
-            allowUniversalAccessFromFileURLs={true}
+            allowUniversalAccessFromFileURLs={false}
+            onShouldStartLoadWithRequest={(request) => {
+              return request.url.startsWith('file://') || request.url === 'about:blank';
+            }}
+            injectedJavaScriptBeforeContentLoaded={`
+              const meta = document.createElement('meta');
+              meta.httpEquiv = 'Content-Security-Policy';
+              meta.content = "default-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data:; connect-src 'self' wss: ws:;";
+              document.head.prepend(meta);
+              true;
+            `}
             bounces={false}
             overScrollMode="never"
             setSupportMultipleWindows={false}

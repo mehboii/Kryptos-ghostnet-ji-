@@ -14,6 +14,14 @@
         return new Uint8Array(tokens.map(byte => parseInt(byte, 16)));
     }
 
+    // [RASP-10] Constant-time buffer comparison — prevents timing attacks on signature bytes
+    function constantTimeEqual(a, b) {
+        if (a.length !== b.length) return false;
+        let result = 0;
+        for (let i = 0; i < a.length; i++) result |= a[i] ^ b[i];
+        return result === 0;
+    }
+
     const GhostIdentity = {
         async generateIdentity() {
             // [DAST-08] Generate extractable to export pubkey, then re-import private key as non-extractable
