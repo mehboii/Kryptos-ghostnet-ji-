@@ -60,6 +60,9 @@ export function signHash(msgHash, privKeyHex) {
     throw new Error('privKeyHex is required');
   }
   const privKeyBytes = hexToBytes(privKeyHex);
+  if (privKeyBytes.length !== 32) {
+    throw new Error('privKeyHex must decode to exactly 32 bytes');
+  }
   const sigBytes = p256.sign(msgHash, privKeyBytes, { lowS: true });
   return bytesToHex(sigBytes);
 }
@@ -100,12 +103,11 @@ export function signPayload(payload, privKeyHex) {
   const checksum = bytesToHex(hash);
   const signature = signHash(hash, privKeyHex);
   const timestamp = Date.now();
-  const nonceBytes = new Uint8Array(16);
-  if (typeof globalThis.crypto !== 'undefined' && globalThis.crypto.getRandomValues) {
-    globalThis.crypto.getRandomValues(nonceBytes);
-  } else {
-    for (let i = 0; i < 16; i++) nonceBytes[i] = Math.floor(Math.random() * 256);
+  if (typeof globalThis.crypto === 'undefined' || !globalThis.crypto.getRandomValues) {
+    throw new Error('crypto.getRandomValues is required for secure nonce generation');
   }
+  const nonceBytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(nonceBytes);
   const nonce = bytesToHex(nonceBytes);
   return { checksum, signature, timestamp, nonce };
 }
@@ -131,6 +133,10 @@ const _NONCE_TTL_MS = 600000;
  * @returns {{ valid: boolean, reason?: string }}
  */
 export function verifyPayload(payload, checksum, sigHex, pubKeyHex, opts) {
+  if (!opts || typeof opts.timestamp !== 'number' || !opts.nonce) {
+    return { valid: false, reason: 'missing_replay_fields' };
+  }
+
   const hash = hashData(payload);
   const computedChecksum = bytesToHex(hash);
 
@@ -138,25 +144,21 @@ export function verifyPayload(payload, checksum, sigHex, pubKeyHex, opts) {
     return { valid: false, reason: 'checksum_mismatch' };
   }
 
-  if (opts) {
-    const maxAge = opts.maxAgeMs || 300000;
-    if (typeof opts.timestamp === 'number') {
-      const age = Date.now() - opts.timestamp;
-      if (age > maxAge || age < -30000) {
-        return { valid: false, reason: 'timestamp_stale' };
-      }
-    }
-    if (opts.nonce) {
-      if (_seenNonces.has(opts.nonce)) {
-        return { valid: false, reason: 'replay_detected' };
-      }
-      _seenNonces.set(opts.nonce, Date.now());
-      if (_seenNonces.size > _SEEN_NONCES_MAX) {
-        const now = Date.now();
-        for (const [n, ts] of _seenNonces) {
-          if (now - ts > _NONCE_TTL_MS) _seenNonces.delete(n);
-        }
-      }
+  const maxAge = opts.maxAgeMs || 300000;
+  const age = Date.now() - opts.timestamp;
+  if (age > maxAge || age < -30000) {
+    return { valid: false, reason: 'timestamp_stale' };
+  }
+
+  const nonceKey = pubKeyHex + ':' + opts.nonce;
+  if (_seenNonces.has(nonceKey)) {
+    return { valid: false, reason: 'replay_detected' };
+  }
+  _seenNonces.set(nonceKey, Date.now());
+  if (_seenNonces.size > _SEEN_NONCES_MAX) {
+    const now = Date.now();
+    for (const [n, ts] of _seenNonces) {
+      if (now - ts > _NONCE_TTL_MS) _seenNonces.delete(n);
     }
   }
 

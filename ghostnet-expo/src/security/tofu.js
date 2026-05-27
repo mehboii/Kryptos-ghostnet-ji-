@@ -178,9 +178,17 @@ export async function acceptKeyChange(peerId, newPublicKey) {
       ? registry[peerId]
       : undefined;
 
+    if (!existing) {
+      throw new Error('Cannot accept key change for unknown peer. Use verifyPeer for first contact.');
+    }
+
+    if (Object.keys(registry).length >= MAX_PEERS && !existing) {
+      throw new Error('Peer registry full (' + MAX_PEERS + ' max).');
+    }
+
     registry[peerId] = {
       publicKey: newPublicKey,
-      firstSeen: existing ? existing.firstSeen : now,
+      firstSeen: existing.firstSeen,
       lastSeen: now,
       trusted: true,
     };
@@ -230,11 +238,13 @@ export async function listPeers() {
  * @returns {Promise<boolean>} true if the peer existed and was removed
  */
 export async function removePeer(peerId) {
-  const registry = await loadRegistry();
-  if (!registry[peerId]) return false;
-  delete registry[peerId];
-  await saveRegistry(registry);
-  return true;
+  return withRegistryLock(async () => {
+    const registry = await loadRegistry();
+    if (!Object.prototype.hasOwnProperty.call(registry, peerId)) return false;
+    delete registry[peerId];
+    await saveRegistry(registry);
+    return true;
+  });
 }
 
 /**
@@ -242,5 +252,7 @@ export async function removePeer(peerId) {
  * @returns {Promise<void>}
  */
 export async function clearRegistry() {
-  await SecureStore.deleteItemAsync(REGISTRY_KEY);
+  return withRegistryLock(async () => {
+    await SecureStore.deleteItemAsync(REGISTRY_KEY);
+  });
 }

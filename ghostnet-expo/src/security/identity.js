@@ -10,6 +10,20 @@ const STORE_KEY_MNEMONIC = 'ghostnet_mnemonic';
 const STORE_KEY_PRIVKEY = 'ghostnet_privkey';
 const STORE_KEY_PUBKEY = 'ghostnet_pubkey';
 
+let _identityLock = Promise.resolve();
+
+async function withIdentityLock(fn) {
+  const prev = _identityLock;
+  let resolve;
+  _identityLock = new Promise((r) => { resolve = r; });
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    resolve();
+  }
+}
+
 /**
  * Generate a new 12-word BIP39 mnemonic.
  * @returns {string} 12-word space-separated mnemonic
@@ -58,27 +72,29 @@ export function deriveKeypair(mnemonic) {
  * @returns {Promise<{ mnemonic: string, privateKey: string, publicKey: string, isNew: boolean }>}
  */
 export async function initializeIdentity() {
-  const existingPub = await SecureStore.getItemAsync(STORE_KEY_PUBKEY);
-  const existingPriv = await SecureStore.getItemAsync(STORE_KEY_PRIVKEY);
-  const existingMnemonic = await SecureStore.getItemAsync(STORE_KEY_MNEMONIC);
+  return withIdentityLock(async () => {
+    const existingPub = await SecureStore.getItemAsync(STORE_KEY_PUBKEY);
+    const existingPriv = await SecureStore.getItemAsync(STORE_KEY_PRIVKEY);
+    const existingMnemonic = await SecureStore.getItemAsync(STORE_KEY_MNEMONIC);
 
-  if (existingPub && existingPriv && existingMnemonic) {
-    return {
-      mnemonic: existingMnemonic,
-      privateKey: existingPriv,
-      publicKey: existingPub,
-      isNew: false,
-    };
-  }
+    if (existingPub && existingPriv && existingMnemonic) {
+      return {
+        mnemonic: existingMnemonic,
+        privateKey: existingPriv,
+        publicKey: existingPub,
+        isNew: false,
+      };
+    }
 
-  const mnemonic = createMnemonic();
-  const { privateKey, publicKey } = deriveKeypair(mnemonic);
+    const mnemonic = createMnemonic();
+    const { privateKey, publicKey } = deriveKeypair(mnemonic);
 
-  await SecureStore.setItemAsync(STORE_KEY_MNEMONIC, mnemonic);
-  await SecureStore.setItemAsync(STORE_KEY_PRIVKEY, privateKey);
-  await SecureStore.setItemAsync(STORE_KEY_PUBKEY, publicKey);
+    await SecureStore.setItemAsync(STORE_KEY_MNEMONIC, mnemonic);
+    await SecureStore.setItemAsync(STORE_KEY_PRIVKEY, privateKey);
+    await SecureStore.setItemAsync(STORE_KEY_PUBKEY, publicKey);
 
-  return { mnemonic, privateKey, publicKey, isNew: true };
+    return { mnemonic, privateKey, publicKey, isNew: true };
+  });
 }
 
 /**
@@ -89,14 +105,23 @@ export async function initializeIdentity() {
  * @throws {Error} if mnemonic is invalid
  */
 export async function restoreIdentity(mnemonic) {
+  if (!mnemonic || typeof mnemonic !== 'string') {
+    throw new Error('mnemonic must be a non-empty string');
+  }
   const trimmed = mnemonic.trim().toLowerCase();
-  const { privateKey, publicKey } = deriveKeypair(trimmed);
+  if (trimmed.length === 0) {
+    throw new Error('mnemonic must be a non-empty string');
+  }
 
-  await SecureStore.setItemAsync(STORE_KEY_MNEMONIC, trimmed);
-  await SecureStore.setItemAsync(STORE_KEY_PRIVKEY, privateKey);
-  await SecureStore.setItemAsync(STORE_KEY_PUBKEY, publicKey);
+  return withIdentityLock(async () => {
+    const { privateKey, publicKey } = deriveKeypair(trimmed);
 
-  return { privateKey, publicKey };
+    await SecureStore.setItemAsync(STORE_KEY_MNEMONIC, trimmed);
+    await SecureStore.setItemAsync(STORE_KEY_PRIVKEY, privateKey);
+    await SecureStore.setItemAsync(STORE_KEY_PUBKEY, publicKey);
+
+    return { privateKey, publicKey };
+  });
 }
 
 /**
@@ -130,7 +155,9 @@ export async function hasIdentity() {
  * @returns {Promise<void>}
  */
 export async function clearIdentity() {
-  await SecureStore.deleteItemAsync(STORE_KEY_MNEMONIC);
-  await SecureStore.deleteItemAsync(STORE_KEY_PRIVKEY);
-  await SecureStore.deleteItemAsync(STORE_KEY_PUBKEY);
+  return withIdentityLock(async () => {
+    await SecureStore.deleteItemAsync(STORE_KEY_MNEMONIC);
+    await SecureStore.deleteItemAsync(STORE_KEY_PRIVKEY);
+    await SecureStore.deleteItemAsync(STORE_KEY_PUBKEY);
+  });
 }
