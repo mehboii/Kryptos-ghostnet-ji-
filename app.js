@@ -111,6 +111,32 @@ const ALLOWED_ATTACHMENT_MIME = new Set([
 ]);
 
 // ─────────────────────────────────────────────
+//  AUTO RE-AUTH ON LOAD
+//  The node JWT lives in sessionStorage with a 1h expiry and was previously only
+//  obtained during the interactive unlock flow. After a page reload / new tab /
+//  remembered session / token expiry there was NO token, so every authed call
+//  (/validate-node, /history, /conversations, vault…) returned HTTP 401.
+//  This transparently refreshes the token on load via window.ghostnetEnsureAuth()
+//  (defined in index.html). It no-ops if a valid token already exists.
+// ─────────────────────────────────────────────
+(function autoAuthOnLoad() {
+    let tries = 0;
+    const tick = async () => {
+        tries++;
+        if (typeof window.ghostnetEnsureAuth === 'function') {
+            try { await window.ghostnetEnsureAuth(); } catch (_) {}
+            return;
+        }
+        if (tries < 40) setTimeout(tick, 250); // wait up to ~10s for the auth closure
+    };
+    if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', () => setTimeout(tick, 300));
+    } else {
+        setTimeout(tick, 300);
+    }
+})();
+
+// ─────────────────────────────────────────────
 //  APP STATE
 // ─────────────────────────────────────────────
 window.app = {
