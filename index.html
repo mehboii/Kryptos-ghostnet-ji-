@@ -635,30 +635,7 @@
                         </div>
                         <div id="ghostcode-search-result" style="display:none;"></div>
                         <div class="chat-user-list" id="chat-user-list">
-                            <!-- Populated dynamically via JS -->
-                            <div class="chat-user-row active" onclick="UI.selectChat('mock_1')">
-                                <div class="chat-avatar-wrap">
-                                    <div class="chat-avatar"
-                                        style="background: linear-gradient(135deg, #3b82f6, #8b5cf6);"></div>
-                                    <div class="unread-dot"></div>
-                                </div>
-                                <div class="chat-user-info">
-                                    <div class="chat-user-top">
-                                        <span class="chat-username">Phantom_99</span>
-                                        <span class="chat-time">10:42 AM</span>
-                                    </div>
-                                    <div class="chat-user-bottom">
-                                        <span class="chat-preview">
-                                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"
-                                                stroke="currentColor" stroke-width="2.5"
-                                                style="vertical-align: -1px; margin-right: 3px;">
-                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                            </svg>
-                                            Encryption verified.
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
+                            <!-- Populated dynamically via UI.renderConversations() -->
                         </div>
                     </div>
 

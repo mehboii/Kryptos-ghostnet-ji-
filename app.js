@@ -337,14 +337,26 @@ window.addEventListener('DOMContentLoaded', async () => {
             const myId = window.app.identity.nodeId || window.app.identity.id;
             const msgId = generateSecureId('msg');
 
+            // ─── [FIX #3] Read the active composer mode (Save vs Burn). ───────────
+            //     Previously the mode buttons toggled visually but were never read,
+            //     so "Burn" (ephemeral) messages were silently persisted forever.
+            const activeModeBtn = document.querySelector('.mode-btn.active');
+            const mode = (activeModeBtn && activeModeBtn.dataset.mode === 'EPHEMERAL') ? 'EPHEMERAL' : 'PERSIST';
+            const ttl = mode === 'EPHEMERAL' ? 30 : 0;
+            const isEphemeral = mode === 'EPHEMERAL';
+
             if (window.UI) UI.addMessage(text, 'me', msgId);
             input.value = '';
 
             try {
-                // 1. Persist to server (server stores for offline delivery)
-                const result = await window.app.persistMessage(text, recipientNodeId, msgId);
-                if (result?.success) {
-                    log.info('Message persisted to server.');
+                // 1. Persist to server for offline delivery — ONLY for PERSIST mode.
+                //    [FIX #3] Burn messages must never be written to server storage.
+                let result = null;
+                if (!isEphemeral) {
+                    result = await window.app.persistMessage(text, recipientNodeId, msgId);
+                    if (result?.success) {
+                        log.info('Message persisted to server.');
+                    }
                 }
 
                 // 2. Send encrypted via GhostChat mesh transport (E2E encrypted)
@@ -352,8 +364,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                 // chatTarget is set to peer's publicKey by the UI when opening a chat.
                 if (window.app.chat && recipientNodeId !== 'broadcast') {
                     try {
-                        await window.app.chat.sendMessage(text, recipientNodeId);
-                        log.info('Message sent via encrypted mesh.');
+                        await window.app.chat.sendMessage(text, recipientNodeId, mode, ttl);
+                        log.info(`Message sent via encrypted mesh (mode=${mode}).`);
                     } catch (encErr) {
                         log.warn('Encrypted send failed, message still persisted to server:', encErr.message);
                     }
@@ -486,7 +498,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                     }
                 } else if (msgData.type === 'MSG' || msgData.body) {
                     const body = sanitize(msgData.body || '');
-                    if (body && window.UI) UI.addMessage(body, 'them');
+                    // [FIX #4] Same routing guard for the unencrypted path — only render
+                    // into the feed when the sender is the open conversation peer.
+                    if (body && window.UI && sanitize(from) === window.app.chatTarget) {
+                        UI.addMessage(body, 'them', msgData.id || null);
+                    }
+                    const uid = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
+                    if (uid && window.UI) UI.loadConversations(uid);
                 }
             };
 
@@ -527,7 +545,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     } else {
         log.warn('GhostMesh not loaded, using direct WebSocket fallback.');
-        try {
+        if (window.__GHOSTNET_OFFLINE__) {
+            log.info('Offline standalone mode — skipping WebSocket fallback (no server).');
+        } else try {
             const ws = new WebSocket(BACKEND.ws);
 
             ws.addEventListener('open', () => {
@@ -634,7 +654,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                 if (!msg?.body) return;
                 const safeBody = sanitize(msg.body);
                 if (window.UI) {
-                    UI.addMessage(safeBody, 'them');
+                    // [FIX #4] Only append to the feed if this message belongs to the
+                    // conversation currently open. Otherwise it would appear inside an
+                    // unrelated chat thread. The list refresh below surfaces it as an
+                    // unread preview on the correct conversation instead.
+                    if (msg.from && msg.from === window.app.chatTarget) {
+                        UI.addMessage(safeBody, 'them', msg.id || null);
+                    }
                     const userId = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
                     if (userId) UI.loadConversations(userId);
                 }
