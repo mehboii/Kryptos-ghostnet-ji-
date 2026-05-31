@@ -239,6 +239,8 @@ class GhostMesh {
     // ── [F2] WS URL builder ───────────────────────────────────────────────────
 
     buildWsUrl() {
+        // Offline standalone build (Capacitor/Expo WebView) has no server — no WS transport.
+        if (typeof window !== 'undefined' && window.__GHOSTNET_OFFLINE__) return null;
         // Allow override via <meta name="ghostnet-ws-url" content="wss://...">
         const meta = document.querySelector('meta[name="ghostnet-ws-url"]');
         if (meta && meta.content) return meta.content;
@@ -425,6 +427,13 @@ class GhostMesh {
 
     connectWebSocket() {
         if (this._destroyed) return; // [S11]
+        // Offline standalone build — no central server, so never open a WS.
+        // This is the single chokepoint for start(), setAuthToken() and reconnect().
+        if (typeof window !== 'undefined' && window.__GHOSTNET_OFFLINE__) {
+            this.wsReady = false;
+            this.onStatusChange({ state: 'offline', transport: 'local' });
+            return;
+        }
         if (this._connecting) return; // prevent overlapping connect attempts
 
         // [F1] Require a JWT token — abort if missing

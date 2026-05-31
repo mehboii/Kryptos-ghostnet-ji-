@@ -78,6 +78,31 @@
  *       → helmet() added
  *  [34] deliverPendingMessages called via setTimeout — race on messages[]
  *       → Delivery called synchronously after meshPeers.set(); no alias race
+ *
+ * SECOND PASS (BOLA / negative-case hardening)
+ *  [35] POST /register-node could overwrite a node owned by a *different* user
+ *       (REST path lacked the ownership check the WS path already had) — node hijack.
+ *       Also wiped shortCode/registeredAt on re-register.
+ *       → Reject if existing.ownerId is another real account; preserve prior fields.
+ *  [36] POST /register-node had no per-user node cap (WS path caps at 20) — registry DoS.
+ *       → MAX_NODES_PER_USER enforced on new registrations only.
+ *  [37] POST /auth/node enforced node ownership ONLY when an Authorization header was
+ *       present — omitting it let anyone mint a node JWT for any nodeId.
+ *       → Ownership checked on the no-header path too; account-bound nodes protected,
+ *         self-owned/account-less mesh nodes still claimable.
+ *  [38] isNode branches of GET/PATCH /user/profile and GET /user/shortcode mutated a
+ *       node's profile with no owner check — node-card takeover/defacement via a minted
+ *       node token.
+ *       → 403 when the node is bound to a different real account.
+ *  [39] GET /history limit/offset not clamped for NaN/negative — slice() returned
+ *       unintended ranges.
+ *       → Clamp limit to [1,200] and offset to >=0.
+ *
+ * RESIDUAL (design-level, not a one-line fix — see GEMINI.md "Defense 2"):
+ *  Account-less node identities (ownerId === nodeId) cannot be cryptographically
+ *  distinguished from an attacker claiming the same nodeId without a proof-of-possession
+ *  (Ed25519 nonce challenge-response binding nodeId == H(publicKey)). Until that handshake
+ *  is implemented, first-claim binding is the only guard for self-owned nodes.
  */
 
 import 'dotenv/config';
@@ -568,6 +593,11 @@ app.get('/user/shortcode', requireAuth, (req, res) => {
         // For those, issue/return a node-scoped GhostCode persisted in nodes.json.
         if (req.user?.isNode) {
             const nodeId = validateNodeId(authedId);
+            // [38][BOLA] Reject if this node is bound to a different real account.
+            const _existing = registeredNodes[nodeId];
+            if (_existing && _existing.ownerId && _existing.ownerId !== req.user.id) {
+                return res.status(403).json({ error: 'Not authorized for this node' });
+            }
             if (!registeredNodes[nodeId]) {
                 registeredNodes[nodeId] = {
                     nodeId,
@@ -757,19 +787,28 @@ app.post('/auth/node', nodeAuthLimiter, (req, res) => {
     try { nodeId = validateNodeId(req.body?.nodeId); }
     catch (e) { return res.status(400).json({ error: e.message }); }
 
-    // If caller provided a valid JWT, enforce ownership check
-    let ownerId = nodeId; // default: self-owned
+    // If caller provided a valid JWT, capture the authenticated identity
+    let authedId = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         try {
             const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
-            ownerId = decoded.id || nodeId;
-            const existing = registeredNodes[nodeId];
-            if (existing && existing.ownerId && existing.ownerId !== decoded.id) {
-                return res.status(403).json({ error: 'Not authorized to claim this node' });
-            }
+            authedId = decoded.id || decoded.userId || null;
         } catch (_) { /* token invalid/expired — treat as unauthenticated node auth */ }
     }
+
+    // [37][Broken auth] Ownership enforcement that also covers the no-header path.
+    // A node bound to a *real account* (ownerId !== nodeId) may only be claimed by
+    // that account. Previously this check ran ONLY when an Authorization header was
+    // present, so omitting the header let anyone mint a node JWT for any nodeId.
+    // Self-owned / unregistered nodes (ownerId === nodeId or absent) stay claimable
+    // so account-less mesh nodes (e.g. ESP32) keep working.
+    const existing = registeredNodes[nodeId];
+    if (existing && existing.ownerId && existing.ownerId !== nodeId
+        && existing.ownerId !== authedId) {
+        return res.status(403).json({ error: 'Not authorized to claim this node' });
+    }
+    const ownerId = authedId || nodeId;
 
     // Issue a JWT representing the node itself
     const token = jwt.sign({ id: nodeId, isNode: true, ownerId }, JWT_SECRET, { expiresIn: '7d' });
@@ -800,14 +839,38 @@ app.post('/register-node', requireAuth, (req, res) => { // [01]
         avatar = req.body.avatar.slice(0, 512 * 1024);
     }
 
+    const existingNode = registeredNodes[nodeId];
+
+    // [35][BOLA] Node hijack prevention — match the WS-side ownership check.
+    // A node already bound to a *different real account* cannot be re-registered.
+    // Placeholder/self-owned entries (ownerId === nodeId), e.g. auto-created when
+    // someone messaged this node first, remain claimable by the first real owner.
+    if (existingNode && existingNode.ownerId
+        && existingNode.ownerId !== req.user.id
+        && existingNode.ownerId !== nodeId) {
+        return res.status(403).json({ error: 'Node already registered to another user' });
+    }
+
+    // [36][DoS] Per-user node cap (mirrors MAX_NODES_PER_USER on the WS path).
+    // Re-registering an existing owned node is always allowed; only brand-new
+    // node creation counts toward the limit.
+    if (!existingNode) {
+        const MAX_NODES_PER_USER = 20;
+        const owned = Object.values(registeredNodes).filter(n => n && n.ownerId === req.user.id).length;
+        if (owned >= MAX_NODES_PER_USER) {
+            return res.status(429).json({ error: 'Node registration limit reached' });
+        }
+    }
+
     registeredNodes[nodeId] = {
+        ...(existingNode || {}), // preserve shortCode and any other existing fields
         nodeId,
         displayName,
         ownerId: req.user.id, // bind to authenticated user
         address,
         publicKey,
         avatar,
-        registeredAt: Date.now(),
+        registeredAt: existingNode?.registeredAt || Date.now(), // don't reset on re-register
         lastSeen: Date.now(),
     };
 
@@ -917,6 +980,11 @@ app.get('/user/profile', requireAuth, (req, res) => {
     if (req.user?.isNode) {
         let nodeId;
         try { nodeId = validateNodeId(req.user.id); } catch { return res.status(400).json({ error: 'Invalid nodeId' }); }
+        // [38][BOLA] Reject if this node is bound to a different real account.
+        const _existing = registeredNodes[nodeId];
+        if (_existing && _existing.ownerId && _existing.ownerId !== req.user.id) {
+            return res.status(403).json({ error: 'Not authorized for this node' });
+        }
         if (!registeredNodes[nodeId]) {
             registeredNodes[nodeId] = {
                 nodeId,
@@ -986,6 +1054,12 @@ app.patch('/user/profile', requireAuth, express.json({ limit: '600kb' }), (req, 
     if (req.user?.isNode) {
         let nodeId;
         try { nodeId = validateNodeId(req.user.id); } catch { return res.status(400).json({ error: 'Invalid nodeId' }); }
+        // [38][BOLA] Critical: block profile takeover. A node bound to a different
+        // real account cannot have its displayName/avatar overwritten by an isNode token.
+        const _existing = registeredNodes[nodeId];
+        if (_existing && _existing.ownerId && _existing.ownerId !== req.user.id) {
+            return res.status(403).json({ error: 'Not authorized for this node' });
+        }
         if (!registeredNodes[nodeId]) {
             registeredNodes[nodeId] = {
                 nodeId,
@@ -1353,8 +1427,9 @@ app.get('/history', requireAuth, (req, res) => { // [04][13]
     }
 
     // [13] Pagination
-    const limit = Math.min(parseInt(req.query.limit || '50', 10), 200);
-    const offset = Math.max(parseInt(req.query.offset || '0', 10), 0);
+    // [39] Clamp against NaN / negative values so slice() can't return unintended ranges
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
+    const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
     const result = messages.filter(m => m.convoId === convoId).slice(offset, offset + limit);
     res.json(result);
 });
