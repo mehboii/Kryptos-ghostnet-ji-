@@ -1995,17 +1995,36 @@ const UI = {
                 });
                 if (res.ok) {
                     const msgs = await res.json();
-                    msgs.forEach(m => {
-                        const myNodeId = AppState.identity ? (AppState.identity.nodeId || AppState.identity.id) : null;
+                    const myNodeId = AppState.identity ? (AppState.identity.nodeId || AppState.identity.id) : null;
+                    for (const m of msgs) {
                         const type = (m.senderId === myNodeId) ? 'me' : 'them';
 
                         let text = m.content;
-                        if (typeof text === 'object' && text.body) text = text.body;
-                        if (typeof text === 'string' && text.includes('body":"')) {
-                            try { text = JSON.parse(text).body; } catch (e) { }
+                        // content may be a plain string, a {body} object, or an encrypted
+                        // GhostChat envelope ({type:'MSG', iv, data, salt, hmac}).
+                        let pkt = null;
+                        if (text && typeof text === 'object') {
+                            if (text.type === 'MSG' && text.iv) pkt = text;
+                            else if (text.body) text = text.body;
+                        } else if (typeof text === 'string') {
+                            try {
+                                const o = JSON.parse(text);
+                                if (o && o.type === 'MSG' && o.iv) pkt = o;
+                                else if (o && o.body) text = o.body;
+                            } catch (_) { /* genuine plain-text message */ }
+                        }
+                        // Encrypted envelope → decrypt for display. NEVER render raw
+                        // ciphertext: fall back to a lock placeholder (e.g. legacy messages
+                        // stored before salt/hmac were carried through transport).
+                        if (pkt) {
+                            let dec = null;
+                            if (window.app?.chat?.decryptStored) {
+                                dec = await window.app.chat.decryptStored(pkt);
+                            }
+                            text = (dec != null) ? dec : '🔒 Encrypted message';
                         }
                         UI.addMessage(text || '***', type, m.id || null);
-                    });
+                    }
                 }
             } catch (e) { console.error("Error loading history", e) }
         }

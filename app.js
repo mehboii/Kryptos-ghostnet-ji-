@@ -501,21 +501,22 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onMessage = (msgData, from, transport) => {
+                // The server may relay `content` as a JSON string — parse it back.
+                if (typeof msgData === 'string') {
+                    try { msgData = JSON.parse(msgData); } catch (_) { return; }
+                }
                 if (!msgData || typeof msgData !== 'object') return;
 
                 if (msgData.type === 'MSG' && msgData.iv) {
                     if (window.app.chat) {
                         try {
+                            // msgData IS the full encrypted packet (salt/hmac/from/ts now
+                            // preserved by transportSender). Pass it through unchanged so
+                            // receive() can verify the HMAC and decrypt.
                             const gcPacket = {
-                                type: 'MSG',
-                                id: msgData.id,
-                                from: sanitize(from),
-                                to: window.app.identity.nodeId,
-                                ts: Date.now(),
-                                iv: msgData.iv,
-                                data: msgData.data,
-                                mode: msgData.mode,
-                                ttl: msgData.ttl
+                                ...msgData,
+                                from: msgData.from || sanitize(from),
+                                to: msgData.to || window.app.identity.pub || window.app.identity.nodeId
                             };
                             window.app.chat.receive(JSON.stringify(gcPacket));
                         } catch (e) {
@@ -631,13 +632,22 @@ window.addEventListener('DOMContentLoaded', async () => {
                     type: 'message',
                     to: gcPayload.to,
                     from: gcPayload.from,
+                    // Carry the COMPLETE encrypted packet — salt + hmac + from + ts are
+                    // required by the receiver to derive the session key, verify the HMAC
+                    // and decrypt. Stripping them (the old behaviour) made every encrypted
+                    // message undecryptable on the other end.
                     content: {
-                        iv: gcPayload.iv,
-                        data: gcPayload.data,
+                        id: gcPayload.id,
+                        type: 'MSG',
+                        from: gcPayload.from,
+                        to: gcPayload.to,
+                        ts: gcPayload.ts,
                         mode: gcPayload.mode,
                         ttl: gcPayload.ttl,
-                        id: gcPayload.id,
-                        type: 'MSG'
+                        iv: gcPayload.iv,
+                        data: gcPayload.data,
+                        salt: gcPayload.salt,
+                        hmac: gcPayload.hmac
                     },
                     timestamp: gcPayload.ts
                 };

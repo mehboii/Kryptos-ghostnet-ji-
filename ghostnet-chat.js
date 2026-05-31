@@ -450,6 +450,28 @@
             }
         }
 
+        // Decrypt a stored/historical packet for DISPLAY only.
+        // Unlike receive(), this skips the 5-minute freshness window, replay dedupe
+        // and onMessage routing — it just returns the plaintext body (or null).
+        // Works for both received (from=peer) and sent (from=self) messages, since
+        // the ECDH shared secret is symmetric and the salt travels in the packet.
+        async decryptStored(packet) {
+            try {
+                if (!packet || packet.type !== 'MSG' || !packet.iv || !packet.data) return null;
+                const peerPub = (packet.from === this.myIdentity.pub) ? packet.to : packet.from;
+                if (!peerPub) return null;
+                const session = await this.getSession(peerPub, packet.salt);
+                const buf = await crypto.subtle.decrypt(
+                    { name: 'AES-GCM', iv: new Uint8Array(packet.iv) },
+                    session.sessionKey,
+                    new Uint8Array(packet.data)
+                );
+                return new TextDecoder().decode(buf);
+            } catch (_) {
+                return null;
+            }
+        }
+
         async _handleMessage(packet) {
             // Reject messages with timestamps more than 5 minutes old or in the future
             if (Math.abs(Date.now() - packet.ts) > 300000) return;
