@@ -980,8 +980,22 @@ const UI = {
     },
 
     chatBackToList: () => {
+        // [FIX #6] Previously this only slid the mobile panel back and left stale
+        // state behind (active row highlight, open thread, chatTarget). Reset the
+        // selection so reopening or receiving a message routes correctly.
         const chatSplit = document.querySelector('.chat-layout-split');
         if (chatSplit) chatSplit.classList.remove('chat-active');
+
+        document.querySelectorAll('.chat-user-row.active').forEach(r => r.classList.remove('active'));
+
+        const feed = document.getElementById('chat-feed');
+        if (feed) feed.innerHTML = '';
+
+        if (window.AppState) AppState.activeConvoId = null;
+        if (window.app) {
+            window.app.chatTarget = null;
+            window.app.chatContactName = null;
+        }
     },
 
     initTheme: () => {
@@ -1979,7 +1993,7 @@ const UI = {
                         if (typeof text === 'string' && text.includes('body":"')) {
                             try { text = JSON.parse(text).body; } catch (e) { }
                         }
-                        UI.addMessage(text || '***', type);
+                        UI.addMessage(text || '***', type, m.id || null);
                     });
                 }
             } catch (e) { console.error("Error loading history", e) }
@@ -2346,32 +2360,28 @@ const UI = {
         const input = document.getElementById('chat-input');
         const modes = document.querySelectorAll('.mode-btn');
 
+        // [FIX #2] Send handling is owned exclusively by app.js (wireUpSendButton),
+        // which manages encryption + HTTP persistence and attaches the click +
+        // Enter listeners. Previously setupChat ALSO bound click/touchend/keypress
+        // here, so every tap fired sendMessage 2–3×. We only wire a *fallback*
+        // that activates if app.js never installs its own handler.
         if (btn && input) {
-            const sendHandler = async () => {
-                // Delegate to app.js sendMessage if available (it handles HTTP persistence)
-                if (window.app && window.app.sendMessage) {
-                    await window.app.sendMessage();
-                    return;
-                }
+            const fallbackSend = async () => {
+                // If app.js has wired its sender, do nothing — it already handles the event.
+                if (window.app && window.app.sendMessage) return;
 
-                // Fallback: directly persist via HTTP if app.sendMessage not wired yet
                 const text = input.value.trim();
                 if (!text) return;
                 UI.addMessage(text, 'me');
                 input.value = '';
 
-                // Direct HTTP persistence fallback
                 const myId = (window.AppState && window.AppState.identity) ? (window.AppState.identity.nodeId || window.AppState.identity.id) : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 try {
                     const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
                         method: 'POST',
                         headers: getAuthHeaders(),
-                        body: JSON.stringify({
-                            senderId: myId,
-                            receiverId: targetId,
-                            content: text
-                        })
+                        body: JSON.stringify({ senderId: myId, receiverId: targetId, content: text })
                     });
                     const result = await res.json();
                     if (result.success && result.convo) {
@@ -2382,12 +2392,11 @@ const UI = {
                     console.error("Direct HTTP fallback failed:", e);
                 }
             };
-            btn.addEventListener('click', sendHandler);
-            btn.addEventListener('touchend', (e) => { e.preventDefault(); sendHandler(); });
-
-            input.onkeypress = (e) => {
-                if (e.key === 'Enter') btn.click();
-            };
+            // Single listener; immediately returns when app.js owns sending.
+            btn.addEventListener('click', fallbackSend);
+            input.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter' && !(window.app && window.app.sendMessage)) fallbackSend();
+            });
         }
 
         modes.forEach(m => {
@@ -2482,6 +2491,12 @@ const UI = {
     addMessage: (text, type, msgId = null) => {
         const feed = document.getElementById('chat-feed');
         if (!feed) return;
+
+        // [FIX #7] Skip messages already rendered (live message + history reload,
+        // or a re-delivered packet) so threads don't show duplicates.
+        if (msgId && feed.querySelector(`.message[data-id="${_escapeSelector(msgId)}"]`)) {
+            return;
+        }
 
         const msg = document.createElement('div');
         msg.className = `message ${type}`;
@@ -3879,7 +3894,27 @@ const UI = {
 
         const initCamera = async (facingMode = 'environment') => {
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: facingMode }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: facingMode },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        // Request continuous autofocus so QR codes sharpen quickly.
+                        advanced: [{ focusMode: 'continuous' }]
+                    }
+                });
+                // Some devices ignore focusMode in getUserMedia — force it via applyConstraints.
+                try {
+                    const track = stream.getVideoTracks && stream.getVideoTracks()[0];
+                    if (track && track.getCapabilities && track.applyConstraints) {
+                        const caps = track.getCapabilities();
+                        const adv = [];
+                        if (caps.focusMode && caps.focusMode.includes && caps.focusMode.includes('continuous')) {
+                            adv.push({ focusMode: 'continuous' });
+                        }
+                        if (adv.length) await track.applyConstraints({ advanced: adv });
+                    }
+                } catch (_) { /* focus constraint unsupported — autofocus stays default */ }
                 video.srcObject = stream;
                 video.onloadedmetadata = () => {
                     video.play();
@@ -3937,9 +3972,23 @@ const UI = {
                 ctx.stroke();
 
                 if (window.jsQR) {
-                    offscreenCtx.drawImage(video, 0, 0, offscreenCanvas.width, offscreenCanvas.height);
-                    const imageData = offscreenCtx.getImageData(0, 0, offscreenCanvas.width, offscreenCanvas.height);
-                    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' });
+                    // Decode a centered square crop (the guide-box region) rather than the
+                    // whole frame: gives jsQR a tighter, sharper view of the code so it fills
+                    // most of the processed image. Downscale to a fixed 500px for speed, and
+                    // attempt both polarities to handle dark/inverted Ghost Cards.
+                    const PROC = 500;
+                    const vw = video.videoWidth || offscreenCanvas.width;
+                    const vh = video.videoHeight || offscreenCanvas.height;
+                    const cropSize = Math.max(1, Math.floor(Math.min(vw, vh) * 0.8));
+                    const sx = Math.floor((vw - cropSize) / 2);
+                    const sy = Math.floor((vh - cropSize) / 2);
+                    if (offscreenCanvas.width !== PROC || offscreenCanvas.height !== PROC) {
+                        offscreenCanvas.width = PROC;
+                        offscreenCanvas.height = PROC;
+                    }
+                    offscreenCtx.drawImage(video, sx, sy, cropSize, cropSize, 0, 0, PROC, PROC);
+                    const imageData = offscreenCtx.getImageData(0, 0, PROC, PROC);
+                    const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'attemptBoth' });
 
                     if (code) {
                         try {
