@@ -1608,15 +1608,26 @@ const UI = {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
 
-            // AbortController for fetch timeout
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
+            // Ensure a valid session token before validating (it lives in sessionStorage
+            // with a 1h expiry, so it may be missing after an app restart/timeout → 401).
+            if (window.ghostnetEnsureAuth && Object.keys(getAuthHeaders()).length === 0) {
+                await window.ghostnetEnsureAuth();
+            }
 
-            const res = await fetch(validateUrl, {
-                headers: getAuthHeaders(),
-                signal: controller.signal
-            });
-            clearTimeout(timeoutId);
+            const doValidateFetch = () => {
+                const controller = new AbortController();
+                const t = setTimeout(() => controller.abort(), VALIDATE_TIMEOUT_MS);
+                return fetch(validateUrl, { headers: getAuthHeaders(), signal: controller.signal })
+                    .finally(() => clearTimeout(t));
+            };
+
+            let res = await doValidateFetch();
+
+            // Token expired/invalid → re-authenticate once and retry.
+            if (res.status === 401 && window.ghostnetEnsureAuth) {
+                const refreshed = await window.ghostnetEnsureAuth();
+                if (refreshed) res = await doValidateFetch();
+            }
 
             if (!res.ok) {
                 console.error('Validation HTTP error:', res.status, res.statusText);
