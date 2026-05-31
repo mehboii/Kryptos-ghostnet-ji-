@@ -2451,7 +2451,11 @@ canvas#mesh {
     /* --- CHAT MOBILE LAYOUT --- */
     .chat-layout-split {
         flex-direction: column;
-        height: calc(100vh - 140px);
+        /* !important needed: this element is ALSO .section-container, whose mobile
+           rule sets height:auto !important / overflow:visible !important and would
+           otherwise collapse the chat to content height (tiny feed + empty void). */
+        height: calc(100dvh - 140px) !important;
+        overflow: hidden !important;
         gap: 0;
     }
 
@@ -2550,6 +2554,28 @@ canvas#mesh {
 
     .chat-main-header {
         padding: 10px 15px;
+        gap: 8px;
+        overflow: hidden;
+    }
+
+    /* Prevent the header row from overflowing (badges/Bluetooth icon were clipped):
+       let the user/name group shrink and the name ellipsize. */
+    .active-chat-user {
+        min-width: 0;
+        flex: 1 1 auto;
+        gap: 8px;
+    }
+
+    .active-chat-user > div {
+        min-width: 0;
+    }
+
+    #label-transport {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
+        max-width: 100%;
     }
 
     /* --- OTHER SECTIONS MOBILE --- */
@@ -2652,7 +2678,9 @@ canvas#mesh {
     }
 
     .chat-layout-split {
-        height: calc(100vh - 130px);
+        /* !important to beat .section-container height:auto !important (same element) */
+        height: calc(100dvh - 130px) !important;
+        overflow: hidden !important;
     }
 
     .mobile-nav-item {
@@ -3905,4 +3933,194 @@ canvas#mesh {
     .onboard-subtitle { font-size: 0.85rem; }
     .onboard-icon { width: 80px; height: 80px; }
     .onboard-btn { padding: 12px 40px; }
+}
+
+/* ════════════════════════════════════════════════════════════════════════
+   INSTAGRAM-STYLE CHAT THEME
+   Scoped strictly to the chat section (.chat-*, .message*, #chat-*).
+   Restyles the messaging UI to match Instagram Direct — no logic changes,
+   no impact on any other view. Appended last so it wins the cascade.
+   ════════════════════════════════════════════════════════════════════════ */
+
+/* Instagram brand gradient — reused for sent bubbles, send button, ring. */
+:root {
+    --ig-gradient: linear-gradient(135deg, #4f5bd5 0%, #962fbf 45%, #d62976 100%);
+    --ig-bubble-them: #efefef;
+    --ig-bubble-them-text: #000000;
+    --ig-line: #dbdbdb;
+    --ig-muted: #8e8e8e;
+}
+[data-theme="dark"] {
+    --ig-bubble-them: #262626;
+    --ig-bubble-them-text: #ffffff;
+    --ig-line: #262626;
+    --ig-muted: #a8a8a8;
+}
+
+/* ── Layout shells: flatten to IG's clean panels ───────────────────────── */
+.chat-sidebar {
+    border-radius: 0;
+    border: none;
+    border-right: 1px solid var(--ig-line);
+    box-shadow: none;
+    background: var(--bg-panel);
+}
+.chat-sidebar::before { display: none; }       /* drop the neon top bar */
+.chat-main-panel {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+    background: var(--bg-panel);
+}
+.chat-layout-split {
+    gap: 0;
+    border: 1px solid var(--ig-line);
+    border-radius: 0;
+    overflow: hidden;
+}
+
+/* ── Sidebar header / search ────────────────────────────────────────────── */
+.chat-sidebar-header { padding: 18px 20px 12px; }
+.chat-search {
+    background: var(--ig-bubble-them);
+    border: none;
+    border-radius: 10px;
+    margin: 0 12px 8px;
+    padding: 9px 14px;
+}
+.chat-search:focus-within { box-shadow: none; }
+
+/* ── Conversation list rows ─────────────────────────────────────────────── */
+.chat-user-row {
+    padding: 9px 18px;
+    gap: 13px;
+    border-radius: 0;
+    margin-bottom: 0;
+    transition: background 0.12s ease;
+}
+.chat-user-row:hover {
+    background: var(--ig-bubble-them);
+    transform: none;                            /* IG rows don't slide */
+}
+.chat-user-row.active {
+    background: var(--ig-bubble-them);
+    box-shadow: none;
+}
+.chat-user-row.active::before { display: none; }/* drop the accent tab */
+
+.chat-avatar-wrap .chat-avatar,
+.chat-user-row .chat-avatar {
+    width: 56px;
+    height: 56px;
+    border: none;
+}
+.chat-user-row:hover .chat-avatar,
+.chat-user-row.active .chat-avatar { border: none; }
+
+.chat-username { font-weight: 600; font-size: 0.9rem; }
+.chat-preview  { font-size: 0.82rem; opacity: 1; color: var(--ig-muted); }
+.chat-time     { color: var(--ig-muted); opacity: 1; }
+.chat-time::before { content: '· '; }            /* IG separates time with a dot */
+
+/* ── Active chat header ─────────────────────────────────────────────────── */
+.chat-main-header {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--ig-line);
+    padding: 12px 18px;
+}
+.chat-main-header::after { display: none; }
+#label-transport { font-size: 0.95rem; font-weight: 600; }
+.chat-header-status { font-size: 0.75rem; color: var(--ig-muted); }
+.chat-header-dot { background: #2ecc71 !important; box-shadow: 0 0 6px rgba(46,204,113,0.6); }
+
+/* ── Message feed & bubbles ─────────────────────────────────────────────── */
+.chat-feed {
+    background: var(--bg-panel);               /* remove the striped lines */
+    padding: 18px 16px;
+    gap: 2px;                                   /* tight grouping like IG */
+}
+.message {
+    max-width: 65%;
+    padding: 9px 14px;
+    border-radius: 22px;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    margin: 1px 0;
+}
+.message.me {
+    background: var(--ig-gradient);
+    color: #ffffff;
+    border-bottom-right-radius: 22px;
+    box-shadow: none;
+}
+.message.them {
+    background: var(--ig-bubble-them);
+    color: var(--ig-bubble-them-text);
+    border: none;
+    border-bottom-left-radius: 22px;
+    box-shadow: none;
+}
+
+/* ── Composer: Instagram rounded pill bar ───────────────────────────────── */
+.chat-controls {
+    background: var(--bg-panel);
+    border-top: 1px solid var(--ig-line);
+    padding: 12px 14px;
+    gap: 8px;
+    backdrop-filter: none;
+}
+.chat-attach-btn {
+    border: none;
+    background: transparent;
+    color: var(--text-primary);
+    padding: 8px;
+    border-radius: 50%;
+}
+.chat-attach-btn:hover { background: var(--ig-bubble-them); color: var(--text-primary); }
+
+#chat-input {
+    background: transparent;
+    border: 1px solid var(--ig-line);
+    border-radius: 22px;
+    padding: 11px 16px;
+    font-size: 0.92rem;
+}
+#chat-input:focus { border-color: var(--ig-muted); box-shadow: none; }
+
+/* Mode pills (Save / Burn) kept but slimmed to match IG's minimal chrome */
+.chat-modes { gap: 6px; }
+.mode-btn {
+    padding: 6px 12px;
+    border-radius: 16px;
+    border: 1px solid var(--ig-line);
+    font-size: 0.7rem;
+    color: var(--ig-muted);
+}
+.mode-btn.active {
+    border-color: transparent;
+    background: var(--ig-bubble-them);
+    color: var(--text-primary);
+}
+.mode-btn:hover:not(.active) { border-color: var(--ig-muted); }
+
+/* Send button → IG gradient pill */
+#chat-send {
+    background: var(--ig-gradient);
+    border-radius: 22px;
+    padding: 10px 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    box-shadow: none;
+}
+#chat-send:hover { transform: none; filter: brightness(1.05); box-shadow: none; }
+
+/* Empty-state icon ring uses the IG gradient too */
+.empty-icon { background: var(--ig-bubble-them); color: #962fbf; }
+.empty-icon::before { border-color: transparent; }
+
+/* On mobile the back chevron must be visible (IG slides list ↔ thread) */
+@media (max-width: 768px) {
+    .chat-back-btn { display: flex; }
+    .chat-layout-split { border: none; }
+    .message { max-width: 78%; }
 }
