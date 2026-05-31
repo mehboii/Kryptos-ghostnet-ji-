@@ -3942,9 +3942,9 @@ canvas#mesh {
    no impact on any other view. Appended last so it wins the cascade.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* Instagram brand gradient — reused for sent bubbles, send button, ring. */
+/* GhostNet brand gradient — reused for sent bubbles, send button, ring. */
 :root {
-    --ig-gradient: linear-gradient(135deg, #4f5bd5 0%, #962fbf 45%, #d62976 100%);
+    --ig-gradient: linear-gradient(135deg, #00f0ff 0%, #06b6d4 50%, #0891b2 100%);
     --ig-bubble-them: #efefef;
     --ig-bubble-them-text: #000000;
     --ig-line: #dbdbdb;
@@ -4115,7 +4115,7 @@ canvas#mesh {
 #chat-send:hover { transform: none; filter: brightness(1.05); box-shadow: none; }
 
 /* Empty-state icon ring uses the IG gradient too */
-.empty-icon { background: var(--ig-bubble-them); color: #962fbf; }
+.empty-icon { background: var(--ig-bubble-them); color: #06b6d4; }
 .empty-icon::before { border-color: transparent; }
 
 /* On mobile the back chevron must be visible (IG slides list ↔ thread) */
