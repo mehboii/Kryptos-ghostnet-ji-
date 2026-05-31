@@ -3,8 +3,8 @@
 :root {
     --bg-dark: #FFFFFF;
     --bg-panel: #F6F8FB;
-    --accent: #0891b2;
-    --accent-dim: rgba(0, 240, 255, 0.1);
+    --accent: #2563EB;
+    --accent-dim: rgba(37, 99, 235, 0.1);
     --accent-gradient: var(--accent); /* Reverted to solid */
     --text-primary: #1e293b;
     --text-muted: #64748b;
@@ -20,8 +20,8 @@
 [data-theme="dark"] {
     --bg-dark: #000000;
     --bg-panel: #0a0a0a;
-    --accent: #06b6d4;
-    --accent-dim: rgba(0, 240, 255, 0.14);
+    --accent: #3b82f6;
+    --accent-dim: rgba(59, 130, 246, 0.12);
     --accent-gradient: var(--accent); /* Reverted to solid */
     --text-primary: #f0f0f0;
     --text-muted: #888888;
