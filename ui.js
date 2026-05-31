@@ -331,7 +331,7 @@ class MeshNetwork {
         const computed = getComputedStyle(document.documentElement);
         // Using accent as base color, stripping the hash or rgb if needed, but simple fallback works:
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-        const accentCol = isDark ? '#3b82f6' : '#2563eb';
+        const accentCol = isDark ? '#06b6d4' : '#0891b2';
         const mutedCol = isDark ? '#334155' : '#cbd5e1';
         // Stroke RGB components for the network lines (blue)
         const rgbStr = isDark ? '59, 130, 246' : '37, 99, 235';
@@ -1985,10 +1985,36 @@ const UI = {
         }
 
         const feed = document.getElementById('chat-feed');
-        if (feed) feed.innerHTML = ''; // clear current feed
+        if (feed) {
+            feed.innerHTML = ''; // clear current feed
+            // Encrypted-chat notice pinned to the top of the thread — light grey, no lock icon.
+            const e2eNotice = document.createElement('div');
+            e2eNotice.className = 'chat-e2e-notice';
+            e2eNotice.textContent = 'End-to-end encrypted';
+            e2eNotice.style.cssText = 'text-align:center;color:#9aa3b2;font-size:0.72rem;letter-spacing:0.3px;padding:8px 0 12px;opacity:0.85;';
+            feed.appendChild(e2eNotice);
+        }
 
-        // Load History
-        if (convoId && convoId !== 'new') {
+        // Burn mode: if enabled for this contact, the chat is wiped on (re)open.
+        const _burnTarget = targetUserId || (window.app && window.app.chatTarget);
+        const _burnOn = _burnTarget && localStorage.getItem('gn_burn_' + _burnTarget) === '1';
+        if (_burnOn && feed) {
+            const burnNote = document.createElement('div');
+            burnNote.textContent = '🔥 Burn mode on — previous messages erased';
+            burnNote.style.cssText = 'text-align:center;color:#9aa3b2;font-size:0.72rem;padding:4px 0 8px;opacity:0.85;';
+            feed.appendChild(burnNote);
+            // Drop locally cached messages for this peer so nothing lingers in memory.
+            try {
+                if (window.app?.chat?.messages) {
+                    for (const [id, mm] of window.app.chat.messages) {
+                        if (mm && (mm.from === _burnTarget || mm.to === _burnTarget)) window.app.chat.messages.delete(id);
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // Load History (skipped entirely when burn mode is on — the chat starts fresh)
+        if (convoId && convoId !== 'new' && !_burnOn) {
             try {
                 const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${encodeURIComponent(convoId)}`, {
                     headers: getAuthHeaders()
@@ -2021,7 +2047,16 @@ const UI = {
                             if (window.app?.chat?.decryptStored) {
                                 dec = await window.app.chat.decryptStored(pkt);
                             }
-                            text = (dec != null) ? dec : '🔒 Encrypted message';
+                            if (dec != null) {
+                                UI.addMessage(dec, type, m.id || null);
+                            } else if (feed) {
+                                // Legacy message we can't decrypt — subtle grey line, no lock, no bubble.
+                                const note = document.createElement('div');
+                                note.textContent = 'Encrypted message';
+                                note.style.cssText = 'text-align:center;color:#9aa3b2;font-size:0.72rem;padding:4px 0;opacity:0.7;';
+                                feed.appendChild(note);
+                            }
+                            continue;
                         }
                         UI.addMessage(text || '***', type, m.id || null);
                     }
@@ -2114,7 +2149,7 @@ const UI = {
             'BTC': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#F7931A"/><path d="M21.7 15.6c.5-3.3-1.9-5-5-5.6V7h-2.1v2.9h-2.1V7h-2v3H8v2h2.5c.6 0 .9.3.9.7v8.9c0 .4-.3.7-.9.7H8v2h2.5v3h2v-3h2.1v3h2.1v-3c3.6 0 6.6-1.5 7-5 .3-2.1-.9-3.4-2.4-4 1-.3 2.1-1.2 2.4-3zm-4.7 5.8c-1.3 0-4.3-.8-4.3-.8v-3s3 .8 4.3.8c1.3 0 2 1.4 0 3zm.6-4.5c-1.1 0-3.6-.8-3.6-.8v-2.7s2.5.6 3.6.8c1.1.2 1.6 1.4 0 2.7z" fill="#FFF"/></svg>'),
             'SOL': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#000"/><path d="M7.4 22.4l3.1-3.1 14.1.1-3.1 3.1zM24.6 12.7l-3.1 3.1-14.1-.1 3.1-3.1zM7.4 9.6l3.1-3.1 14.1.1-3.1 3.1z" fill="#14F195"/></svg>'),
             'USDT': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#26A17B"/><path d="M17.4 13.9v8.7h-2.8v-8.7c-3.5-.2-6.1-1.3-6.1-2.6s2.6-2.4 6.1-2.6V6h2.8v2.7c3.5.2 6.1 1.3 6.1 2.6s-2.6 2.4-6.1 2.6zm-1.4-4.2c-3.1 0-5.1.8-5.1 1.6 0 .8 2 1.6 5.1 1.6 3 0 5.1-.8 5.1-1.6 0-.8-2-1.6-5.1-1.6z" fill="#FFF"/></svg>'),
-            'AHT': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#3b82f6"/><path d="M16 6l8 14H8z" fill="#FFF"/><polygon points="16,12 20,6 12,6" fill="#FFF" opacity=".6"/></svg>')
+            'AHT': createSvgUri('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#00f0ff"/><path d="M16 6l8 14H8z" fill="#FFF"/><polygon points="16,12 20,6 12,6" fill="#FFF" opacity=".6"/></svg>')
         };
 
         const CRYPTO_META = {
@@ -2122,7 +2157,7 @@ const UI = {
             'BTC': { color: '#F7931A', gradient: 'linear-gradient(135deg, #F7931A, #e2750a)', darkGlow: 'rgba(247,147,26,0.35)', name: 'Bitcoin' },
             'SOL': { color: '#9945FF', gradient: 'linear-gradient(135deg, #9945FF, #14F195)', darkGlow: 'rgba(153,69,255,0.35)', name: 'Solana' },
             'USDT': { color: '#26A17B', gradient: 'linear-gradient(135deg, #26A17B, #1a7a5c)', darkGlow: 'rgba(38,161,123,0.35)', name: 'Tether' },
-            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'GhostNet' }
+            'AHT': { color: '#00f0ff', gradient: 'linear-gradient(135deg, #00f0ff, #06b6d4)', darkGlow: 'rgba(59,130,246,0.35)', name: 'GhostNet' }
         };
 
         let walletAssets = [];
@@ -2433,10 +2468,31 @@ const UI = {
             const modeHandler = () => {
                 modes.forEach(b => b.classList.remove('active'));
                 m.classList.add('active');
+                // Burn = wipe this conversation on next open; Save = keep messages.
+                const mode = m.getAttribute('data-mode');
+                const target = window.app && window.app.chatTarget;
+                if (!target) return;
+                const key = 'gn_burn_' + target;
+                if (mode === 'EPHEMERAL') {
+                    localStorage.setItem(key, '1');
+                    UI.showToast('🔥 Burn mode ON — this chat will be erased when you leave and reopen it.', '#f59e0b');
+                } else {
+                    localStorage.removeItem(key);
+                    UI.showToast('💾 Messages will be saved to this chat.', '#10b981');
+                }
             };
             m.addEventListener('click', modeHandler);
             m.addEventListener('touchend', (e) => { e.preventDefault(); modeHandler(); });
         });
+    },
+
+    // Lightweight toast notification (used for burn-mode on/off, etc.)
+    showToast: (message, color = '#10b981') => {
+        const toast = document.createElement('div');
+        toast.textContent = message;
+        toast.style.cssText = `position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:${color};color:#fff;padding:10px 18px;border-radius:10px;z-index:100000;font-size:0.85rem;max-width:90%;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,0.35);`;
+        document.body.appendChild(toast);
+        setTimeout(() => { toast.style.transition = 'opacity 0.4s'; toast.style.opacity = '0'; setTimeout(() => toast.remove(), 400); }, 3200);
     },
 
     // Start UI Logic
