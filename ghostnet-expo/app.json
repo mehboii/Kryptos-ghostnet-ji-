@@ -13,6 +13,7 @@
     },
     "android": {
       "package": "com.ghostnet.app",
+      "permissions": ["android.permission.CAMERA"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/ghostnet-logo.png",
         "backgroundColor": "#0b0e14"
@@ -36,7 +37,8 @@
             "backgroundColor": "#0b0e14"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, BackHandler, StatusBar, Image, Text, Platform, KeyboardAvoidingView } from 'react-native';
+import { StyleSheet, View, BackHandler, StatusBar, Image, Text, Platform, KeyboardAvoidingView, PermissionsAndroid } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
@@ -14,6 +14,19 @@ export default function App() {
   const webViewRef = useRef(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [webViewReady, setWebViewReady] = useState(false);
+
+  // Request camera permission up-front so the in-WebView QR scanner (getUserMedia)
+  // can access the camera. Without the native grant Android silently denies it.
+  useEffect(() => {
+    if (Platform.OS === 'android' && PermissionsAndroid?.PERMISSIONS?.CAMERA) {
+      PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA, {
+        title: 'Camera access',
+        message: 'GhostNet needs the camera to scan QR codes to connect.',
+        buttonPositive: 'Allow',
+        buttonNegative: 'Deny',
+      }).catch(() => {});
+    }
+  }, []);
 
   useEffect(() => {
     const handleBackPress = () => {
@@ -62,17 +75,10 @@ export default function App() {
             originWhitelist={['file://', 'about:blank']}
             allowFileAccess={true}
             allowFileAccessFromFileURLs={true}
-            allowUniversalAccessFromFileURLs={false}
+            allowUniversalAccessFromFileURLs={true}
             onShouldStartLoadWithRequest={(request) => {
               return request.url.startsWith('file://') || request.url === 'about:blank';
             }}
-            injectedJavaScriptBeforeContentLoaded={`
-              const meta = document.createElement('meta');
-              meta.httpEquiv = 'Content-Security-Policy';
-              meta.content = "default-src 'self' file:; script-src 'self' 'unsafe-inline' file:; style-src 'self' 'unsafe-inline' file:; img-src 'self' file: data:; connect-src 'self' wss: ws:;";
-              document.head.prepend(meta);
-              true;
-            `}
             bounces={false}
             overScrollMode="never"
             setSupportMultipleWindows={false}
