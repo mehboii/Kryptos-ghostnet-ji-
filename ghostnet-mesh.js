@@ -57,7 +57,10 @@ const _ALLOWED_MESH_TYPES = new Set([
     'PEER_JOIN', 'PEER_LEAVE', 'MESH_MSG',
     'MSG', 'MESH_PEERS', 'HEARTBEAT', 'HEARTBEAT_ACK', 'receipt',
     'SECURE_ENDPOINT_ANNOUNCE', 'SECURE_ENDPOINT_QUERY',
-    'SECURE_PUNCH', 'SECURE_CHALLENGE_RESPONSE'
+    'SECURE_PUNCH', 'SECURE_CHALLENGE_RESPONSE',
+    // real-time chat delivery types (the switch handles these, but they were
+    // being dropped here — caused messages to appear only after a page refresh)
+    'message', 'MESH_DIRECT', 'CHAT_MESSAGE', 'NEW_CONVERSATION', 'error', 'ERROR'
 ]);
 
 function _sanitizeMeshMessage(raw) {
@@ -75,30 +78,29 @@ function _sanitizeMeshMessage(raw) {
 
     if (msg.body !== undefined) {
         if (typeof msg.body !== 'string') return null;
-        if (msg.body.length > 4096) return null;
+        if (msg.body.length > 65536) return null;
     }
 
-    if (msg.senderId !== undefined && msg.senderId !== null) {
-        if (typeof msg.senderId !== 'string') return null;
-        if (!/^0x[a-fA-F0-9]{8,64}$/.test(msg.senderId)) return null;
-    }
-
+    // Basic clock-sanity guard only — do NOT reject old messages here (queued/offline
+    // delivery is legitimately old; GhostChat handles replay protection by message id).
     const now = Date.now();
-    if (msg.timestamp !== undefined) {
-        if (typeof msg.timestamp !== 'number') return null;
-        if (msg.timestamp < now - 300000) return null; // older than 5 minutes
-        if (msg.timestamp > now + 30000) return null;  // more than 30s in future
+    if (msg.timestamp !== undefined && typeof msg.timestamp === 'number' && msg.timestamp > now + 60000) {
+        return null; // implausibly far in the future
     }
 
-    return {
-        type: String(msg.type),
-        body: msg.body ? String(msg.body).slice(0, 4096) : undefined,
-        senderId: msg.senderId || null,
-        timestamp: msg.timestamp || now,
-        hopCount: typeof msg.hopCount === 'number'
-            ? Math.min(Math.max(0, msg.hopCount), 10)
-            : 0
-    };
+    // Preserve the FULL payload so chat delivery + decryption work: the previous
+    // version stripped content/iv/data/salt/hmac/convoId/to/from/id, which dropped
+    // every real-time message (they only showed up after a manual page refresh).
+    // Downstream handlers do their own per-field validation (validatePeerId, HMAC
+    // verify on decrypt, etc.). Strip only prototype-pollution vectors.
+    const clean = { ...msg };
+    delete clean.__proto__;
+    delete clean.constructor;
+    delete clean.prototype;
+    clean.type = String(msg.type);
+    if (clean.senderId !== undefined && clean.senderId !== null) clean.senderId = String(clean.senderId);
+    clean.timestamp = (typeof msg.timestamp === 'number') ? msg.timestamp : now;
+    return clean;
 }
 
 class GhostMesh {
