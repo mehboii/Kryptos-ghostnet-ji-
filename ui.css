@@ -5,7 +5,7 @@
     --bg-panel: #F6F8FB;
     --accent: #2563EB;
     --accent-dim: rgba(37, 99, 235, 0.1);
-    --accent-gradient: var(--accent); /* Reverted to solid */
+    --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); /* GHOST NET brand gradient */
     --text-primary: #1e293b;
     --text-muted: #64748b;
     --border: #e2e8f0;
@@ -22,7 +22,7 @@
     --bg-panel: #0a0a0a;
     --accent: #3b82f6;
     --accent-dim: rgba(59, 130, 246, 0.12);
-    --accent-gradient: var(--accent); /* Reverted to solid */
+    --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); /* GHOST NET brand gradient */
     --text-primary: #f0f0f0;
     --text-muted: #888888;
     --border: #1a1a1a;
@@ -3944,7 +3944,7 @@ canvas#mesh {
 
 /* GhostNet brand gradient — reused for sent bubbles, send button, ring. */
 :root {
-    --ig-gradient: linear-gradient(135deg, #00f0ff 0%, #06b6d4 50%, #0891b2 100%);
+    --ig-gradient: var(--accent-gradient); /* match the GHOST NET logo exactly */
     --ig-bubble-them: #efefef;
     --ig-bubble-them-text: #000000;
     --ig-line: #dbdbdb;
@@ -4115,7 +4115,7 @@ canvas#mesh {
 #chat-send:hover { transform: none; filter: brightness(1.05); box-shadow: none; }
 
 /* Empty-state icon ring uses the IG gradient too */
-.empty-icon { background: var(--ig-bubble-them); color: #06b6d4; }
+.empty-icon { background: var(--ig-bubble-them); color: #8b5cf6; }
 .empty-icon::before { border-color: transparent; }
 
 /* On mobile the back chevron must be visible (IG slides list ↔ thread) */
