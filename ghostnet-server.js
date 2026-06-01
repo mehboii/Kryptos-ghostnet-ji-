@@ -1334,7 +1334,9 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     scheduleWrite(CONVOS_FILE, conversations); // [12]
 
     const msg = {
-        id: secureId('msg_'), // Always server-generated — never trust client-supplied IDs
+        // Use the client-supplied id when it's a safe token, so the sender's bubble,
+        // the delivery/read receipts and the stored row all share one id (ticks line up).
+        id: (typeof req.body?.id === 'string' && /^[\w:-]{1,128}$/.test(req.body.id)) ? req.body.id : secureId('msg_'),
         convoId: convo.id,
         senderId,
         receiverId,

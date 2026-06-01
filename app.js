@@ -307,8 +307,8 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             if (response.ok) {
                 const result = await response.json();
-                if (result.convo && window.AppState) {
-                    window.AppState.activeConvoId = result.convo.id;
+                if (window.AppState && (result.message?.convoId || result.convo?.id)) {
+                    window.AppState.activeConvoId = result.message?.convoId || result.convo.id;
                 }
                 if (window.UI) window.UI.loadConversations(myId);
                 return result;
@@ -375,33 +375,30 @@ window.addEventListener('DOMContentLoaded', async () => {
             input.value = '';
 
             try {
-                // Send via EXACTLY ONE path, otherwise the recipient receives the message
-                // twice — once as the encrypted mesh frame and once as the server's
-                // CHAT_MESSAGE push from the HTTP persist call (and it gets double-stored).
-                let encryptedSent = false;
-
-                // 1. Preferred: E2E encrypted mesh transport. The server's WS handler
-                //    ALSO persists this message and offline-queues it for the recipient,
-                //    so a separate HTTP write is unnecessary when this path succeeds.
-                //    chatTarget is the peer's publicKey set by the UI when opening a chat.
-                if (window.app.chat && recipientNodeId !== 'broadcast') {
-                    try {
-                        // Pass our bubble's msgId so the packet/receipt ids line up,
-                        // letting delivered/read receipts update the correct bubble.
+                // Exactly ONE delivery path → no duplicate receive, and chat history
+                // reloads reliably.
+                if (isEphemeral) {
+                    // Burn / self-destructing message: send ONLY over the encrypted mesh so
+                    // it is never written to server storage (it vanishes after viewing).
+                    if (window.app.chat && recipientNodeId !== 'broadcast') {
                         await window.app.chat.sendMessage(text, recipientNodeId, mode, ttl, msgId);
-                        encryptedSent = true;
-                        log.info(`Message sent via encrypted mesh (mode=${mode}).`);
-                    } catch (encErr) {
-                        log.warn('Encrypted send failed, falling back to server persist:', encErr.message);
+                    } else if (window.app.mesh?.ws?.readyState === WebSocket.OPEN) {
+                        _safeSendWS(window.app.mesh.ws, {
+                            type: 'message', id: msgId, to: recipientNodeId, from: myId,
+                            content: { body: text, from: myId, to: recipientNodeId, ts: Date.now(), type: 'MSG', id: msgId },
+                            timestamp: Date.now()
+                        });
                     }
-                }
-
-                // 2. Fallback ONLY (broadcast, no GhostChat session, or encryption failed):
-                //    persist via the HTTP path for storage + offline delivery.
-                //    Burn (ephemeral) messages are never written to server storage.
-                if (!encryptedSent && !isEphemeral) {
+                    log.info('Self-destructing (burn) message sent — not stored.');
+                } else {
+                    // Saved message (default): persist on the server, which ALSO pushes it
+                    // to the recipient in real time (CHAT_MESSAGE). Single source of truth →
+                    // it survives refreshes on both sides and never double-delivers.
                     const result = await window.app.persistMessage(text, recipientNodeId, msgId);
-                    if (result?.success) log.info('Message persisted to server (fallback path).');
+                    if (window.AppState && (result?.message?.convoId || result?.convo?.id)) {
+                        window.AppState.activeConvoId = result.message?.convoId || result.convo.id;
+                    }
+                    if (result?.success) log.info('Message saved to server (persists across refreshes).');
                 }
             } catch (e) {
                 log.error('Send message error:', e.message);

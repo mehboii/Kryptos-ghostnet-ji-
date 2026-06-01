@@ -669,9 +669,17 @@ class GhostMesh {
 
                 const safeBody = this.sanitizeText(String(body || ''));
 
-                if (window.UI) window.UI.addMessage(safeBody, 'them');
-                if (window.UI && window.AppState?.identity) {
-                    window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
+                if (window.UI) {
+                    // Only drop it into the open thread if THIS conversation is open;
+                    // otherwise just refresh the list so it shows as an unread preview.
+                    if (window.app && window.app.chatTarget === fromId) {
+                        window.UI.addMessage(safeBody, 'them', msg.id || null);
+                        // We're viewing it → tell the sender it was read (blue/purple tick).
+                        if (window._sendReadReceipt) window._sendReadReceipt(msg.id, fromId);
+                    }
+                    if (window.AppState?.identity) {
+                        window.UI.loadConversations(window.AppState.identity.id || window.AppState.identity.nodeId);
+                    }
                 }
                 break;
             }
