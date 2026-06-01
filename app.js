@@ -375,39 +375,31 @@ window.addEventListener('DOMContentLoaded', async () => {
             input.value = '';
 
             try {
-                // 1. Persist to server for offline delivery — ONLY for PERSIST mode.
-                //    [FIX #3] Burn messages must never be written to server storage.
-                let result = null;
-                if (!isEphemeral) {
-                    result = await window.app.persistMessage(text, recipientNodeId, msgId);
-                    if (result?.success) {
-                        log.info('Message persisted to server.');
-                    }
-                }
+                // Send via EXACTLY ONE path, otherwise the recipient receives the message
+                // twice — once as the encrypted mesh frame and once as the server's
+                // CHAT_MESSAGE push from the HTTP persist call (and it gets double-stored).
+                let encryptedSent = false;
 
-                // 2. Send encrypted via GhostChat mesh transport (E2E encrypted)
-                // [SEC FIX] Always prefer encrypted path when available.
-                // chatTarget is set to peer's publicKey by the UI when opening a chat.
+                // 1. Preferred: E2E encrypted mesh transport. The server's WS handler
+                //    ALSO persists this message and offline-queues it for the recipient,
+                //    so a separate HTTP write is unnecessary when this path succeeds.
+                //    chatTarget is the peer's publicKey set by the UI when opening a chat.
                 if (window.app.chat && recipientNodeId !== 'broadcast') {
                     try {
                         await window.app.chat.sendMessage(text, recipientNodeId, mode, ttl);
+                        encryptedSent = true;
                         log.info(`Message sent via encrypted mesh (mode=${mode}).`);
                     } catch (encErr) {
-                        log.warn('Encrypted send failed, message still persisted to server:', encErr.message);
+                        log.warn('Encrypted send failed, falling back to server persist:', encErr.message);
                     }
-                } else if (result === null) {
-                    // No server persistence AND no encryption — last resort unencrypted mesh
-                    if (window.app.mesh?.ws?.readyState === WebSocket.OPEN) {
-                        log.warn('Sending unencrypted fallback — no GhostChat session available.');
-                        _safeSendWS(window.app.mesh.ws, {
-                            type: 'message',
-                            id: msgId,
-                            to: recipientNodeId,
-                            from: myId,
-                            content: { body: text, from: myId, to: recipientNodeId, ts: Date.now(), type: 'MSG', id: msgId },
-                            timestamp: Date.now()
-                        });
-                    }
+                }
+
+                // 2. Fallback ONLY (broadcast, no GhostChat session, or encryption failed):
+                //    persist via the HTTP path for storage + offline delivery.
+                //    Burn (ephemeral) messages are never written to server storage.
+                if (!encryptedSent && !isEphemeral) {
+                    const result = await window.app.persistMessage(text, recipientNodeId, msgId);
+                    if (result?.success) log.info('Message persisted to server (fallback path).');
                 }
             } catch (e) {
                 log.error('Send message error:', e.message);
