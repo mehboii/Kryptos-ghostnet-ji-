@@ -5,7 +5,7 @@
     --bg-panel: #F6F8FB;
     --accent: #2563EB;
     --accent-dim: rgba(37, 99, 235, 0.1);
-    --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); /* GHOST NET brand gradient */
+    --accent-gradient: var(--accent); /* solid blue — matches the Mesh Overview heading */
     --text-primary: #1e293b;
     --text-muted: #64748b;
     --border: #e2e8f0;
@@ -22,7 +22,7 @@
     --bg-panel: #0a0a0a;
     --accent: #3b82f6;
     --accent-dim: rgba(59, 130, 246, 0.12);
-    --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%); /* GHOST NET brand gradient */
+    --accent-gradient: var(--accent); /* solid blue — matches the Mesh Overview heading */
     --text-primary: #f0f0f0;
     --text-muted: #888888;
     --border: #1a1a1a;

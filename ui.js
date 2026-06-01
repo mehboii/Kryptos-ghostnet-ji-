@@ -2698,14 +2698,10 @@ const UI = {
         statusEl.style.webkitTextFillColor = 'initial';
 
         if (status === 'read') {
-            statusEl.textContent = '✓✓';           // double tick, brand colour = read
+            statusEl.textContent = '✓✓';           // double tick, blue = read
             statusEl.title = 'Read';
             statusEl.style.opacity = '1';
-            statusEl.style.color = '#8b5cf6';       // fallback
-            statusEl.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)'; // matches logo/SEND
-            statusEl.style.webkitBackgroundClip = 'text';
-            statusEl.style.backgroundClip = 'text';
-            statusEl.style.webkitTextFillColor = 'transparent';
+            statusEl.style.color = '#3b82f6';       // solid GhostNet blue (matches logo / Mesh Overview)
         } else if (status === 'delivered') {
             statusEl.textContent = '✓✓';           // double tick, grey = delivered
             statusEl.title = 'Delivered';
