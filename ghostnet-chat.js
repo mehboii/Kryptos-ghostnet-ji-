@@ -345,7 +345,7 @@
 
         // ── Sending Messages ────────────────────────────────────────────────
 
-        async sendMessage(body, toPubKey, mode = 'PERSIST', ttl = 0) {
+        async sendMessage(body, toPubKey, mode = 'PERSIST', ttl = 0, msgIdOverride = null) {
             if (typeof body !== 'string' || body.length === 0) {
                 throw new Error('Message body must be a non-empty string.');
             }
@@ -356,7 +356,8 @@
                 throw new Error(`Message too large (max ${MAX_BODY_BYTES} bytes).`);
             }
 
-            const msgId = _uuid();
+            // Use the caller-supplied id (so sender bubble ↔ packet ↔ receipts align).
+            const msgId = (typeof msgIdOverride === 'string' && msgIdOverride) ? msgIdOverride : _uuid();
             const ts = Date.now();
             const iv = crypto.getRandomValues(new Uint8Array(12));
 

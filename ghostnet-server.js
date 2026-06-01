@@ -1434,6 +1434,38 @@ app.get('/history', requireAuth, (req, res) => { // [04][13]
     res.json(result);
 });
 
+// Delete all messages in a conversation but KEEP the conversation/contact entry.
+// (Burn / "Delete chat" — the contact stays so the user can still message them.)
+app.delete('/messages', requireAuth, (req, res) => {
+    const userId = req.user.id;
+    const convoId = req.query.convoId;
+    if (!convoId) return res.status(400).json({ error: 'convoId required' });
+
+    const convo = conversations.find(c => c?.id === convoId);
+    if (!convo) return res.status(404).json({ error: 'Conversation not found' });
+    if (!convo.participants?.includes(userId)) {
+        return res.status(403).json({ error: 'Access denied' }); // ownership check
+    }
+
+    const before = messages.length;
+    messages = messages.filter(m => m.convoId !== convoId);
+    const removed = before - messages.length;
+    if (removed > 0) scheduleWrite(MESSAGES_FILE, messages);
+
+    // Keep the conversation (contact) but clear its preview.
+    convo.lastMessage = '';
+    convo.updated = Date.now();
+    scheduleWrite(CONVOS_FILE, conversations);
+
+    // Best-effort delete from the SQL store too.
+    if (typeof messageStore.deleteConversationMessages === 'function') {
+        messageStore.deleteConversationMessages(convoId).catch(err =>
+            console.error('[DB] deleteConversationMessages failed:', err.message));
+    }
+
+    res.json({ success: true, removed });
+});
+
 // ─── STATUS & WALLET ─────────────────────────────────────────────────────────
 
 app.get('/status', (req, res) => {
@@ -2009,6 +2041,25 @@ wss.on('connection', (ws) => {
                     safeSend(ws, { type: 'pong', timestamp: Date.now() });
                     break;
 
+                case 'read': {
+                    // Recipient notifies the original sender that their message(s) were read.
+                    const toId = typeof msg.to === 'string' ? msg.to : null;
+                    if (!toId) return;
+                    let safeTo;
+                    try { safeTo = validateNodeId(toId); } catch (_) { return; }
+                    const ids = Array.isArray(msg.msgIds) ? msg.msgIds
+                              : (typeof msg.msgId === 'string' ? [msg.msgId] : []);
+                    const origSenderWs = activeConnections.get(safeTo);
+                    if (origSenderWs && origSenderWs.readyState === 1) {
+                        for (const id of ids) {
+                            if (typeof id === 'string' && id.length <= 128) {
+                                safeSend(origSenderWs, { type: 'receipt', status: 'read', msgId: id });
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 case 'message':
                 case 'MESH_DIRECT': {
                     const targetId = typeof msg.to === 'string' ? msg.to : null;
@@ -2020,6 +2071,11 @@ wss.on('connection', (ws) => {
 
                     let content = msg.content || msg.data;
                     if (!content) return;
+                    // Capture the client's message id BEFORE stringifying so the sender's
+                    // bubble ↔ delivery/read receipts line up.
+                    const clientMsgId = (content && typeof content === 'object' && typeof content.id === 'string')
+                        ? content.id
+                        : (typeof msg.id === 'string' ? msg.id : null);
                     // Ensure content is always a string before storage and size check
                     if (typeof content !== 'string') content = JSON.stringify(content);
                     // [16] Size cap on WS messages too
@@ -2031,7 +2087,7 @@ wss.on('connection', (ws) => {
                     let wsDelivered = false;
 
                     // Build a sanitized message — never forward raw attacker-controlled fields
-                    const msgId = secureId('msg_');
+                    const msgId = (clientMsgId && /^[\w:-]{1,128}$/.test(clientMsgId)) ? clientMsgId : secureId('msg_');
                     const safeMsg = {
                         type: msg.type,
                         id: msgId,
@@ -2071,7 +2127,7 @@ wss.on('connection', (ws) => {
                     scheduleWrite(CONVOS_FILE, conversations); // [12]
 
                     const newMsg = {
-                        id: msg.id || secureId('msg_'),
+                        id: msgId, // same id used for delivery + receipts so ticks/read line up on reload
                         convoId: convo.id,
                         senderId,
                         receiverId: safeTarget,

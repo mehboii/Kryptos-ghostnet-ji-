@@ -1891,6 +1891,8 @@ const UI = {
     },
 
     selectChat: async (convoId, nameStr = null, targetUserId = null) => {
+        // Track the open conversation so the Delete-chat button knows what to remove.
+        if (window.AppState) window.AppState.activeConvoId = convoId;
         // Toggle UI Panels
         const emptyState = document.getElementById('chat-empty-state');
         const activeState = document.getElementById('chat-active-state');
@@ -1997,7 +1999,8 @@ const UI = {
 
         // Burn mode: if enabled for this contact, the chat is wiped on (re)open.
         const _burnTarget = targetUserId || (window.app && window.app.chatTarget);
-        const _burnOn = _burnTarget && localStorage.getItem('gn_burn_' + _burnTarget) === '1';
+        const _burnOn = false; // chats persist forever; Burn/Delete are explicit actions now
+        const _readIds = []; // incoming ids to flush as read receipts after history loads
         if (_burnOn && feed) {
             const burnNote = document.createElement('div');
             burnNote.textContent = '🔥 Burn mode on — previous messages erased';
@@ -2024,6 +2027,7 @@ const UI = {
                     const myNodeId = AppState.identity ? (AppState.identity.nodeId || AppState.identity.id) : null;
                     for (const m of msgs) {
                         const type = (m.senderId === myNodeId) ? 'me' : 'them';
+                        if (type === 'them' && m.id) _readIds.push(m.id);
 
                         let text = m.content;
                         // content may be a plain string, a {body} object, or an encrypted
@@ -2059,6 +2063,10 @@ const UI = {
                             continue;
                         }
                         UI.addMessage(text || '***', type, m.id || null);
+                    }
+                    // Flush read receipts for everything the peer sent us → blue/purple ticks on their side.
+                    if (_readIds.length && window._sendReadReceipt) {
+                        window._sendReadReceipt(_readIds, targetUserId || (window.app && window.app.chatTarget));
                     }
                 }
             } catch (e) { console.error("Error loading history", e) }
@@ -2468,22 +2476,54 @@ const UI = {
             const modeHandler = () => {
                 modes.forEach(b => b.classList.remove('active'));
                 m.classList.add('active');
-                // Burn = wipe this conversation on next open; Save = keep messages.
+                // Per-message send mode: Save = stored permanently, Burn = self-destructing
+                // (ephemeral) message. sendMessage() reads the active .mode-btn.
                 const mode = m.getAttribute('data-mode');
-                const target = window.app && window.app.chatTarget;
-                if (!target) return;
-                const key = 'gn_burn_' + target;
                 if (mode === 'EPHEMERAL') {
-                    localStorage.setItem(key, '1');
-                    UI.showToast('🔥 Burn mode ON — this chat will be erased when you leave and reopen it.', '#f59e0b');
+                    UI.showToast('🔥 Burn message: the next message self-destructs after viewing (your contact stays).', '#f59e0b');
                 } else {
-                    localStorage.removeItem(key);
-                    UI.showToast('💾 Messages will be saved to this chat.', '#10b981');
+                    UI.showToast('💾 Save: messages are kept in this chat.', '#10b981');
                 }
             };
             m.addEventListener('click', modeHandler);
             m.addEventListener('touchend', (e) => { e.preventDefault(); modeHandler(); });
         });
+    },
+
+    // Delete every message in the open conversation but KEEP the contact, so the chat
+    // is cleared yet you can still message them. Backed by DELETE /messages?convoId=.
+    deleteChat: async (convoId, peerName) => {
+        if (!convoId || convoId === 'new') { UI.showToast('Open a conversation first.', '#ef4444'); return; }
+        if (!confirm(`Delete all messages with ${peerName || 'this contact'}? The contact stays, the messages are removed for you.`)) return;
+        try {
+            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/messages?convoId=${encodeURIComponent(convoId)}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+            if (res.ok) {
+                const feed = document.getElementById('chat-feed');
+                if (feed) {
+                    feed.querySelectorAll('.message').forEach(el => el.remove());
+                }
+                // Drop any local plaintext cache for this peer.
+                try {
+                    const peer = window.app && window.app.chatTarget;
+                    if (window.app?.chat?.messages && peer) {
+                        for (const [id, mm] of window.app.chat.messages) {
+                            if (mm && (mm.from === peer || mm.to === peer)) window.app.chat.messages.delete(id);
+                        }
+                    }
+                } catch (_) {}
+                UI.showToast('🗑️ Chat deleted — contact kept.', '#10b981');
+                const uid = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
+                if (uid) UI.loadConversations(uid);
+            } else {
+                UI.showToast('Could not delete chat. Try again.', '#ef4444');
+            }
+        } catch (e) {
+            console.error('deleteChat error', e);
+            UI.showToast('Could not delete chat (network).', '#ef4444');
+        }
     },
 
     // Lightweight toast notification (used for burn-mode on/off, etc.)
@@ -2619,15 +2659,18 @@ const UI = {
             msg.appendChild(textContent);
         }
 
-        // Add status element for outgoing messages
+        // Add status/ticks element for outgoing messages (sent → delivered → read)
         if (type === 'me') {
             const status = document.createElement('div');
             status.className = 'msg-status';
-            status.style.fontSize = '0.65rem';
-            status.style.opacity = '0.6';
+            status.style.fontSize = '0.72rem';
+            status.style.opacity = '0.7';
             status.style.marginTop = '4px';
             status.style.textAlign = 'right';
-            status.textContent = '✓ sent';
+            status.style.color = '#9aa3b2';
+            status.dataset.state = 'sent';
+            status.textContent = '✓';      // single tick = sent
+            status.title = 'Sent';
             msg.appendChild(status);
         }
 
@@ -2642,12 +2685,42 @@ const UI = {
         const statusEl = msgEl.querySelector('.msg-status');
         if (!statusEl) return;
 
-        if (status === 'delivered') {
-            statusEl.textContent = '✓✓ delivered';
-            statusEl.style.color = '#00f0ff';
+        // Never downgrade a tick (read > delivered > sent/queued).
+        const rank = { queued: 0, sent: 1, delivered: 2, read: 3 };
+        const current = statusEl.dataset.state || 'sent';
+        if ((rank[status] ?? 1) < (rank[current] ?? 1)) return;
+        statusEl.dataset.state = status;
+
+        // Reset any gradient styling from a previous state.
+        statusEl.style.background = 'none';
+        statusEl.style.webkitBackgroundClip = 'initial';
+        statusEl.style.backgroundClip = 'initial';
+        statusEl.style.webkitTextFillColor = 'initial';
+
+        if (status === 'read') {
+            statusEl.textContent = '✓✓';           // double tick, brand colour = read
+            statusEl.title = 'Read';
+            statusEl.style.opacity = '1';
+            statusEl.style.color = '#8b5cf6';       // fallback
+            statusEl.style.background = 'linear-gradient(135deg, #3b82f6, #8b5cf6)'; // matches logo/SEND
+            statusEl.style.webkitBackgroundClip = 'text';
+            statusEl.style.backgroundClip = 'text';
+            statusEl.style.webkitTextFillColor = 'transparent';
+        } else if (status === 'delivered') {
+            statusEl.textContent = '✓✓';           // double tick, grey = delivered
+            statusEl.title = 'Delivered';
+            statusEl.style.opacity = '0.7';
+            statusEl.style.color = '#9aa3b2';
         } else if (status === 'queued') {
-            statusEl.textContent = '🕐 queued';
-            statusEl.style.color = '#64748b';
+            statusEl.textContent = '🕐';
+            statusEl.title = 'Queued';
+            statusEl.style.opacity = '0.7';
+            statusEl.style.color = '#9aa3b2';
+        } else {
+            statusEl.textContent = '✓';            // single tick = sent
+            statusEl.title = 'Sent';
+            statusEl.style.opacity = '0.7';
+            statusEl.style.color = '#9aa3b2';
         }
     },
 

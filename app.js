@@ -386,7 +386,9 @@ window.addEventListener('DOMContentLoaded', async () => {
                 //    chatTarget is the peer's publicKey set by the UI when opening a chat.
                 if (window.app.chat && recipientNodeId !== 'broadcast') {
                     try {
-                        await window.app.chat.sendMessage(text, recipientNodeId, mode, ttl);
+                        // Pass our bubble's msgId so the packet/receipt ids line up,
+                        // letting delivered/read receipts update the correct bubble.
+                        await window.app.chat.sendMessage(text, recipientNodeId, mode, ttl, msgId);
                         encryptedSent = true;
                         log.info(`Message sent via encrypted mesh (mode=${mode}).`);
                     } catch (encErr) {
@@ -688,6 +690,8 @@ window.addEventListener('DOMContentLoaded', async () => {
                     // unread preview on the correct conversation instead.
                     if (msg.from && msg.from === window.app.chatTarget) {
                         UI.addMessage(safeBody, 'them', msg.id || null);
+                        // We're looking at this chat → mark it read for the sender.
+                        _sendReadReceipt(msg.id, msg.from);
                     }
                     const userId = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
                     if (userId) UI.loadConversations(userId);
@@ -754,6 +758,23 @@ window.addEventListener('DOMContentLoaded', async () => {
 // ─────────────────────────────────────────────
 //  HELPERS
 // ─────────────────────────────────────────────
+
+// Tell the original sender that their message(s) were read → drives the blue/purple
+// read ticks on their side. Accepts a single id or an array of ids.
+function _sendReadReceipt(idOrIds, toId) {
+    try {
+        if (!toId) return;
+        const msgIds = Array.isArray(idOrIds) ? idOrIds.filter(Boolean) : (idOrIds ? [idOrIds] : []);
+        if (!msgIds.length) return;
+        const ws = window.app && window.app.mesh && window.app.mesh.ws;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            const me = window.app.identity && (window.app.identity.nodeId || window.app.identity.id);
+            _safeSendWS(ws, { type: 'read', msgIds, to: toId, from: me });
+        }
+    } catch (_) {}
+}
+// Exposed so ui.js (history load) can flush read receipts when a chat is opened.
+if (typeof window !== 'undefined') window._sendReadReceipt = _sendReadReceipt;
 
 function _safeSendWS(ws, data) {
     try {

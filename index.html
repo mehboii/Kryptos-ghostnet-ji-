@@ -729,6 +729,11 @@
                                         <i data-lucide="bluetooth-searching" style="width:12px;"></i>
                                         <span id="btn-ble-label">Scan</span>
                                     </button>
+                                    <button class="btn-tiny" id="btn-delete-chat" title="Delete chat (keeps contact)"
+                                        onclick="UI.deleteChat(window.AppState && window.AppState.activeConvoId, (document.getElementById('label-transport')||{}).textContent)"
+                                        style="display:flex; align-items:center; gap:5px; border-radius:20px;">
+                                        <i data-lucide="trash-2" style="width:12px;"></i>
+                                    </button>
                                 </div>
                             </div>
 
