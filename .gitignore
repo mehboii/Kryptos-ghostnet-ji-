@@ -18,6 +18,13 @@ bridge.j.txt
 auth-users.json
 users.json
 vault-keys.json
+# Runtime state / data files — contain user data, never commit
+nodes.json
+conversations.json
+messages.json
+pending.json
+installation_id
+vault-data/
 android/
 dist/
 ghostnet-dist/
