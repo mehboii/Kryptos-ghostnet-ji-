@@ -1415,7 +1415,7 @@ app.get('/conversations', requireAuth, (req, res) => { // [05]
 
 // ─── HISTORY ─────────────────────────────────────────────────────────────────
 
-app.get('/history', requireAuth, (req, res) => { // [04][13]
+app.get('/history', requireAuth, async (req, res) => { // [04][13]
     const userId = req.user.id;
     const convoId = req.query.convoId;
 
@@ -1432,6 +1432,28 @@ app.get('/history', requireAuth, (req, res) => { // [04][13]
     // [39] Clamp against NaN / negative values so slice() can't return unintended ranges
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
+
+    // Prefer Postgres when it's configured; fall back to the in-memory store if the
+    // DB is unset or unreachable so history still loads during an outage.
+    if (process.env.DATABASE_URL) {
+        try {
+            const rows = await messageStore.getMessagesByConvo(convoId, limit, offset);
+            // getMessagesByConvo returns newest-first; the UI renders oldest-first.
+            const result = rows.map(r => ({
+                id: r.msg_id,
+                convoId: r.convo_id,
+                senderId: r.sender_id,
+                receiverId: r.recipient_id,
+                content: r.content,
+                timestamp: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
+                delivered: r.delivered,
+            })).reverse();
+            return res.json(result);
+        } catch (err) {
+            console.error('[DB] /history read failed, falling back to JSON:', err.message);
+        }
+    }
+
     const result = messages.filter(m => m.convoId === convoId).slice(offset, offset + limit);
     res.json(result);
 });
