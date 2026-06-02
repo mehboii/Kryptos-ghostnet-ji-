@@ -124,6 +124,8 @@ import { healthCheck as dbHealthCheck, checkMigrationsRan } from './db/client.js
 import * as messageStore from './db/messageStore.js';
 import * as nodeStore from './db/nodeStore.js';
 import * as conversationStore from './db/conversationStore.js';
+import * as vaultStore from './db/vaultStore.js';
+import * as supabaseStorage from './db/supabaseStorage.js';
 import { startCleanupCron } from './db/cleanup.js';
 
 // Install global crash handlers as early as possible
@@ -1578,8 +1580,17 @@ app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, r
             stream.on('error', reject);
         });
 
-        const filePath = path.join(VAULT_DIR, `${fileId}.enc`);
-        fs.renameSync(tmpPath, filePath);
+        // Persist the (already client-side encrypted) blob to durable storage.
+        // Prefer Supabase Storage; fall back to local disk when it isn't configured
+        // (dev/unconfigured env) so behaviour is unchanged there.
+        const storagePath = `${fileId}.enc`;
+        if (supabaseStorage.storageConfigured()) {
+            const blob = fs.readFileSync(tmpPath);
+            await supabaseStorage.uploadObject(storagePath, blob);
+            fs.unlink(tmpPath, () => {}); // blob now lives in Storage; drop the temp file
+        } else {
+            fs.renameSync(tmpPath, path.join(VAULT_DIR, storagePath));
+        }
 
         const record = {
             fileId,
@@ -1590,6 +1601,7 @@ app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, r
             owner,
             iv: iv || null,
             authTag: authTag || null,
+            storagePath,
             uploadedAt: Date.now(),
             chainAnchored: false, // Chain anchoring omitted for main server local vault
             txHash: null,
@@ -1605,6 +1617,8 @@ app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, r
         }
         fileMeta.push(record);
         saveMeta();
+        // Durable metadata (survives redeploys, unlike vault-meta.json)
+        vaultStore.insertFile(record).catch(err => console.error('[DB] vault insertFile failed:', err.message));
 
         res.json({
             success: true,
@@ -1629,8 +1643,22 @@ app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
     // Verify authenticated user owns this file
     if (record.owner !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
-    const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File data missing' });
+    const storagePath = record.storagePath || `${record.fileId}.enc`;
+
+    // Fetch the encrypted blob from Supabase Storage (or local disk fallback).
+    let blob;
+    if (supabaseStorage.storageConfigured()) {
+        try {
+            blob = await supabaseStorage.downloadObject(storagePath);
+        } catch (e) {
+            console.error('[Vault] Storage download failed:', e.message);
+            return res.status(404).json({ error: 'File data missing' });
+        }
+    } else {
+        const filePath = path.join(VAULT_DIR, storagePath);
+        if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File data missing' });
+        blob = fs.readFileSync(filePath);
+    }
 
     res.setHeader('X-File-Id', record.fileId);
     res.setHeader('X-File-Name', encodeURIComponent(record.fileName));
@@ -1640,9 +1668,7 @@ app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
     res.setHeader('X-Original-Size', record.originalSize);
     res.setHeader('Content-Type', 'application/octet-stream');
     res.setHeader('Content-Disposition', `attachment; filename="${record.fileId}.enc"`);
-
-    const stream = fs.createReadStream(filePath);
-    stream.pipe(res);
+    res.send(blob);
 });
 
 app.get('/vault/files/:owner', requireAuth, async (req, res) => {
@@ -1671,23 +1697,23 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
     
     if (record.owner !== req.user.id) return res.status(403).json({ error: 'Access denied' });
 
-    const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
-    if (!fs.existsSync(filePath)) return res.json({ valid: false, hashMatch: false, error: 'File data missing' });
-
+    const storagePath = record.storagePath || `${record.fileId}.enc`;
     try {
-        const fileHash = await new Promise((resolve, reject) => {
-            const hash = crypto.createHash('sha256');
-            const stream = fs.createReadStream(filePath);
-            stream.on('data', chunk => hash.update(chunk));
-            stream.on('end', () => resolve(hash.digest('hex')));
-            stream.on('error', reject);
-        });
+        let blob;
+        if (supabaseStorage.storageConfigured()) {
+            blob = await supabaseStorage.downloadObject(storagePath);
+        } else {
+            const filePath = path.join(VAULT_DIR, storagePath);
+            if (!fs.existsSync(filePath)) return res.json({ valid: false, hashMatch: false, error: 'File data missing' });
+            blob = fs.readFileSync(filePath);
+        }
 
+        const fileHash = crypto.createHash('sha256').update(blob).digest('hex');
         const hashMatch = (fileHash === record.fileHash);
         res.json({
             valid: hashMatch,
             hashMatch: hashMatch,
-            fileSize: fs.statSync(filePath).size,
+            fileSize: blob.length,
             originalSize: record.originalSize
         });
     } catch(e) {
@@ -1713,6 +1739,8 @@ app.post('/vault/keys', requireAuth, (req, res) => {
     }
     vaultKeys[ownerId] = keyData;
     scheduleWrite(VAULT_KEYS_FILE, vaultKeys);
+    // Durable copy so the wrapped key survives redeploys (it's PIN-encrypted — zero-knowledge).
+    vaultStore.upsertKey(ownerId, keyData).catch(err => console.error('[DB] vault upsertKey failed:', err.message));
     res.json({ success: true });
 });
 
@@ -1732,13 +1760,19 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]
 
     record.deleted = true;
     saveMeta();
+    vaultStore.markFileDeleted(record.fileId).catch(err => console.error('[DB] vault markFileDeleted failed:', err.message));
 
-    const filePath = path.join(VAULT_DIR, `${record.fileId}.enc`);
-    if (fs.existsSync(filePath)) {
-        try {
-            fs.unlinkSync(filePath);
-        } catch(e) {
-            console.error('Failed to delete physical file:', e);
+    const storagePath = record.storagePath || `${record.fileId}.enc`;
+    if (supabaseStorage.storageConfigured()) {
+        supabaseStorage.deleteObject(storagePath).catch(e => console.error('[Vault] Storage delete failed:', e.message));
+    } else {
+        const filePath = path.join(VAULT_DIR, storagePath);
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+            } catch(e) {
+                console.error('Failed to delete physical file:', e);
+            }
         }
     }
 
@@ -1834,6 +1868,23 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
                     console.log(`[DB] Restored ${added} conversation(s) from Postgres (${dbConvos.length} total).`);
                 } catch (err) {
                     console.error('[DB] Failed to restore conversations:', err.message);
+                }
+
+                // Restore vault file metadata + wrapped keys (blobs live in Supabase Storage).
+                try {
+                    const dbFiles = await vaultStore.loadAllFiles();
+                    const knownFiles = new Set(fileMeta.map(f => f?.fileId));
+                    let addedFiles = 0;
+                    for (const f of dbFiles) {
+                        if (!knownFiles.has(f.fileId)) { fileMeta.push(f); addedFiles++; }
+                    }
+                    const dbKeys = await vaultStore.loadAllKeys();
+                    for (const owner of Object.keys(dbKeys)) {
+                        if (!vaultKeys[owner]) vaultKeys[owner] = dbKeys[owner];
+                    }
+                    console.log(`[DB] Restored ${addedFiles} vault file(s) and ${Object.keys(dbKeys).length} vault key(s) from Postgres.`);
+                } catch (err) {
+                    console.error('[DB] Failed to restore vault data:', err.message);
                 }
             }
         }
