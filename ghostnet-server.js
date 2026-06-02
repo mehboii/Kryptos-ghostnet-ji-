@@ -123,6 +123,7 @@ import * as analytics from './analytics.js';
 import { healthCheck as dbHealthCheck, checkMigrationsRan } from './db/client.js';
 import * as messageStore from './db/messageStore.js';
 import * as nodeStore from './db/nodeStore.js';
+import * as conversationStore from './db/conversationStore.js';
 import { startCleanupCron } from './db/cleanup.js';
 
 // Install global crash handlers as early as possible
@@ -1332,6 +1333,9 @@ app.post('/message', requireAuth, (req, res) => { // [02]
     }
 
     scheduleWrite(CONVOS_FILE, conversations); // [12]
+    // Persist conversation to Postgres so it survives restarts (history stays readable).
+    conversationStore.upsertConversation(convo).catch(err =>
+        console.error('[DB] upsertConversation failed:', err.message));
 
     const msg = {
         // Use the client-supplied id when it's a safe token, so the sender's bubble,
@@ -1816,7 +1820,22 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
         const healthy = await dbHealthCheck();
         if (healthy) {
             const migrated = await checkMigrationsRan();
-            if (migrated) startCleanupCron(7);
+            if (migrated) {
+                startCleanupCron(7);
+                // Restore conversations from Postgres so chat history is readable after a
+                // restart/redeploy (the local conversations.json is ephemeral on Railway).
+                try {
+                    const dbConvos = await conversationStore.loadAllConversations();
+                    const known = new Set(conversations.map(c => c?.id));
+                    let added = 0;
+                    for (const c of dbConvos) {
+                        if (!known.has(c.id)) { conversations.push(c); added++; }
+                    }
+                    console.log(`[DB] Restored ${added} conversation(s) from Postgres (${dbConvos.length} total).`);
+                } catch (err) {
+                    console.error('[DB] Failed to restore conversations:', err.message);
+                }
+            }
         }
     } else {
         console.warn('[DB] DATABASE_URL not set — running in JSON-only mode.');
@@ -2149,6 +2168,8 @@ wss.on('connection', (ws) => {
                         convo.updated = Date.now();
                     }
                     scheduleWrite(CONVOS_FILE, conversations); // [12]
+                    conversationStore.upsertConversation(convo).catch(err =>
+                        console.error('[DB] WS upsertConversation failed:', err.message));
 
                     const newMsg = {
                         id: msgId, // same id used for delivery + receipts so ticks/read line up on reload
