@@ -1632,20 +1632,21 @@
                     // ─── SIGNED AUTH: prove private key ownership ─────────
                     // Signs a challenge = "ghostnet-auth:" + nodeId + ":" + timestamp
                     // Server should verify signature matches the claimed publicKey.
-                    async function _signedAuthPayload(nodeId, privateKey, publicKey) {
+                    async function _signedAuthPayload(nodeId, privateKey, publicKey, displayName) {
                         const timestamp = Math.floor(Date.now() / 1000);
                         const challenge = `ghostnet-auth:${nodeId}:${timestamp}`;
                         const wallet = new ethers.Wallet(privateKey);
                         const signature = await wallet.signMessage(challenge);
-                        return { nodeId, publicKey, timestamp, signature };
+                        // displayName is required server-side to re-derive and verify nodeId.
+                        return { nodeId, publicKey, displayName, timestamp, signature };
                     }
 
                     // Authenticate with signed proof (falls back to unsigned if pk unavailable)
-                    async function _authenticateNode(nodeId, privateKey, publicKey) {
+                    async function _authenticateNode(nodeId, privateKey, publicKey, displayName) {
                         const API = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
                         let payload;
                         if (privateKey && publicKey) {
-                            payload = await _signedAuthPayload(nodeId, privateKey, publicKey);
+                            payload = await _signedAuthPayload(nodeId, privateKey, publicKey, displayName);
                         } else {
                             // Fallback: unsigned (server should reject once signature enforcement is live)
                             console.warn('[Auth] No private key available — sending unsigned auth');
@@ -1706,7 +1707,7 @@
                             if (window.GhostIdentity && GhostIdentity.getSessionPrivateKey) {
                                 pk = await GhostIdentity.getSessionPrivateKey().catch(() => null);
                             }
-                            return await _authenticateNode(nodeId, pk, pub);
+                            return await _authenticateNode(nodeId, pk, pub, (stored && stored.displayName) || (window.app && window.app.identity && window.app.identity.displayName));
                         } catch (e) {
                             console.error('[Auth] ensureAuth failed:', e);
                             return null;
@@ -2070,7 +2071,7 @@
 
                             try {
                                 if (_authNodeId && _authNodeId !== 'null' && _authNodeId !== 'undefined') {
-                                    await _authenticateNode(_authNodeId, _authPk, _authPub);
+                                    await _authenticateNode(_authNodeId, _authPk, _authPub, _pendingIdentity.displayName);
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -2236,7 +2237,7 @@
                                 if (_authNodeId && _authNodeId !== 'null' && _authNodeId !== 'undefined') {
                                     // We just unlocked — session private key is available
                                     const _pk = await GhostIdentity.getSessionPrivateKey();
-                                    await _authenticateNode(_authNodeId, _pk, stored.publicKey);
+                                    await _authenticateNode(_authNodeId, _pk, stored.publicKey, stored.displayName);
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -2606,7 +2607,7 @@
                                         try {
                                             const _authNodeId = stored.nodeId;
                                             if (_authNodeId && _authNodeId !== 'null' && _authNodeId !== 'undefined') {
-                                                await _authenticateNode(_authNodeId, sessionPk, stored.publicKey);
+                                                await _authenticateNode(_authNodeId, sessionPk, stored.publicKey, stored.displayName);
                                             }
                                         } catch (e) { console.warn('Node auth failed:', e); }
                                     }

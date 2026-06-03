@@ -116,6 +116,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
+import { ethers } from 'ethers';
 import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
 import monitor from './monitoring/error-monitor.js';
@@ -774,6 +775,17 @@ function requireAuth(req, res, next) {
     }
 }
 
+// [SEC #2] Vault access requires a cryptographically VERIFIED identity. A node token
+// must carry `nodeVerified` (issued only via signed /auth/node) — this rejects legacy
+// or impersonation-era node tokens from reaching the vault. Email/password tokens
+// (no isNode) are already strongly authenticated and pass through. Use AFTER requireAuth.
+function requireVaultAuth(req, res, next) {
+    if (req.user?.isNode && !req.user?.nodeVerified) {
+        return res.status(403).json({ error: 'Vault access requires re-authentication (verified node token)' });
+    }
+    next();
+}
+
 
 // ─── DECENTRALIZED NODE AUTH ──────────────────────────────────────────────────
 
@@ -785,36 +797,85 @@ const nodeAuthLimiter = rateLimit({
     message: { error: 'Too many node auth attempts. Please wait.' },
 });
 
+// Canonical nodeId input — MUST stay byte-identical to crypto-identity.js
+// _canonicalNodeInput() so the server can re-derive and verify a nodeId.
+function _canonicalNodeInput(publicKey, displayName) {
+    return `${String(publicKey).length}:${String(publicKey)}|${String(displayName).length}:${String(displayName)}`;
+}
+
 app.post('/auth/node', nodeAuthLimiter, (req, res) => {
     let nodeId;
     try { nodeId = validateNodeId(req.body?.nodeId); }
     catch (e) { return res.status(400).json({ error: e.message }); }
 
-    // If caller provided a valid JWT, capture the authenticated identity
+    // ── [SEC: node-auth hardening] Proof-of-possession ───────────────────────────
+    // The caller MUST sign a fresh challenge with the node's PRIVATE key. This closes
+    // the impersonation hole where anyone who knew a (public) nodeId could mint a token
+    // for it. Unsigned auth is no longer accepted.
+    const publicKey = typeof req.body?.publicKey === 'string' ? req.body.publicKey : null;
+    const signature = typeof req.body?.signature === 'string' ? req.body.signature : null;
+    const timestamp = parseInt(req.body?.timestamp, 10);
+    if (!publicKey || !signature || !Number.isFinite(timestamp)) {
+        return res.status(401).json({ error: 'Signed authentication required' });
+    }
+    // Reject stale / replayed challenges (±5 min clock-skew window).
+    if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > 300) {
+        return res.status(401).json({ error: 'Authentication challenge expired' });
+    }
+    // 1) The signature must come from the private key behind `publicKey`.
+    let signerAddr, expectedAddr;
+    try {
+        const challenge = `ghostnet-auth:${nodeId}:${timestamp}`;
+        signerAddr = ethers.utils.verifyMessage(challenge, signature).toLowerCase();
+        expectedAddr = ethers.utils.computeAddress(publicKey).toLowerCase();
+    } catch (_) {
+        return res.status(401).json({ error: 'Invalid signature' });
+    }
+    if (signerAddr !== expectedAddr) {
+        return res.status(401).json({ error: 'Signature does not match public key' });
+    }
+    // 2) Bind the public key to the claimed nodeId. Primary: cryptographic derivation
+    //    (nodeId === keccak256(canonical(publicKey, displayName))). Fallback for older
+    //    clients that don't send displayName yet: a previously-stored public key.
+    const existing = registeredNodes[nodeId];
+    const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName : null;
+    const derivedOk = displayName != null
+        && nodeId === ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+    const storedOk = !!existing?.publicKey && existing.publicKey === publicKey;
+    if (!derivedOk && !storedOk) {
+        return res.status(401).json({ error: 'Public key does not match node identity' });
+    }
+
+    // If caller also presented a JWT, capture the authenticated account id.
     let authedId = null;
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         try {
             const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
             authedId = decoded.id || decoded.userId || null;
-        } catch (_) { /* token invalid/expired — treat as unauthenticated node auth */ }
+        } catch (_) { /* invalid/expired — treat as unauthenticated */ }
     }
 
-    // [37][Broken auth] Ownership enforcement that also covers the no-header path.
-    // A node bound to a *real account* (ownerId !== nodeId) may only be claimed by
-    // that account. Previously this check ran ONLY when an Authorization header was
-    // present, so omitting the header let anyone mint a node JWT for any nodeId.
-    // Self-owned / unregistered nodes (ownerId === nodeId or absent) stay claimable
-    // so account-less mesh nodes (e.g. ESP32) keep working.
-    const existing = registeredNodes[nodeId];
+    // [37] A node bound to a *real account* may only be claimed by that account.
     if (existing && existing.ownerId && existing.ownerId !== nodeId
         && existing.ownerId !== authedId) {
         return res.status(403).json({ error: 'Not authorized to claim this node' });
     }
-    const ownerId = authedId || nodeId;
+    const ownerId = authedId || existing?.ownerId || nodeId;
 
-    // Issue a JWT representing the node itself
-    const token = jwt.sign({ id: nodeId, isNode: true, ownerId }, JWT_SECRET, { expiresIn: '7d' });
+    // Remember the verified public key so future logins can bind to it (storedOk path).
+    if (!existing || existing.publicKey !== publicKey || existing.ownerId !== ownerId) {
+        registeredNodes[nodeId] = {
+            ...(existing || {}), nodeId, publicKey, ownerId,
+            displayName: displayName || existing?.displayName, lastSeen: Date.now(),
+        };
+        saveNodeRegistry();
+        nodeStore.upsertNode(nodeId, { publicKey, ownerId, displayName: displayName || existing?.displayName }).catch(() => {});
+    }
+
+    // Issue the node JWT. `nodeVerified` marks it as proven via signature and is
+    // REQUIRED for vault access (see requireVaultAuth) so unverified tokens can't reach it.
+    const token = jwt.sign({ id: nodeId, isNode: true, ownerId, nodeVerified: true }, JWT_SECRET, { expiresIn: '7d' });
     res.json({ success: true, token });
 });
 
@@ -1556,7 +1617,7 @@ app.get('/health/bridge', requireAuth, async (_req, res) => { // [09]
 // TODO: Add file magic byte validation server-side to prevent MIME type spoofing
 const VAULT_UPLOAD_MIME_ALLOW = new Set(['multipart/form-data', 'application/octet-stream']);
 
-app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, res) => { // [10]
+app.post('/vault/upload', requireAuth, requireVaultAuth, vaultUpload.single('file'), async (req, res) => { // [10]
     const rawCT = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
     if (!VAULT_UPLOAD_MIME_ALLOW.has(rawCT)) {
         return res.status(415).json({ error: 'Unsupported content type for vault upload' });
@@ -1632,7 +1693,7 @@ app.post('/vault/upload', requireAuth, vaultUpload.single('file'), async (req, r
 
 
 
-app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
+app.get('/vault/download/:fileId', requireAuth, requireVaultAuth, async (req, res) => {
     let fileId;
     try { fileId = validateFileId(req.params.fileId); }
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
@@ -1671,7 +1732,7 @@ app.get('/vault/download/:fileId', requireAuth, async (req, res) => {
     res.send(blob);
 });
 
-app.get('/vault/files/:owner', requireAuth, async (req, res) => {
+app.get('/vault/files/:owner', requireAuth, requireVaultAuth, async (req, res) => {
     if (req.user.id !== req.params.owner && req.params.owner !== 'me') {
         return res.status(403).json({ error: 'Access denied' });
     }
@@ -1687,7 +1748,7 @@ app.get('/vault/files/:owner', requireAuth, async (req, res) => {
     res.json({ files: userFiles });
 });
 
-app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
+app.get('/vault/verify/:fileId', requireAuth, requireVaultAuth, async (req, res) => { // [18]
     let fileId;
     try { fileId = validateFileId(req.params.fileId); }
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
@@ -1721,7 +1782,7 @@ app.get('/vault/verify/:fileId', requireAuth, async (req, res) => { // [18]
     }
 });
 
-app.get('/vault/keys', requireAuth, (req, res) => {
+app.get('/vault/keys', requireAuth, requireVaultAuth, (req, res) => {
     const ownerId = req.user.id;
     const keyData = vaultKeys[ownerId];
     if (keyData) {
@@ -1731,7 +1792,7 @@ app.get('/vault/keys', requireAuth, (req, res) => {
     }
 });
 
-app.post('/vault/keys', requireAuth, (req, res) => {
+app.post('/vault/keys', requireAuth, requireVaultAuth, (req, res) => {
     const ownerId = req.user.id;
     const { keyData } = req.body;
     if (!keyData || typeof keyData.wrappedKey !== 'string') {
@@ -1744,7 +1805,7 @@ app.post('/vault/keys', requireAuth, (req, res) => {
     res.json({ success: true });
 });
 
-app.delete('/vault/file/:fileId', requireAuth, async (req, res) => { // [19]
+app.delete('/vault/file/:fileId', requireAuth, requireVaultAuth, async (req, res) => { // [19]
     let fileId;
     try { fileId = validateFileId(req.params.fileId); }
     catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
