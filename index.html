@@ -1644,14 +1644,16 @@
                     // Authenticate with signed proof (falls back to unsigned if pk unavailable)
                     async function _authenticateNode(nodeId, privateKey, publicKey, displayName) {
                         const API = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
-                        let payload;
-                        if (privateKey && publicKey) {
-                            payload = await _signedAuthPayload(nodeId, privateKey, publicKey, displayName);
-                        } else {
-                            // Fallback: unsigned (server should reject once signature enforcement is live)
-                            console.warn('[Auth] No private key available — sending unsigned auth');
-                            payload = { nodeId };
+                        // Only attempt signed auth with a VALID key. A corrupt/missing key
+                        // (e.g. "0xnull" from a stale session) must NOT reach ethers.Wallet
+                        // (it throws) and unsigned auth is rejected by the server anyway — so
+                        // bail out cleanly and let the caller prompt for a PIN re-unlock.
+                        const validPk = typeof privateKey === 'string' && /^0x[0-9a-fA-F]{64}$/.test(privateKey);
+                        if (!validPk || !publicKey) {
+                            console.warn('[Auth] No valid signing key — skipping auth (re-unlock required).');
+                            return null;
                         }
+                        const payload = await _signedAuthPayload(nodeId, privateKey, publicKey, displayName);
                         const res = await fetch(`${API}/auth/node`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },

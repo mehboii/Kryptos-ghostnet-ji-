@@ -399,6 +399,8 @@ const GhostIdentity = (() => {
     }
 
     async function saveSession(privateKey) {
+        // Never persist a corrupt/invalid key (would resurface as "0xnull" on reload).
+        if (!_isValidPrivateKey(privateKey)) { clearSession(); return; }
         const sessionKeyBytes = crypto.getRandomValues(new Uint8Array(32));
         const encryptedBlob = await _rawEncrypt(privateKey, sessionKeyBytes);
         // [SEC FIX H5] Both blob and key in sessionStorage only — never localStorage.
@@ -408,16 +410,26 @@ const GhostIdentity = (() => {
         sessionStorage.setItem(_SK.SESSION_KEY, btoa(String.fromCharCode(...sessionKeyBytes)));
     }
 
+    // A valid secp256k1 private key is 0x + 64 hex chars. Anything else (e.g. a stale/
+    // corrupt session that decrypts to "0xnull") must NOT be fed to ethers.Wallet, which
+    // would throw "invalid BytesLike value" and abort auth.
+    function _isValidPrivateKey(k) {
+        return typeof k === 'string' && /^0x[0-9a-fA-F]{64}$/.test(k);
+    }
+
     async function getSessionPrivateKey() {
         // Prefer the in-memory key set on unlock/new-identity — available even when the
         // user did NOT enable "remember session", so signed auth always works this session.
-        if (_inMemoryPrivateKey) return _inMemoryPrivateKey;
+        if (_isValidPrivateKey(_inMemoryPrivateKey)) return _inMemoryPrivateKey;
+        if (_inMemoryPrivateKey) _inMemoryPrivateKey = null; // drop a bad in-memory value
         const keyB64 = sessionStorage.getItem(_SK.SESSION_KEY);
         const blob = sessionStorage.getItem(_SK.SESSION_KEY + '_blob');
         if (!keyB64 || !blob) return null;
         try {
             const rawKeyBytes = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
-            return await _rawDecrypt(blob, rawKeyBytes);
+            const pk = await _rawDecrypt(blob, rawKeyBytes);
+            if (!_isValidPrivateKey(pk)) { clearSession(); return null; } // corrupt session → drop it
+            return pk;
         } catch {
             clearSession();
             return null;
