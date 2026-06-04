@@ -523,7 +523,9 @@ app.get('/:asset', (req, res, next) => {
     const fromPublic = path.join(PUBLIC_DIR, asset);
     const fromRoot = path.join(__dirname, asset);
     const filePath = fs.existsSync(fromPublic) ? fromPublic : fromRoot;
-    res.sendFile(filePath, err => {
+    // Always revalidate client assets so a reload after a deploy fetches the fresh
+    // build instead of stale cached JS (which can cause auth/validation failures).
+    res.sendFile(filePath, { cacheControl: false, headers: { 'Cache-Control': 'no-cache, must-revalidate' } }, err => {
         if (err) next();
     });
 });
@@ -1840,11 +1842,25 @@ app.delete('/vault/file/:fileId', requireAuth, requireVaultAuth, async (req, res
     res.json({ success: true });
 });
 
-// Explicit root
+// Explicit root — never cache the HTML entry point, so each load gets the current build.
 app.get('/', (_req, res) => {
     const fromPublic = path.join(PUBLIC_DIR, 'index.html');
     const filePath = fs.existsSync(fromPublic) ? fromPublic : path.join(__dirname, 'index.html');
-    res.sendFile(filePath);
+    res.sendFile(filePath, { cacheControl: false, headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' } });
+});
+
+// Build/version stamp — lets the client detect a new deploy and auto-refresh a stale tab.
+// Based on index.html mtime (changes on every deploy), with a git-commit fallback.
+let BUILD_VERSION = process.env.RAILWAY_GIT_COMMIT_SHA || '';
+try {
+    const idxPath = fs.existsSync(path.join(PUBLIC_DIR, 'index.html'))
+        ? path.join(PUBLIC_DIR, 'index.html') : path.join(__dirname, 'index.html');
+    BUILD_VERSION = BUILD_VERSION || String(fs.statSync(idxPath).mtimeMs | 0);
+} catch (_) { BUILD_VERSION = BUILD_VERSION || String(Date.now()); }
+
+app.get('/version', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ version: BUILD_VERSION });
 });
 
 // ─── ANALYTICS (privacy-respecting, self-hosted) ────────────────────────────

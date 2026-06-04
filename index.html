@@ -2238,6 +2238,12 @@
                                     // We just unlocked — session private key is available
                                     const _pk = await GhostIdentity.getSessionPrivateKey();
                                     await _authenticateNode(_authNodeId, _pk, stored.publicKey, stored.displayName);
+                                    // Restore this account's chats + vault now that the token exists
+                                    // (server scopes them to this identity). Don't rely on event timing.
+                                    if (window.UI) {
+                                        if (UI.loadConversations) UI.loadConversations(_authNodeId);
+                                        if (UI.vaultLoadFiles) UI.vaultLoadFiles();
+                                    }
                                 }
                             } catch (e) { console.warn('Node auth failed:', e); }
 
@@ -2608,6 +2614,11 @@
                                             const _authNodeId = stored.nodeId;
                                             if (_authNodeId && _authNodeId !== 'null' && _authNodeId !== 'undefined') {
                                                 await _authenticateNode(_authNodeId, sessionPk, stored.publicKey, stored.displayName);
+                                                // Restore chats + vault for this account now that the token exists.
+                                                if (window.UI) {
+                                                    if (UI.loadConversations) UI.loadConversations(_authNodeId);
+                                                    if (UI.vaultLoadFiles) UI.vaultLoadFiles();
+                                                }
                                             }
                                         } catch (e) { console.warn('Node auth failed:', e); }
                                     }
