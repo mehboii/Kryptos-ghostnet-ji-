@@ -1646,7 +1646,22 @@
                         // bail out cleanly and let the caller prompt for a PIN re-unlock.
                         const validPk = typeof privateKey === 'string' && /^0x[0-9a-fA-F]{64}$/.test(privateKey);
                         if (!validPk || !publicKey) {
-                            console.warn('[Auth] No valid signing key — skipping auth (re-unlock required).');
+                            console.warn('[Auth] No valid signing key — prompting re-unlock.');
+                            // Surface the PIN prompt so the user can actually re-unlock instead of
+                            // silently 401'ing (e.g. session token expired mid-use on the Home view).
+                            // showScreen() now switches to the profile view so the prompt is visible.
+                            try {
+                                if (window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored()) {
+                                    const pinEl = document.getElementById('id-screen-pin');
+                                    const lockedEl = document.getElementById('id-screen-locked');
+                                    const alreadyPrompting =
+                                        (pinEl && pinEl.style.display === 'block') ||
+                                        (lockedEl && lockedEl.style.display === 'block');
+                                    if (!alreadyPrompting) {
+                                        showScreen(GhostIdentity.isLocked() ? 'locked' : 'pin');
+                                    }
+                                }
+                            } catch (_) {}
                             return null;
                         }
                         const payload = await _signedAuthPayload(nodeId, privateKey, publicKey, displayName);
@@ -1825,6 +1840,25 @@
                         document.querySelectorAll('.id-screen').forEach(s => s.style.display = 'none');
                         const target = document.getElementById('id-screen-' + name);
                         if (target) target.style.display = 'block';
+
+                        // CRITICAL: every identity/auth screen (pin, welcome, restore, setpin,
+                        // locked, …) lives INSIDE <section id="view-profile">. The app shell has
+                        // no auth gate and defaults to the Home view, so calling showScreen('pin')
+                        // alone just toggles a card buried in an inactive section — the user stays
+                        // on Home, is NEVER shown the PIN prompt, and every authed call then fails
+                        // with "No valid signing key" → 401. Activate the profile view for any
+                        // gating screen so the prompt is actually visible. (Not for 'dashboard',
+                        // which is the logged-in card — we don't want to yank the user to Profile
+                        // after a successful unlock.)
+                        if (name !== 'dashboard') {
+                            document.querySelectorAll('.view-section').forEach(s =>
+                                s.classList.toggle('active', s.id === 'view-profile'));
+                            document.querySelectorAll('.nav-btn, .mobile-nav-item').forEach(b => {
+                                if (b.id !== 'theme-toggle') {
+                                    b.classList.toggle('active', b.dataset.target === 'profile');
+                                }
+                            });
+                        }
 
                         // Init PIN boxes when showing PIN screens
                         if (name === 'pin') {
