@@ -641,6 +641,11 @@ const UI = {
         // Screenshot protection init/destroy
         if (target === 'chat' && AppState.identity) {
             UI.initScreenshotProtection();
+            // Always refresh the conversation list from the server when entering the
+            // chat view. Guarantees chats reappear after a re-login regardless of the
+            // identity:updated load timing (server scopes them to the authenticated id).
+            const _uid = AppState.identity.nodeId || AppState.identity.id;
+            if (_uid && UI.loadConversations) UI.loadConversations(_uid);
         } else {
             if (UI.destroyScreenshotProtection) {
                 UI.destroyScreenshotProtection();
