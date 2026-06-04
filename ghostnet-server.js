@@ -1947,6 +1947,39 @@ const server = app.listen(PORT, '0.0.0.0', async () => {
                 } catch (err) {
                     console.error('[DB] Failed to restore vault data:', err.message);
                 }
+
+                // Restore the node registry (incl. public keys) from Postgres so the
+                // signed-auth handshake's publicKey<->nodeId binding (storedOk fallback)
+                // survives redeploys — otherwise returning users on a cached client that
+                // doesn't send displayName get 401. [SEC: signing-handshake persistence]
+                try {
+                    const dbNodes = await nodeStore.getAllNodes();
+                    let restoredNodes = 0;
+                    for (const n of dbNodes) {
+                        if (!n.nodeId || !NODE_ID_RE.test(n.nodeId)) continue;
+                        const existing = registeredNodes[n.nodeId];
+                        if (!existing) {
+                            registeredNodes[n.nodeId] = {
+                                nodeId: n.nodeId,
+                                displayName: n.displayName || n.nodeId.slice(0, 10),
+                                ownerId: n.ownerId || n.nodeId,
+                                publicKey: n.publicKey || null,
+                                shortCode: n.shortCode || undefined,
+                                avatar: n.avatar || undefined,
+                                ghostCode: n.ghostCode || undefined,
+                                registeredAt: n.registeredAt ? new Date(n.registeredAt).getTime() : Date.now(),
+                                lastSeen: n.lastSeen ? new Date(n.lastSeen).getTime() : Date.now(),
+                            };
+                            restoredNodes++;
+                        } else if (!existing.publicKey && n.publicKey) {
+                            existing.publicKey = n.publicKey; // backfill missing key for storedOk
+                            restoredNodes++;
+                        }
+                    }
+                    console.log(`[DB] Restored ${restoredNodes} node(s) from Postgres (${dbNodes.length} total).`);
+                } catch (err) {
+                    console.error('[DB] Failed to restore nodes:', err.message);
+                }
             }
         }
     } else {
