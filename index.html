@@ -2139,12 +2139,12 @@
                                 }
                             }
 
-                            // Save 7-day session token if checked
+                            // Persist across reloads only if "remember" is checked. Don't
+                            // clearSession() when unchecked — that would wipe the in-memory key
+                            // needed for SIGNED re-auth this session (non-persistent; wiped on logout).
                             const remember = document.getElementById('remember-session-new');
                             if (remember && remember.checked) {
                                 await GhostIdentity.saveSession(_pendingIdentity.privateKey);
-                            } else {
-                                GhostIdentity.clearSession();
                             }
 
                             // Show success
@@ -2217,12 +2217,14 @@
                                 };
                             }
 
-                            // Save 7-day session token if checked
+                            // Persist the session across reloads only if "remember" is checked.
+                            // When unchecked, we do NOT clearSession() here: that would wipe the
+                            // in-memory private key just set by unlockWithPin, which is required to
+                            // produce SIGNED /auth/node requests this session. The in-memory key is
+                            // non-persistent (gone on reload) and is wiped on logout.
                             const remember = document.getElementById('remember-session');
                             if (remember && remember.checked) {
                                 await GhostIdentity.saveSession(privateKey);
-                            } else {
-                                GhostIdentity.clearSession();
                             }
 
                             // Notify app.js to update mesh identity

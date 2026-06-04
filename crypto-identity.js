@@ -338,6 +338,7 @@ const GhostIdentity = (() => {
         try {
             const privateKey = await _decryptWithPin(stored.encryptedPK, pin);
             _resetAttempts();
+            _inMemoryPrivateKey = privateKey; // keep available for signed re-auth this session
             return privateKey;
         } catch (e) {
             if (e.message === 'Wrong PIN') {
@@ -363,6 +364,13 @@ const GhostIdentity = (() => {
     //
     // The PIN is NEVER stored or derivable from anything persisted on disk.
     // The session expires when the tab or browser is closed (sessionStorage).
+
+    // In-memory private key for the current page session. Set on unlock / new-identity
+    // save so the app can always produce a SIGNED /auth/node request (server now rejects
+    // unsigned auth), regardless of whether the user enabled "remember session".
+    // Lives only in this module's closure (not on window, not in storage) and is wiped
+    // on clearSession()/logout and on page reload.
+    let _inMemoryPrivateKey = null;
 
     async function _rawEncrypt(plaintext, rawKeyBytes) {
         const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -401,6 +409,9 @@ const GhostIdentity = (() => {
     }
 
     async function getSessionPrivateKey() {
+        // Prefer the in-memory key set on unlock/new-identity — available even when the
+        // user did NOT enable "remember session", so signed auth always works this session.
+        if (_inMemoryPrivateKey) return _inMemoryPrivateKey;
         const keyB64 = sessionStorage.getItem(_SK.SESSION_KEY);
         const blob = sessionStorage.getItem(_SK.SESSION_KEY + '_blob');
         if (!keyB64 || !blob) return null;
@@ -414,6 +425,7 @@ const GhostIdentity = (() => {
     }
 
     function clearSession() {
+        _inMemoryPrivateKey = null; // wipe the in-memory key on logout
         sessionStorage.removeItem(_SK.SESSION_KEY);
         sessionStorage.removeItem(_SK.SESSION_KEY + '_blob');
         // Clean up any legacy localStorage blob from pre-fix versions
@@ -448,6 +460,7 @@ const GhostIdentity = (() => {
         saveNewIdentity: async (identity, pin) => {
             const encryptedPK = await _encryptWithPin(identity.privateKey, pin);
             saveIdentity(identity.publicKey, identity.address, identity.displayName, identity.nodeId, encryptedPK, identity.ghostTag);
+            _inMemoryPrivateKey = identity.privateKey; // keep available for signed re-auth this session
         },
         // Primary unlock path — handles lockout internally.
         unlockWithPin,
