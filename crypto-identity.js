@@ -474,3 +474,10 @@ const GhostIdentity = (() => {
         generateNodeId, // Exposed publicly for deterministic derivation
     };
 })();
+
+// Expose on window so code that checks `window.GhostIdentity` works. It was previously
+// only a bare top-level `const` (global lexical binding, NOT a window property), so every
+// `window.GhostIdentity && ...` guard silently failed — notably ghostnetEnsureAuth, which
+// then skipped fetching the private key and sent UNSIGNED auth → server 401. Exposing it
+// here does not increase exposure (the bare global was already reachable to page scripts).
+if (typeof window !== 'undefined') window.GhostIdentity = GhostIdentity;
