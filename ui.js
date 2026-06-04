@@ -214,13 +214,20 @@ function authHeaders() {
  */
 async function _waitForToken(maxWait = 5000) {
     const start = Date.now();
+    let triggered = false;
     while (Date.now() - start < maxWait) {
-        // Check both storages for maximum resilience
-        const raw = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
-        if (raw) {
-            // Unwrap JSON envelope {token, expiresAt} if present
-            try { const p = JSON.parse(raw); if (p && p.token) return p.token; } catch (_) {}
-            if (raw.length > 10) return raw;
+        // Use the expiry-aware reader so a stale/expired envelope is treated as
+        // "no token" (returning an expired token here caused 401s — the conversations
+        // fetch used a token that validate-node correctly rejected as expired).
+        const tok = _readToken();
+        if (tok) return tok;
+
+        // Don't just passively poll: if no valid token exists, proactively kick off
+        // a refresh ourselves instead of depending on init()/autoAuthOnLoad timing.
+        // This is the race that produced "Auth token never arrived after 5s".
+        if (!triggered && typeof window.ghostnetEnsureAuth === 'function') {
+            triggered = true;
+            try { window.ghostnetEnsureAuth(); } catch (_) {}
         }
         await new Promise(r => setTimeout(r, 200));
     }
@@ -1638,7 +1645,15 @@ const UI = {
             let res = await doValidateFetch();
 
             // Token expired/invalid → re-authenticate once and retry.
+            // Drop the stored token first: the server-side JWT can expire while still
+            // inside the client's 1h wrapper, in which case ensureAuth() would just hand
+            // back the same dead token and the retry would 401 again. Removing it forces
+            // ensureAuth to actually mint a fresh one.
             if (res.status === 401 && window.ghostnetEnsureAuth) {
+                try {
+                    sessionStorage.removeItem('ghostnet_token');
+                    localStorage.removeItem('ghostnet_token');
+                } catch (_) {}
                 const refreshed = await window.ghostnetEnsureAuth();
                 if (refreshed) res = await doValidateFetch();
             }

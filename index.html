@@ -1706,25 +1706,37 @@
                     // Transparent re-auth: the session token lives in sessionStorage with a
                     // 1h expiry, so it's gone after an app restart / timeout. Any authed call
                     // (e.g. node validation) can call this to refresh it on demand.
-                    window.ghostnetEnsureAuth = async function ensureAuth() {
+                    //
+                    // Single-flight: on load, init(), autoAuthOnLoad (app.js), validate-node and
+                    // loadConversations can all call this within the same tick. Without a guard
+                    // each fires its own POST /auth/node, racing duplicate tokens. We memoize the
+                    // in-flight promise so concurrent callers share one authentication.
+                    let _ensureAuthInFlight = null;
+                    window.ghostnetEnsureAuth = function ensureAuth() {
                         const existing = _getAuthToken();
-                        if (existing) return existing;
-                        try {
-                            const stored = (window.GhostIdentity && GhostIdentity.getStoredIdentity)
-                                ? GhostIdentity.getStoredIdentity() : null;
-                            const nodeId = (stored && stored.nodeId)
-                                || (window.app && window.app.identity && window.app.identity.nodeId);
-                            if (!nodeId) return null;
-                            const pub = (stored && stored.publicKey) || null;
-                            let pk = null;
-                            if (window.GhostIdentity && GhostIdentity.getSessionPrivateKey) {
-                                pk = await GhostIdentity.getSessionPrivateKey().catch(() => null);
+                        if (existing) return Promise.resolve(existing);
+                        if (_ensureAuthInFlight) return _ensureAuthInFlight;
+                        _ensureAuthInFlight = (async () => {
+                            try {
+                                const stored = (window.GhostIdentity && GhostIdentity.getStoredIdentity)
+                                    ? GhostIdentity.getStoredIdentity() : null;
+                                const nodeId = (stored && stored.nodeId)
+                                    || (window.app && window.app.identity && window.app.identity.nodeId);
+                                if (!nodeId) return null;
+                                const pub = (stored && stored.publicKey) || null;
+                                let pk = null;
+                                if (window.GhostIdentity && GhostIdentity.getSessionPrivateKey) {
+                                    pk = await GhostIdentity.getSessionPrivateKey().catch(() => null);
+                                }
+                                return await _authenticateNode(nodeId, pk, pub, (stored && stored.displayName) || (window.app && window.app.identity && window.app.identity.displayName));
+                            } catch (e) {
+                                console.error('[Auth] ensureAuth failed:', e);
+                                return null;
+                            } finally {
+                                _ensureAuthInFlight = null;
                             }
-                            return await _authenticateNode(nodeId, pk, pub, (stored && stored.displayName) || (window.app && window.app.identity && window.app.identity.displayName));
-                        } catch (e) {
-                            console.error('[Auth] ensureAuth failed:', e);
-                            return null;
-                        }
+                        })();
+                        return _ensureAuthInFlight;
                     };
 
                     function copyNodeId(elementId, btn) {
