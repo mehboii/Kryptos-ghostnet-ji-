@@ -804,6 +804,15 @@ const UI = {
             window.app.chatTarget = null;
         }
 
+        // 7b. Clear chat UI so a signed-out session shows NO conversation history or
+        //     messages. Everything is re-fetched from the server on the next sign-in
+        //     (conversations via /conversations, messages via /history, files via /vault).
+        const _chatList = document.getElementById('chat-user-list');
+        if (_chatList) _chatList.replaceChildren();
+        const _chatFeed = document.getElementById('chat-feed');
+        if (_chatFeed) _chatFeed.replaceChildren();
+        if (window.AppState) window.AppState.activeConvoId = null;
+
         // 8. Cross-tab logout signal — other tabs detect this via 'storage' event
         try {
             localStorage.setItem('ghostnet_logout_signal', Date.now().toString());
@@ -2863,6 +2872,10 @@ const UI = {
         // Load conversations for this user
                 const userId = (AppState && AppState.identity) ? (AppState.identity.nodeId || AppState.identity.id) : user.id;
                 UI.loadConversations(userId);
+
+                // Restore the user's File Vault uploads from the server on sign-in too
+                // (server scopes files to the authenticated identity).
+                if (UI.vaultLoadFiles) UI.vaultLoadFiles();
 
                 // Fetch and display GhostCode
                 UI.fetchGhostCode();
