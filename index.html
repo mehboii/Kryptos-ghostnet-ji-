@@ -1860,8 +1860,12 @@
 
                     // ─── SCREEN MANAGEMENT ────────────────────────
                     function showScreen(name) {
-                        document.querySelectorAll('.id-screen').forEach(s => s.style.display = 'none');
                         const target = document.getElementById('id-screen-' + name);
+                        // Was this exact screen already visible? If so, a re-show (e.g. a
+                        // background auth-required firing while the user types) must NOT rebuild
+                        // input fields and wipe what they've entered — that caused the double-PIN.
+                        const wasVisible = !!(target && target.style.display === 'block');
+                        document.querySelectorAll('.id-screen').forEach(s => s.style.display = 'none');
                         if (target) target.style.display = 'block';
 
                         // CRITICAL: every identity/auth screen (pin, welcome, restore, setpin,
@@ -1885,7 +1889,11 @@
 
                         // Init PIN boxes when showing PIN screens
                         if (name === 'pin') {
-                            _createPinBoxes('pin-unlock-inputs');
+                            // Only build fresh boxes when newly arriving at the screen. A re-show
+                            // while already visible (background auth-required mid-typing) must keep
+                            // the digits the user already entered — otherwise they'd re-type. The
+                            // wrong-PIN path clears boxes explicitly via _clearPinBoxes().
+                            if (!wasVisible) _createPinBoxes('pin-unlock-inputs');
                             const stored = GhostIdentity.getStoredIdentity();
                             if (stored) {
                                 document.getElementById('pin-unlock-name').textContent =
