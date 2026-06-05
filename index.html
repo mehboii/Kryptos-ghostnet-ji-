@@ -1729,11 +1729,13 @@
                         const existing = _getAuthToken();
                         if (existing) return Promise.resolve(existing);
                         if (_ensureAuthInFlight) return _ensureAuthInFlight;
-                        // Gate already open: we're waiting on the user to unlock, so there is no
-                        // key to sign with yet. Back off silently instead of re-running auth (and
-                        // re-prompting) for every subsystem that asks. The 'ghostnet:auth-ready'
-                        // event resumes them once a token exists.
-                        if (_authGateOpen) return Promise.resolve(null);
+                        // NOTE: we intentionally do NOT short-circuit when the auth gate is open.
+                        // The signing key can become available again (cached after a successful
+                        // decrypt, or unlocked) while the gate flag is still set, and a routine
+                        // token expiry must be able to re-mint silently. Always attempt: if the key
+                        // really is gone, _authenticateNode re-opens the gate (deduped log/prompt);
+                        // if it's available, we refresh with no PIN needed. Single-flight +
+                        // the gate's own dedup already prevent any storm.
                         _ensureAuthInFlight = (async () => {
                             try {
                                 const stored = (window.GhostIdentity && GhostIdentity.getStoredIdentity)
