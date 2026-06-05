@@ -1791,12 +1791,18 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            // [FIX] Robust Polling: Wait for the token to actually exist (up to 5s)
-            // to prevent 401s during the re-login race condition.
-            const token = await _waitForToken();
-
+            // Decentralized + event-driven: use our own valid token if present; otherwise
+            // ask the identity module to acquire one (it is single-flight, so concurrent
+            // callers don't stampede /auth/node). If it still can't — the auth gate is open
+            // and the user must unlock — bail quietly instead of busy-waiting 5s and erroring.
+            // The 'ghostnet:auth-ready' listener re-runs this the moment a token arrives, so
+            // the list fills in on its own. No central fetch authority involved.
+            let token = _readToken();
+            if (!token && typeof window.ghostnetEnsureAuth === 'function') {
+                token = await window.ghostnetEnsureAuth();
+            }
             if (!token) {
-                console.error('[UI] Aborting conversations fetch: Auth token never arrived after 5s.');
+                console.debug('[UI] Conversations deferred — awaiting unlock (auto-retries on ghostnet:auth-ready).');
                 return;
             }
 
@@ -4340,6 +4346,29 @@ function startMesh() {
 
 // User requested initialization pattern
 window.UI = UI; // Expose to global scope for onclick handlers
+
+// ─── Decentralized auth lifecycle reactions (browser CustomEvent bus) ───────────
+// There is NO central auth controller and NO shared fetch wrapper. The identity
+// module merely broadcasts two events on the global bus — 'ghostnet:auth-required'
+// when an unlock is needed, 'ghostnet:auth-ready' when a token is obtained. Each
+// feature listens independently and refreshes ONLY its own data. This is the
+// decentralized, event-driven coordination that replaces 401-storming: when the
+// gate opens, loaders bail quietly; when a token lands, they re-run themselves.
+(function _wireAuthLifecycle() {
+    const currentUserId = () =>
+        (window.AppState && AppState.identity && (AppState.identity.nodeId || AppState.identity.id))
+        || (window.app && window.app.identity && window.app.identity.nodeId)
+        || sessionStorage.getItem('ghostnet_node_id');
+
+    window.addEventListener('ghostnet:auth-ready', () => {
+        try {
+            const uid = currentUserId();
+            if (uid && UI.loadConversations) UI.loadConversations(uid);
+            if (UI.vaultLoadFiles) UI.vaultLoadFiles();
+        } catch (_) {}
+    });
+})();
+
 window.addEventListener("DOMContentLoaded", () => {
     UI.init();
     renderHome();

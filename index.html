@@ -1637,6 +1637,26 @@
                         return { nodeId, publicKey, displayName, timestamp, signature };
                     }
 
+                    // ─── AUTH GATE (single, deduplicated re-unlock prompt) ───────
+                    // Without coordination, every authed subsystem (vault, conversations,
+                    // radar, wallet) that finds no valid token independently triggers a
+                    // re-unlock — producing the "prompting re-unlock" explosion. We funnel
+                    // all of them through one gate: the prompt is shown at most once, and
+                    // a 'ghostnet:auth-required' event is emitted so consumers can pause
+                    // instead of 401-storming. The gate closes (and 'ghostnet:auth-ready'
+                    // fires) the moment a token is obtained in _setAuthToken().
+                    let _authGateOpen = false;
+                    function _openAuthGate() {
+                        if (_authGateOpen) return;
+                        _authGateOpen = true;
+                        try { window.dispatchEvent(new CustomEvent('ghostnet:auth-required')); } catch (_) {}
+                        try {
+                            if (window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored()) {
+                                showScreen(GhostIdentity.isLocked() ? 'locked' : 'pin');
+                            }
+                        } catch (_) {}
+                    }
+
                     // Authenticate with signed proof (falls back to unsigned if pk unavailable)
                     async function _authenticateNode(nodeId, privateKey, publicKey, displayName) {
                         const API = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
@@ -1647,21 +1667,9 @@
                         const validPk = typeof privateKey === 'string' && /^0x[0-9a-fA-F]{64}$/.test(privateKey);
                         if (!validPk || !publicKey) {
                             console.warn('[Auth] No valid signing key — prompting re-unlock.');
-                            // Surface the PIN prompt so the user can actually re-unlock instead of
-                            // silently 401'ing (e.g. session token expired mid-use on the Home view).
-                            // showScreen() now switches to the profile view so the prompt is visible.
-                            try {
-                                if (window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored()) {
-                                    const pinEl = document.getElementById('id-screen-pin');
-                                    const lockedEl = document.getElementById('id-screen-locked');
-                                    const alreadyPrompting =
-                                        (pinEl && pinEl.style.display === 'block') ||
-                                        (lockedEl && lockedEl.style.display === 'block');
-                                    if (!alreadyPrompting) {
-                                        showScreen(GhostIdentity.isLocked() ? 'locked' : 'pin');
-                                    }
-                                }
-                            } catch (_) {}
+                            // Funnel through the single auth gate: prompts once, emits
+                            // 'ghostnet:auth-required' so consumers pause rather than 401-storm.
+                            _openAuthGate();
                             return null;
                         }
                         const payload = await _signedAuthPayload(nodeId, privateKey, publicKey, displayName);
@@ -1685,6 +1693,9 @@
                     function _setAuthToken(token) {
                         const wrapped = JSON.stringify({ token, expiresAt: Date.now() + TOKEN_EXPIRY_MS });
                         sessionStorage.setItem('ghostnet_token', wrapped);
+                        // Close the auth gate and wake any paused authed consumers.
+                        _authGateOpen = false;
+                        try { window.dispatchEvent(new CustomEvent('ghostnet:auth-ready', { detail: { token } })); } catch (_) {}
                     }
                     function _getAuthToken() {
                         const raw = sessionStorage.getItem('ghostnet_token');

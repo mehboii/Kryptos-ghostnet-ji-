@@ -201,11 +201,19 @@
     // ─── Auth header helper ───────────────────────────────────────────────────
 
     // [FIX B] Every request carries the session auth token.
+    // Expiry-aware AND self-contained: the previous version fell back to the raw
+    // storage value, which is still truthy for an EXPIRED token — so listFiles()
+    // thought a token existed, fired the request, and 401'd. The vault honors token
+    // expiry itself (no central auth authority) so it stays a standalone module.
     function _hasToken() {
-        const token = (window.getAuthHeaders && window.getAuthHeaders().Authorization)
-            || sessionStorage.getItem('ghostnet_token')
-            || localStorage.getItem('ghostnet_token');
-        return !!token;
+        if (window.getAuthHeaders) return !!window.getAuthHeaders().Authorization;
+        try {
+            const raw = sessionStorage.getItem('ghostnet_token');
+            if (!raw) return false;
+            const p = JSON.parse(raw);
+            if (p && p.token) return !(p.expiresAt && Date.now() > p.expiresAt);
+            return typeof raw === 'string' && raw.length > 10; // legacy plain token
+        } catch (_) { return false; }
     }
 
     function _secureHeaders(extra = {}) {
