@@ -1684,6 +1684,19 @@ const UI = {
                     acceptContactOffline(name);
                     return;
                 }
+                // 401 means our session token couldn't be refreshed (no valid signing key).
+                // The re-unlock PIN prompt is shown by the auth gate but sits BEHIND this
+                // modal — close the modal so the user can actually see and use it.
+                if (res.status === 401) {
+                    if (errEl) errEl.textContent = '🔒 Session expired — re-unlock with your PIN, then try again.';
+                    if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
+                    setTimeout(() => {
+                        const ov = document.querySelector('.modal-overlay');
+                        if (ov) ov.remove();
+                    }, 1200);
+                    if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'START SESSION'; }
+                    return;
+                }
                 if (errEl) errEl.textContent = `⚠ Validation failed (HTTP ${res.status}). Try again.`;
                 if (startBtn) {
                     startBtn.disabled = false;

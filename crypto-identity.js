@@ -429,9 +429,17 @@ const GhostIdentity = (() => {
             const rawKeyBytes = Uint8Array.from(atob(keyB64), c => c.charCodeAt(0));
             const pk = await _rawDecrypt(blob, rawKeyBytes);
             if (!_isValidPrivateKey(pk)) { clearSession(); return null; } // corrupt session → drop it
+            // Cache the decrypted key in memory for the rest of the tab session. After a
+            // reload the in-memory key is gone and we land here; without caching, EVERY
+            // authed call re-decrypts sessionStorage, and a single transient failure would
+            // wipe the session and leave the app permanently "no signing key" until a manual
+            // re-unlock. Caching makes the key stable and decouples it from storage hiccups.
+            _inMemoryPrivateKey = pk;
             return pk;
         } catch {
-            clearSession();
+            // A transient decrypt error must NOT destroy the session — clearing it here was
+            // the irreversible step that forced re-unlock. Return null and keep the stored
+            // blob; the next call (or a re-unlock) can recover it.
             return null;
         }
     }
