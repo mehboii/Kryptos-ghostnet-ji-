@@ -608,6 +608,24 @@ const UI = {
     },
 
     navigate: (target) => {
+        // Don't navigate away from the identity/unlock gate. The auth screens (pin,
+        // locked, welcome, setpin, restore, …) live INSIDE view-profile. On load,
+        // renderHome() calls navigate('home') and various startup tasks (wallet, vault,
+        // mesh) can navigate too — any of these would hide a PIN prompt that init() /
+        // _authenticateNode just showed, leaving the user on Home with no way to unlock
+        // and every authed call 401'ing. While a gate screen is visible, only allow
+        // navigating to 'profile' (where the gate lives); ignore other targets.
+        if (target !== 'profile') {
+            const GATE_SCREENS = ['pin', 'locked', 'welcome', 'setpin', 'name',
+                'generating', 'confirm', 'restore', 'seed', 'success',
+                'sync_export', 'sync_import'];
+            const gateVisible = GATE_SCREENS.some(n => {
+                const el = document.getElementById('id-screen-' + n);
+                return el && el.style.display === 'block';
+            });
+            if (gateVisible) return;
+        }
+
         GhostAnalytics.trackView(target);
 
         // Sidebar buttons
