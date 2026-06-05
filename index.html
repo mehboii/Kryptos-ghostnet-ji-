@@ -1647,8 +1647,11 @@
                     // fires) the moment a token is obtained in _setAuthToken().
                     let _authGateOpen = false;
                     function _openAuthGate() {
-                        if (_authGateOpen) return;
+                        if (_authGateOpen) return; // already prompting — don't log/prompt again
                         _authGateOpen = true;
+                        // This is a normal lifecycle state (token aged out / fresh tab), not an
+                        // error. Log once at info level so it doesn't read as a failure.
+                        console.info('[Auth] Re-unlock needed — showing PIN prompt.');
                         try { window.dispatchEvent(new CustomEvent('ghostnet:auth-required')); } catch (_) {}
                         try {
                             if (window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored()) {
@@ -1666,9 +1669,8 @@
                         // bail out cleanly and let the caller prompt for a PIN re-unlock.
                         const validPk = typeof privateKey === 'string' && /^0x[0-9a-fA-F]{64}$/.test(privateKey);
                         if (!validPk || !publicKey) {
-                            console.warn('[Auth] No valid signing key — prompting re-unlock.');
-                            // Funnel through the single auth gate: prompts once, emits
-                            // 'ghostnet:auth-required' so consumers pause rather than 401-storm.
+                            // Funnel through the single auth gate: it logs once, prompts once, and
+                            // emits 'ghostnet:auth-required' so consumers pause rather than 401-storm.
                             _openAuthGate();
                             return null;
                         }
@@ -1704,7 +1706,7 @@
                             const parsed = JSON.parse(raw);
                             if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
                                 sessionStorage.removeItem('ghostnet_token');
-                                console.warn('[Auth] Session token expired, cleared.');
+                                console.debug('[Auth] Session token expired, cleared (will refresh).');
                                 return null;
                             }
                             return parsed.token;
@@ -1727,6 +1729,11 @@
                         const existing = _getAuthToken();
                         if (existing) return Promise.resolve(existing);
                         if (_ensureAuthInFlight) return _ensureAuthInFlight;
+                        // Gate already open: we're waiting on the user to unlock, so there is no
+                        // key to sign with yet. Back off silently instead of re-running auth (and
+                        // re-prompting) for every subsystem that asks. The 'ghostnet:auth-ready'
+                        // event resumes them once a token exists.
+                        if (_authGateOpen) return Promise.resolve(null);
                         _ensureAuthInFlight = (async () => {
                             try {
                                 const stored = (window.GhostIdentity && GhostIdentity.getStoredIdentity)
