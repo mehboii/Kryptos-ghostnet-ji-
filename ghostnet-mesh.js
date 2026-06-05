@@ -441,6 +441,18 @@ class GhostMesh {
         // [F1] Require a JWT token — abort if missing
         const token = this.authToken || this.getAuthToken();
         if (!token) {
+            // No valid token (commonly: it aged out while the recipient sat idle, so the
+            // socket can't reconnect and they stop receiving messages). Ask the app to
+            // refresh auth, then connect once it lands. Decentralized: the mesh owns its
+            // own socket and just uses the shared ensureAuth primitive (single-flight, and
+            // it backs off on its own if the user must re-unlock) — no central router.
+            if (typeof window !== 'undefined' && typeof window.ghostnetEnsureAuth === 'function' && !this._authRefreshing) {
+                this._authRefreshing = true;
+                Promise.resolve(window.ghostnetEnsureAuth())
+                    .then(t => { if (t && !this._destroyed) { this.authToken = t; this.connectWebSocket(); } })
+                    .catch(() => {})
+                    .finally(() => { this._authRefreshing = false; });
+            }
             return;
         }
 

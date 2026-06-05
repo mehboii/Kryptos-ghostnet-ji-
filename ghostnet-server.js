@@ -324,7 +324,22 @@ function deliverQueuedMessages(recipientId, ws) {
     const pending = messageQueue.get(recipientId) || [];
     pending.forEach(msg => {
         if (ws.readyState === 1) {
-            ws.send(JSON.stringify(msg));
+            // Wrap in the same CHAT_MESSAGE envelope the real-time path uses. The raw
+            // stored object has no `type`, so the client's onmessage switch had no
+            // matching case and silently dropped every queued message.
+            const displayName = msg.contactName
+                || registeredNodes[msg.senderId]?.displayName
+                || (typeof msg.senderId === 'string' ? msg.senderId.slice(0, 10) : 'unknown');
+            ws.send(JSON.stringify({
+                type: 'CHAT_MESSAGE',
+                id: msg.id,
+                convoId: msg.convoId,
+                senderId: msg.senderId,
+                receiverId: msg.receiverId,
+                content: msg.content,
+                contactName: displayName,
+                timestamp: msg.timestamp,
+            }));
         }
     });
     messageQueue.delete(recipientId);

@@ -299,11 +299,32 @@ window.addEventListener('DOMContentLoaded', async () => {
                 encrypted: !!(window.app.chat),
             };
 
-            const response = await fetch(BACKEND.url('/message'), {
+            // Make sure we actually hold a valid token before sending. getAuthToken()
+            // returns '' for an expired token, so without this the POST would 401 and the
+            // message would be silently dropped (the recipient never receives it) even
+            // though the sender already saw the optimistic bubble.
+            if (!getAuthToken() && typeof window.ghostnetEnsureAuth === 'function') {
+                await window.ghostnetEnsureAuth();
+            }
+
+            const doPost = () => fetch(BACKEND.url('/message'), {
                 method: 'POST',
                 headers: secureHeaders(),
                 body: JSON.stringify(payload)
             });
+
+            let response = await doPost();
+
+            // Token may be server-side expired while we still thought it valid → refresh
+            // once and retry so the message isn't lost on a stale session.
+            if (response.status === 401 && typeof window.ghostnetEnsureAuth === 'function') {
+                try {
+                    sessionStorage.removeItem('ghostnet_token');
+                    localStorage.removeItem('ghostnet_token');
+                } catch (_) {}
+                const refreshed = await window.ghostnetEnsureAuth();
+                if (refreshed) response = await doPost();
+            }
 
             if (response.ok) {
                 const result = await response.json();
@@ -316,7 +337,11 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const errBody = await response.json().catch(() => ({}));
                 const errMsg = sanitize(errBody.error || `HTTP ${response.status}`);
                 log.error('Message rejected:', errMsg);
-                if (response.status === 404 && window.UI) {
+                // Surface auth failures so the message isn't silently lost — prompt re-unlock.
+                if (response.status === 401) {
+                    if (typeof _showDevWarning === 'function') _showDevWarning('⚠ Message not sent — please unlock to re-authenticate.');
+                    if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
+                } else if (response.status === 404 && window.UI) {
                     UI.addMessage(`⚠ ${errMsg}`, 'them');
                 }
             }
