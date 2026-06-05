@@ -607,15 +607,15 @@ const UI = {
         });
     },
 
-    navigate: (target) => {
-        // Don't navigate away from the identity/unlock gate. The auth screens (pin,
-        // locked, welcome, setpin, restore, …) live INSIDE view-profile. On load,
-        // renderHome() calls navigate('home') and various startup tasks (wallet, vault,
-        // mesh) can navigate too — any of these would hide a PIN prompt that init() /
-        // _authenticateNode just showed, leaving the user on Home with no way to unlock
-        // and every authed call 401'ing. While a gate screen is visible, only allow
-        // navigating to 'profile' (where the gate lives); ignore other targets.
-        if (target !== 'profile') {
+    navigate: (target, opts = {}) => {
+        // Guard ONLY automatic/programmatic navigation (opts.programmatic), e.g.
+        // renderHome() calling navigate('home') on load — that would otherwise clobber
+        // the unlock prompt init() shows and leave the user unable to sign in. User-
+        // initiated navigation (clicking the nav buttons) is NEVER blocked: after signing
+        // out you can still move freely around the app (no hard gate — that's the
+        // decentralized design). If you then trigger something that needs auth, the
+        // 'ghostnet:auth-required' event re-shows the PIN on its own.
+        if (opts.programmatic && target !== 'profile') {
             const GATE_SCREENS = ['pin', 'locked', 'welcome', 'setpin', 'name',
                 'generating', 'confirm', 'restore', 'seed', 'success',
                 'sync_export', 'sync_import'];
@@ -4319,7 +4319,8 @@ function renderHome() {
     // If our fancy UI structure exists, just ensure it's active
     const homeView = document.getElementById('view-home');
     if (homeView) {
-        UI.navigate('home');
+        // programmatic: on load this must not clobber an unlock prompt (see navigate()).
+        UI.navigate('home', { programmatic: true });
         // Ensure stats are updated
         const statNodes = document.getElementById('stat-nodes');
         if (statNodes && AppState.peers) statNodes.innerText = AppState.peers.length;
