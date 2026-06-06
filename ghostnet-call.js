@@ -441,8 +441,13 @@
 
         async _iceServers() {
             if (this._staticIceServers) return this._staticIceServers;
+            // A configured ICE provider (e.g. Cloudflare TURN) is authoritative.
+            // It is FAIL CLOSED: if it throws or returns nothing we propagate the
+            // error so the caller aborts — never start a call with no relay.
             if (this._getIceServers) {
-                try { const s = await this._getIceServers(); if (Array.isArray(s) && s.length) return s; } catch (_) { /* fall through */ }
+                const s = await this._getIceServers();
+                if (!Array.isArray(s) || !s.length) throw new Error('ICE provider returned no servers');
+                return s;
             }
             // Best-effort reuse of the NAT manager's STUN consensus if present.
             if (this.nat && typeof this.nat.getIceServers === 'function') {
@@ -456,9 +461,17 @@
                 this._fail('webrtc', 'RTCPeerConnection is unavailable in this environment');
                 return null;
             }
+            let iceServers;
+            try {
+                iceServers = await this._iceServers();
+            } catch (e) {
+                // FAIL CLOSED: no TURN/ICE config ⇒ abort rather than risk a call
+                // that can't traverse NAT (or runs with no relay fallback).
+                this._fail('ice', `could not obtain TURN/ICE servers — call aborted: ${e.message}`);
+                return null;
+            }
             let pc;
             try {
-                const iceServers = await this._iceServers();
                 pc = new this._PC({ iceServers, iceTransportPolicy: 'all' });
             } catch (e) {
                 this._fail('webrtc', `failed to create RTCPeerConnection: ${e.message}`);
