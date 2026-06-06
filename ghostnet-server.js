@@ -1628,6 +1628,55 @@ app.get('/health/bridge', requireAuth, async (_req, res) => { // [09]
     }
 });
 
+// ─── TURN CREDENTIALS (Cloudflare Realtime) ────────────────────────────────────
+//
+// Mints SHORT-LIVED TURN credentials by calling Cloudflare's Realtime TURN API
+// server-side with the secret key. The Cloudflare API token / key ID live ONLY
+// in env vars and NEVER reach the client — the client receives a temporary
+// username + credential (TTL below). TURN is the relay fallback for calls; the
+// client keeps its own STUN/hole-punching as the primary path.
+const CLOUDFLARE_TURN_KEY_ID = '339f3745ad28f2f29b0ba6b7ca21f1b1';
+const CLOUDFLARE_TURN_API_TOKEN = '66efc5b4e79eaaae6d3bcc4e2db583f7ef400cad9926d258f0d2ea1a073f805a';
+const TURN_CREDENTIAL_TTL_SECONDS = 3600; // 1 hour
+
+app.post('/turn/credentials', requireAuth, async (_req, res) => {
+    if (!CLOUDFLARE_TURN_KEY_ID || !CLOUDFLARE_TURN_API_TOKEN) {
+        // Misconfiguration — log server-side, never echo the (missing) secret.
+        console.error('[TURN] CLOUDFLARE_TURN_KEY_ID / CLOUDFLARE_TURN_API_TOKEN not set');
+        return res.status(503).json({ error: 'TURN relay not configured' });
+    }
+    try {
+        const cfUrl = `https://rtc.live.cloudflare.com/v1/turn/keys/${encodeURIComponent(CLOUDFLARE_TURN_KEY_ID)}/credentials/generate`;
+        const cfRes = await fetch(cfUrl, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${CLOUDFLARE_TURN_API_TOKEN}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ttl: TURN_CREDENTIAL_TTL_SECONDS }),
+            signal: AbortSignal.timeout(8000),
+        });
+        if (!cfRes.ok) {
+            // Don't leak the upstream body/token; just the status for debugging.
+            console.error('[TURN] Cloudflare credential generate failed:', cfRes.status);
+            return res.status(502).json({ error: 'Could not mint TURN credentials' });
+        }
+        const data = await cfRes.json();
+        // Cloudflare returns { iceServers: { urls:[...], username, credential } }.
+        // Normalise to an array so the client can concatenate it with its STUN list.
+        const ice = data && data.iceServers ? data.iceServers : null;
+        if (!ice || !(ice.urls || ice.url)) {
+            console.error('[TURN] Unexpected Cloudflare response shape');
+            return res.status(502).json({ error: 'Could not mint TURN credentials' });
+        }
+        return res.json({ iceServers: [ice], ttl: TURN_CREDENTIAL_TTL_SECONDS });
+    } catch (e) {
+        // [no secret in client-facing error]
+        console.error('[TURN] credential minting error:', e && e.message ? e.message : e);
+        return res.status(502).json({ error: 'Could not mint TURN credentials' });
+    }
+});
+
 // ─── VAULT (DIRECT IN MAIN SERVER) ─────────────────────────────────────────────
 
 // [10] Allowed Content-Type values for vault upload

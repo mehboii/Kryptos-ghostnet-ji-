@@ -138,6 +138,43 @@ lookup via `resolveIdentityKey` in production.
   (`maxBitrate`), default **24 kbps** average — tune via `maxAverageBitrate`.
 - In-band FEC (`useinbandfec=1`) is enabled for loss resilience.
 
+## TURN relay (Cloudflare Realtime)
+
+TURN is the **relay fallback** for when direct P2P (host/STUN/hole-punching)
+fails — not a replacement. Credentials are **minted server-side** so the
+Cloudflare API token never touches the client.
+
+- **Server:** `POST /turn/credentials` (auth required) calls Cloudflare's
+  Realtime TURN API with `CLOUDFLARE_TURN_KEY_ID` + `CLOUDFLARE_TURN_API_TOKEN`
+  (env only) and returns `{ iceServers, ttl }` — a short-lived (1h) username +
+  credential. The token/key ID are never sent to the client or logged.
+- **Client:** `ghostnet-call-ice.js` →
+  `GhostCallIce.createCloudflareIceProvider({ stunServers })` returns a
+  `getIceServers()` that fetches **fresh creds per call** (at PC creation, on both
+  `startCall` and `acceptCall`), keeps your STUN/hole-punching servers first, and
+  appends the TURN entry (udp + tcp + tls).
+- **Fail closed:** if the credential fetch fails, `getIceServers()` throws,
+  `GhostCall` emits `error` with `code: 'ice'` and **aborts** — a call never starts
+  with no relay.
+
+Wire it via the existing `getIceServers` hook (no call-logic change):
+
+```js
+const call = new GhostCall({
+  mesh, identity,
+  getIceServers: GhostCallIce.createCloudflareIceProvider({
+    stunServers, // your NAT STUN consensus (defaults to public STUN)
+  }),
+});
+```
+
+Env (see `.env.example`):
+
+```
+CLOUDFLARE_TURN_KEY_ID=...
+CLOUDFLARE_TURN_API_TOKEN=...
+```
+
 ## ⚠️ Follow-up: microphone permission in the Expo WebView
 
 `RTCPeerConnection` works inside the Android System WebView, **but `getUserMedia`
