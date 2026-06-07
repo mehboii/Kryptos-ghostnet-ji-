@@ -84,10 +84,10 @@ export default class GhostBLE {
                 const isSecure = window.isSecureContext;
                 if (!isSecure) {
                     console.error("WebBluetooth Failed: Not a Secure Context (HTTPS required).");
-                    alert("⚠️ Bluetooth Error: Devices cannot be searched because the connection is not secure.\n\nPlease use localhost or HTTPS.\n(IP addresses like 192.168.x.x block Bluetooth for security)");
+                    alert(" Bluetooth Error: Devices cannot be searched because the connection is not secure.\n\nPlease use localhost or HTTPS.\n(IP addresses like 192.168.x.x block Bluetooth for security)");
                 } else {
                     console.error("WebBluetooth not supported or disabled in this browser.");
-                    alert("⚠️ Bluetooth Error: WebBluetooth is not supported or disabled in this browser.");
+                    alert(" Bluetooth Error: WebBluetooth is not supported or disabled in this browser.");
                 }
                 return false;
             }
@@ -121,7 +121,7 @@ export default class GhostBLE {
                 // User cancelled or no device found
                 console.log("User cancelled scan or no device selected.");
             } else if (e.name === 'SecurityError') {
-                alert("⚠️ Security Error: Interaction needs to be triggered by a user gesture (click).");
+                alert(" Security Error: Interaction needs to be triggered by a user gesture (click).");
             } else {
                 alert("BLE Error: " + e.message);
             }
@@ -140,7 +140,7 @@ export default class GhostBLE {
             service = await server.getPrimaryService(SERVICE_UUID);
         } catch (err) {
             console.error("Service not found:", err);
-            alert("⚠️ Device Connected but 'GhostNet' service not found.\nEnsure the other device is running the GhostNet app.");
+            alert(" Device Connected but 'GhostNet' service not found.\nEnsure the other device is running the GhostNet app.");
             device.gatt.disconnect();
             return;
         }

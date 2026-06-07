@@ -234,11 +234,11 @@ const ContactManager = {
         let iconHtml = "";
         if (msg.mode === 'EPHEMERAL') {
             el.classList.add('msg-ephemeral');
-            iconHtml = `<span style="font-size:0.75rem; opacity:0.7; margin-left:6px;">🔥 30s</span>`;
+            iconHtml = `<span style="font-size:0.75rem; opacity:0.7; margin-left:6px;"> 30s</span>`;
         } else if (msg.mode === 'DELETE' && type === 'me') {
             // Add Delete Button for sender
             // We'll overlay it or append it
-            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${_escapeJSString(msg.id)}', '${_escapeJSString(msg.to)}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone">🗑️</span>`;
+            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${_escapeJSString(msg.id)}', '${_escapeJSString(msg.to)}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone"></span>`;
         }
 
         el.style.cssText = style;

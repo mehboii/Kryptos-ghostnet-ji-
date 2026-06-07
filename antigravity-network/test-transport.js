@@ -43,12 +43,12 @@ const GhostIdentity = require("./ghostnet-identity");
         console.log("Decrypted:", JSON.stringify(decrypted));
 
         if (decrypted && decrypted.text === msg.text) {
-            console.log("✅ TEST PASSED");
+            console.log(" TEST PASSED");
         } else {
-            console.error("❌ DECRYPTION MISMATCH");
+            console.error(" DECRYPTION MISMATCH");
         }
 
     } catch (e) {
-        console.error("❌ TEST FAILED:", e);
+        console.error(" TEST FAILED:", e);
     }
 })();

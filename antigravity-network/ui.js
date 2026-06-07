@@ -261,7 +261,7 @@ const UI = {
 
     fetchRealData: async () => {
         try {
-            console.log("🔗 Connecting to GhostNet Bridge...");
+            console.log(" Connecting to GhostNet Bridge...");
 
             // [FIX 19] Use relative URL instead of hardcoded production URL
             // [DAST-F13] Auth via HttpOnly cookie — sent automatically
@@ -275,7 +275,7 @@ const UI = {
 
             const walletData = await res.json();
 
-            console.log("✅ Bridge Data Received:", walletData);
+            console.log(" Bridge Data Received:", walletData);
 
             if (Array.isArray(walletData)) {
                 AppState.wallet = walletData;
@@ -287,7 +287,7 @@ const UI = {
             window.dispatchEvent(new Event("app:state"));
 
         } catch (e) {
-            console.warn("⚠️ Bridge Disconnected (Using Fallback Data):", e);
+            console.warn(" Bridge Disconnected (Using Fallback Data):", e);
 
             // Safety: Fallback if fetch fails
             if (!AppState.wallet || AppState.wallet.length === 0) {
@@ -724,7 +724,7 @@ const UI = {
                 
                 <div style="display:flex; align-items:center; gap:10px;">
                      <div class="status-badge ${bleActive ? 'active' : ''}">
-                        ${bleActive ? '🟢 Active' : '⚪ Idle'}
+                        ${bleActive ? ' Active' : ' Idle'}
                     </div>
                     <button class="btn-primary small" onclick="window.app.transport.startBLEScan()">
                         SCAN NETWORK

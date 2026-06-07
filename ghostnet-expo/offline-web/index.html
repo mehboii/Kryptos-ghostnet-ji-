@@ -4145,7 +4145,7 @@ canvas#mesh {
 .empty-icon { background: var(--ig-bubble-them); color: #8b5cf6; }
 .empty-icon::before { border-color: transparent; }
 
-/* On mobile the back chevron must be visible (IG slides list ↔ thread) */
+/* On mobile the back chevron must be visible (IG slides list  thread) */
 @media (max-width: 768px) {
     .chat-back-btn { display: flex; }
     .chat-layout-split { border: none; }
@@ -24992,7 +24992,7 @@ const __$G=typeof globalThis!=="undefined"?globalThis:typeof window!=="undefined
             ikmBytes = new Uint8Array(cleanHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
         } else {
             // ── FALLBACK: sorted public keys (NOT secure — for backward compat) ──
-            console.warn('[GhostChat] ⚠ No ECDH callback provided — using legacy sorted-key derivation. This is NOT secure for production.');
+            console.warn('[GhostChat]  No ECDH callback provided — using legacy sorted-key derivation. This is NOT secure for production.');
             const [a, b] = [myPub, peerPub].sort();
             const ikmStr = `${a.length}:${a}|${b.length}:${b}`;
             ikmBytes = enc.encode(ikmStr);
@@ -25180,7 +25180,7 @@ const __$G=typeof globalThis!=="undefined"?globalThis:typeof window!=="undefined
                 throw new Error(`Message too large (max ${MAX_BODY_BYTES} bytes).`);
             }
 
-            // Use the caller-supplied id (so sender bubble ↔ packet ↔ receipts align).
+            // Use the caller-supplied id (so sender bubble  packet  receipts align).
             const msgId = (typeof msgIdOverride === 'string' && msgIdOverride) ? msgIdOverride : _uuid();
             const ts = Date.now();
             const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -25596,7 +25596,7 @@ class GhostMesh {
         this._loadKnownBleDevices();
 
         this.bleAvailable = typeof navigator !== 'undefined' && !!navigator.bluetooth;
-        console.log(`🕸️ GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
+        console.log(` GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
 
         // [Feature 4] Relay Monitor State
         this.relayStats = {
@@ -25715,13 +25715,13 @@ class GhostMesh {
         if (token) {
             this.connectWebSocket();
         } else {
-            console.log('🔌 Mesh: Standing by for authentication before connecting.');
+            console.log(' Mesh: Standing by for authentication before connecting.');
         }
         
         this.startHeartbeat();
 
         if (this.bleAvailable && this.knownBLEDevices.length > 0) {
-            console.log(`📲 BLE auto-reconnect: ${this.knownBLEDevices.length} known device(s)`);
+            console.log(` BLE auto-reconnect: ${this.knownBLEDevices.length} known device(s)`);
             this.attemptBLEAutoReconnect();
         }
         return true;
@@ -25928,7 +25928,7 @@ class GhostMesh {
             // Without it, the server immediately destroys the socket.
             const base = this.buildWsUrl();
             const wsUrl = `${base}?token=${encodeURIComponent(token)}`;
-            console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`);
+            console.log(` Mesh: Connecting WebSocket to ${base}...`);
 
             const ws = new WebSocket(wsUrl);
             this.ws = ws;
@@ -25937,7 +25937,7 @@ class GhostMesh {
                 // Guard: if we've been replaced by a newer socket, ignore
                 if (this.ws !== ws) return;
 
-                console.log('✅ Mesh: WebSocket connected');
+                console.log(' Mesh: WebSocket connected');
 
                 this.wsReady = true;
                 this._connecting = false;
@@ -25976,7 +25976,7 @@ class GhostMesh {
 
                 // Only log first 3 disconnects to avoid console flood
                 if (!this._reconnectAttempts || this._reconnectAttempts < 3) {
-                    console.warn('🔌 Mesh: WebSocket disconnected');
+                    console.warn(' Mesh: WebSocket disconnected');
                 }
                 this.wsReady = false;
                 this._connecting = false;
@@ -26350,7 +26350,7 @@ class GhostMesh {
             this.onPeerJoin(peer);
             this.onMeshUpdate(this.getPeers());
             this.onStatusChange({ state: 'connected', transport: 'ble', peerId });
-            console.log(`✅ BLE: Connected to ${peer.name}`);
+            console.log(` BLE: Connected to ${peer.name}`);
 
         } catch (e) {
             console.warn('BLE connection failed:', e.message);
@@ -29457,10 +29457,10 @@ window.addEventListener('DOMContentLoaded', async () => {
                 log.error('Message rejected:', errMsg);
                 // Surface auth failures so the message isn't silently lost — prompt re-unlock.
                 if (response.status === 401) {
-                    if (typeof _showDevWarning === 'function') _showDevWarning('⚠ Message not sent — please unlock to re-authenticate.');
+                    if (typeof _showDevWarning === 'function') _showDevWarning(' Message not sent — please unlock to re-authenticate.');
                     if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
                 } else if (response.status === 404 && window.UI) {
-                    UI.addMessage(`⚠ ${errMsg}`, 'them');
+                    UI.addMessage(` ${errMsg}`, 'them');
                 }
             }
         } catch (e) {
@@ -29491,14 +29491,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             if (text.length > MAX_MSG_LENGTH) {
                 // ─── [FIX B] Replace alert() with non-blocking UI banner. ──────
-                _showDevWarning(`⚠ Message too long — maximum ${MAX_MSG_LENGTH} characters.`);
+                _showDevWarning(` Message too long — maximum ${MAX_MSG_LENGTH} characters.`);
                 return;
             }
 
             // ─── [FIX D] Rate limit checked here (ONCE), not also in persistMessage.
             if (!MsgRateLimit.check()) {
                 log.warn('Rate limit hit.');
-                _showDevWarning('⚠ Slow down — message rate limit reached (30/min).');
+                _showDevWarning(' Slow down — message rate limit reached (30/min).');
                 return;
             }
 
@@ -29567,14 +29567,14 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const maxBytes = isVideo ? (3 * 1024 * 1024 * 1024) : (10 * 1024 * 1024);
 
                 if (file.size > maxBytes) {
-                    _showDevWarning(`⚠ File too large — maximum size is ${isVideo ? '3 GB' : '10 MB'}.`);
+                    _showDevWarning(` File too large — maximum size is ${isVideo ? '3 GB' : '10 MB'}.`);
                     fileInput.value = '';
                     return;
                 }
 
                 // Warn but allow if missing from direct Set
                 if (file.type && !ALLOWED_ATTACHMENT_MIME.has(file.type)) {
-                    _showDevWarning(`⚠ File type "${sanitize(file.type)}" is unexpected, attempting upload anyway.`);
+                    _showDevWarning(` File type "${sanitize(file.type)}" is unexpected, attempting upload anyway.`);
                 }
 
                 if (window.GhostVault) {
@@ -29591,12 +29591,12 @@ window.addEventListener('DOMContentLoaded', async () => {
                             _showDevWarning(`Upload Complete!`);
                         }
                     } catch (e) {
-                        _showDevWarning(`⚠ Upload failed: ${e.message}`);
+                        _showDevWarning(` Upload failed: ${e.message}`);
                     }
                 } else {
                     const safeName = sanitize(file.name);
                     const sizeKB = (file.size / 1024).toFixed(1);
-                    if (window.UI) UI.addMessage(`📎 FILE: ${safeName} (${sizeKB} KB)`, 'me');
+                    if (window.UI) UI.addMessage(` FILE: ${safeName} (${sizeKB} KB)`, 'me');
                 }
 
                 fileInput.value = '';
@@ -31772,7 +31772,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             
             <button class="btn-full-ghost" id="btn-full-ghost" onclick="GhostShieldUI.toggleEnableAll()">
-                ⚡ FULL GHOST PROTOCOL
+                 FULL GHOST PROTOCOL
             </button>
 
             <button class="btn-disable-shield" id="btn-disable-shield" onclick="GhostShieldUI.disable()" style="display:none;">
@@ -31855,10 +31855,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const fullGhostBtn = document.getElementById('btn-full-ghost');
             if (status.currentLevel === 'ALL') {
                 fullGhostBtn.classList.add('active');
-                fullGhostBtn.innerText = '🔴 FULL PROTOCOL ACTIVE — TAP TO DISABLE';
+                fullGhostBtn.innerText = ' FULL PROTOCOL ACTIVE — TAP TO DISABLE';
             } else {
                 fullGhostBtn.classList.remove('active');
-                fullGhostBtn.innerText = '⚡ FULL GHOST PROTOCOL';
+                fullGhostBtn.innerText = ' FULL GHOST PROTOCOL';
             }
 
             if (status.level === 0) {
@@ -47717,7 +47717,7 @@ var QRCode;!function(){function a(a){this.mode=c.MODE_8BIT_BYTE,this.data=a,this
   overlay.className = 'ghost-blur-overlay'
   document.body.appendChild(overlay)
   
-  console.log('🛡️ GhostNet Screenshot Protection Active');
+  console.log(' GhostNet Screenshot Protection Active');
 })()
 
 </script>
@@ -48680,7 +48680,7 @@ const UI = {
             if (document.hidden) {
                 bubbles.forEach(b => {
                     b.dataset.originalText = b.innerText;
-                    b.innerText = '🔒 Protected';
+                    b.innerText = ' Protected';
                 });
             } else {
                 bubbles.forEach(b => {
@@ -48707,7 +48707,7 @@ const UI = {
             const badge = document.createElement('span');
             badge.id = 'ss-protected-badge';
             badge.className = 'e2e-badge';
-            badge.textContent = '📵 SS Protected';
+            badge.textContent = ' SS Protected';
             headerInfo.appendChild(badge);
         }
     },
@@ -49412,7 +49412,7 @@ const UI = {
                 // The re-unlock PIN prompt is shown by the auth gate but sits BEHIND this
                 // modal — close the modal so the user can actually see and use it.
                 if (res.status === 401) {
-                    if (errEl) errEl.textContent = '🔒 Session expired — re-unlock with your PIN, then try again.';
+                    if (errEl) errEl.textContent = ' Session expired — re-unlock with your PIN, then try again.';
                     if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
                     setTimeout(() => {
                         const ov = document.querySelector('.modal-overlay');
@@ -49421,7 +49421,7 @@ const UI = {
                     if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'START SESSION'; }
                     return;
                 }
-                if (errEl) errEl.textContent = `⚠ Validation failed (HTTP ${res.status}). Try again.`;
+                if (errEl) errEl.textContent = ` Validation failed (HTTP ${res.status}). Try again.`;
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -49438,7 +49438,7 @@ const UI = {
                     acceptContactOffline(name);
                     return;
                 }
-                if (errEl) errEl.textContent = '⚠ Server returned invalid response. Please try again.';
+                if (errEl) errEl.textContent = ' Server returned invalid response. Please try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -49455,7 +49455,7 @@ const UI = {
                     acceptContactOffline(name);
                     return;
                 }
-                if (errEl) errEl.textContent = '⚠ Node not found. Check the Node ID and try again.';
+                if (errEl) errEl.textContent = ' Node not found. Check the Node ID and try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -49498,7 +49498,7 @@ const UI = {
                 if (errEl) {
                     errEl.innerHTML = '';
                     const warnText = document.createElement('span');
-                    warnText.textContent = '⚠ Server unreachable. ';
+                    warnText.textContent = ' Server unreachable. ';
                     errEl.appendChild(warnText);
 
                     const offlineBtn = document.createElement('button');
@@ -49517,7 +49517,7 @@ const UI = {
                     startBtn.textContent = 'START SESSION';
                 }
             } else {
-                if (errEl) errEl.textContent = '⚠ Could not verify node. Please try again.';
+                if (errEl) errEl.textContent = ' Could not verify node. Please try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -49793,7 +49793,7 @@ const UI = {
         const _readIds = []; // incoming ids to flush as read receipts after history loads
         if (_burnOn && feed) {
             const burnNote = document.createElement('div');
-            burnNote.textContent = '🔥 Burn mode on — previous messages erased';
+            burnNote.textContent = ' Burn mode on — previous messages erased';
             burnNote.style.cssText = 'text-align:center;color:#9aa3b2;font-size:0.72rem;padding:4px 0 8px;opacity:0.85;';
             feed.appendChild(burnNote);
             // Drop locally cached messages for this peer so nothing lingers in memory.
@@ -50090,7 +50090,7 @@ const UI = {
                 
                 <div style="display:flex; align-items:center; gap:10px;">
                      <div class="status-badge ${bleActive ? 'active' : ''}">
-                        ${bleActive ? '🟢 Active' : '⚪ Idle'}
+                        ${bleActive ? ' Active' : ' Idle'}
                     </div>
                     <button class="btn-primary small" onclick="window.app.transport.startBLEScan()">
                         SCAN NETWORK
@@ -50270,9 +50270,9 @@ const UI = {
                 // (ephemeral) message. sendMessage() reads the active .mode-btn.
                 const mode = m.getAttribute('data-mode');
                 if (mode === 'EPHEMERAL') {
-                    UI.showToast('🔥 Burn message: the next message self-destructs after viewing (your contact stays).', '#f59e0b');
+                    UI.showToast(' Burn message: the next message self-destructs after viewing (your contact stays).', '#f59e0b');
                 } else {
-                    UI.showToast('💾 Save: messages are kept in this chat.', '#10b981');
+                    UI.showToast(' Save: messages are kept in this chat.', '#10b981');
                 }
             };
             m.addEventListener('click', modeHandler);
@@ -50304,7 +50304,7 @@ const UI = {
                         }
                     }
                 } catch (_) {}
-                UI.showToast('🗑️ Chat deleted — contact kept.', '#10b981');
+                UI.showToast(' Chat deleted — contact kept.', '#10b981');
                 const uid = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
                 if (uid) UI.loadConversations(uid);
             } else {
@@ -50437,7 +50437,7 @@ const UI = {
         if (fileId) {
             msg.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
-                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${_escapeHTML(fileName)}</div>
+                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;"> ${_escapeHTML(fileName)}</div>
                     <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${_escapeJSString(fileId)}', '${_escapeJSString(encKeyStr)}').then(() => this.textContent='Decrypted &amp; Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
                         Secure Download
                     </button>
@@ -50498,7 +50498,7 @@ const UI = {
             statusEl.style.opacity = '0.7';
             statusEl.style.color = '#9aa3b2';
         } else if (status === 'queued') {
-            statusEl.textContent = '🕐';
+            statusEl.textContent = '';
             statusEl.title = 'Queued';
             statusEl.style.opacity = '0.7';
             statusEl.style.color = '#9aa3b2';
@@ -50782,13 +50782,13 @@ const UI = {
 
         const webCryptoOk = !!(window.crypto && window.crypto.subtle);
         if (!webCryptoOk) {
-            ensureVaultBanner(`🔒 Vault requires a secure context (HTTPS or localhost). Current: ${location.protocol}`);
+            ensureVaultBanner(` Vault requires a secure context (HTTPS or localhost). Current: ${location.protocol}`);
             showToast('Vault encryption unavailable — HTTPS required');
             setVaultEnabled(false);
             return;
         }
         if (!window.GhostVault) {
-            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
+            ensureVaultBanner(' Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
             showToast('Vault encryption unavailable — module not loaded');
             setVaultEnabled(false);
             return;
@@ -51131,7 +51131,7 @@ const UI = {
             const rows = [
                 { label: 'File', value: result.fileName, cls: '' },
                 { label: 'Disk Integrity', value: result.diskIntegrity ? '✓ PASS' : '✕ TAMPERED', cls: result.diskIntegrity ? 'pass' : 'fail' },
-                { label: 'Chain Verified', value: result.chainVerified ? '✓ ON-CHAIN' : '⏳ PENDING', cls: result.chainVerified ? 'pass' : 'fail' },
+                { label: 'Chain Verified', value: result.chainVerified ? '✓ ON-CHAIN' : ' PENDING', cls: result.chainVerified ? 'pass' : 'fail' },
                 { label: 'SHA-256 Hash', value: result.storedHash ? result.storedHash.substring(0, 16) + '...' : 'N/A', cls: '', style: 'font-size:0.65rem;' },
             ];
             if (result.txHash) {

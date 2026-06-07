@@ -61,7 +61,7 @@ async function _getOrCreateStorageKey() {
 
 // Initialize App on Load
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log("🚀 System: Initializing GhostNet...");
+    console.log(" System: Initializing GhostNet...");
 
     // --- 1. IDENTITY ---
     let myId = localStorage.getItem('ghostnet_user_id');
@@ -111,7 +111,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         window.app.identity.nodeId = myId;
     } else {
         window.app.identity = { id: myId, pub: myId, nodeId: myId };
-        console.warn("⚠️ GhostIdentity module missing, using fallback identity");
+        console.warn(" GhostIdentity module missing, using fallback identity");
     }
 
     // Set identity in global state
@@ -119,7 +119,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         window.AppState.identity = window.app.identity;
     }
 
-    console.log("🆔 Identity:", myId);
+    console.log(" Identity:", myId);
 
     // --- 2. HTTP PERSISTENCE (always works) ---
     // [RT-12] Storage key held in closure — not on window.app — so XSS cannot access it
@@ -231,7 +231,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             if (e.key === 'Enter') sendMessage();
         };
 
-        console.log("✅ Chat SEND button wired to HTTP + Mesh");
+        console.log(" Chat SEND button wired to HTTP + Mesh");
 
         // File Attachment Logic
         const fileInput = document.getElementById('chat-file');
@@ -239,8 +239,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             fileInput.onchange = async (e) => {
                 const file = e.target.files[0];
                 if (!file) return;
-                console.log("📎 File Selected:", file.name);
-                UI.addMessage(`📎 FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
+                console.log(" File Selected:", file.name);
+                UI.addMessage(` FILE: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`, 'me');
                 fileInput.value = '';
             };
         }
@@ -257,7 +257,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             // --- Mesh event handlers ---
 
             mesh.onPeerJoin = (peer) => {
-                console.log(`👋 Peer joined: ${peer.name} via ${peer.transport}`);
+                console.log(` Peer joined: ${peer.name} via ${peer.transport}`);
 
                 // Add to AppState peers
                 if (window.AppState && !window.AppState.peers.find(p => p.id === peer.id)) {
@@ -273,7 +273,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onPeerLeave = (peer) => {
-                console.log(`👋 Peer left: ${peer.name || peer.id}`);
+                console.log(` Peer left: ${peer.name || peer.id}`);
 
                 if (window.AppState) {
                     window.AppState.peers = window.AppState.peers.filter(p => p.id !== peer.id);
@@ -282,7 +282,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onMessage = (msgData, from, transport) => {
-                console.log(`📩 Mesh message from ${from} via ${transport}:`, msgData);
+                console.log(` Mesh message from ${from} via ${transport}:`, msgData);
 
                 // Display in chat if it's a MSG type
                 if (msgData && (msgData.type === 'MSG' || msgData.body)) {
@@ -299,7 +299,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             };
 
             mesh.onStatusChange = (status) => {
-                console.log('🕸️ Mesh status:', status);
+                console.log(' Mesh status:', status);
 
                 if (status.state === 'error') {
                     console.warn('Mesh error:', status.message);
@@ -308,14 +308,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             // Start the mesh (WebSocket auto-connects, BLE auto-reconnects known devices)
             await mesh.start();
-            console.log("✅ GhostMesh started. Status:", mesh.getStatus());
+            console.log(" GhostMesh started. Status:", mesh.getStatus());
 
         } catch (e) {
             console.warn("GhostMesh init failed:", e);
         }
     } else {
         // Fallback: Direct WebSocket if GhostMesh not loaded
-        console.warn("⚠️ GhostMesh not loaded, using direct WebSocket fallback");
+        console.warn(" GhostMesh not loaded, using direct WebSocket fallback");
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             // [DAST-F13] Cookie-based auth — cookie sent automatically with upgrade request
@@ -360,7 +360,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             chat.onMessage = (msg) => {
                 if (window.UI) UI.addMessage(msg.body, "them");
             };
-            console.log("✅ GhostChat encryption layer initialized");
+            console.log(" GhostChat encryption layer initialized");
         } catch (e) {
             console.warn("GhostChat init failed (non-critical):", e);
         }
@@ -371,6 +371,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.dispatchEvent(new Event("app:state"));
 
     if (window.location.protocol === 'file:') {
-        alert("⚠️ WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
+        alert(" WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
     }
 });

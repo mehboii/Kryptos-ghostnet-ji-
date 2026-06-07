@@ -217,11 +217,11 @@ const ContactManager = {
         let iconHtml = "";
         if (msg.mode === 'EPHEMERAL') {
             el.classList.add('msg-ephemeral');
-            iconHtml = `<span style="font-size:0.75rem; opacity:0.7; margin-left:6px;">🔥 30s</span>`;
+            iconHtml = `<span style="font-size:0.75rem; opacity:0.7; margin-left:6px;"> 30s</span>`;
         } else if (msg.mode === 'DELETE' && type === 'me') {
             // Add Delete Button for sender
             // We'll overlay it or append it
-            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${msg.id}', '${msg.to}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone">🗑️</span>`;
+            iconHtml = `<span onclick="app.ghostChat.sendDeleteRequest('${msg.id}', '${msg.to}')" style="cursor:pointer; margin-left:8px; opacity:0.6;" title="Delete for everyone"></span>`;
         }
 
         el.style.cssText = style;
@@ -272,7 +272,7 @@ const PeerManager = {
                         <i data-lucide="bluetooth"></i> Scan BLE Mesh
                     </button>
                     <div class="status-badge ${bleActive ? 'active' : ''}">
-                        ${bleActive ? '🟢 BLE Active' : '⚪ BLE Idle'}
+                        ${bleActive ? ' BLE Active' : ' BLE Idle'}
                     </div>
                 </div>
             `;
@@ -385,12 +385,12 @@ const app = {
 
     init: async () => {
         try {
-            console.log("🚀 Initializing App...");
+            console.log(" Initializing App...");
 
             // 1. Wallet
             try {
                 await initWallet();
-                console.log("✅ Wallet Initialized");
+                console.log(" Wallet Initialized");
             } catch (e) { console.error("Wallet Init Failed:", e); }
 
             // 2. Transport
@@ -410,16 +410,16 @@ const app = {
                     };
 
                     ContactManager.init();
-                    console.log("✅ Chat Initialized");
+                    console.log(" Chat Initialized");
                 } else {
-                    console.error("❌ GhostChat Class Missing! Check script load order.");
+                    console.error(" GhostChat Class Missing! Check script load order.");
                 }
             } catch (e) { console.error("Chat Init Failed:", e); }
 
             // 3. Peers
             try {
                 PeerManager.init();
-                console.log("✅ Peers Initialized");
+                console.log(" Peers Initialized");
             } catch (e) { console.error("Peer Init Failed:", e); }
 
             // 4. UI Setup
@@ -517,7 +517,7 @@ const app = {
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
         } catch (err) {
-            console.error("🔥 APP FATAL CRASH:", err);
+            console.error(" APP FATAL CRASH:", err);
             alert("App Initialization Failed. Check Console.");
         }
     },

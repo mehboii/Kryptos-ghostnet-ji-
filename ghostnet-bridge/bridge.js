@@ -81,7 +81,7 @@ const PORT = parseInt(process.env.GHOSTNET_BRIDGE_PORT, 10) || parseInt(process.
 // [04] Validate ETH_RPC_URL at startup — loopback only
 const _RAW_ETH_RPC = process.env.ETH_RPC_URL || '';
 if (!_RAW_ETH_RPC) {
-    console.warn('⚠️  ETH_RPC_URL not set — falling back to public Sepolia RPC (https://rpc.sepolia.org).');
+    console.warn('  ETH_RPC_URL not set — falling back to public Sepolia RPC (https://rpc.sepolia.org).');
     console.warn('   Set ETH_RPC_URL in your environment for a production-grade RPC endpoint.');
 }
 const ETH_RPC_URL = _RAW_ETH_RPC || 'https://rpc.sepolia.org';
@@ -89,7 +89,7 @@ const ETH_RPC_URL = _RAW_ETH_RPC || 'https://rpc.sepolia.org';
     let u;
     try { u = new URL(raw); } catch (_) { throw new Error(`Invalid ETH_RPC_URL: ${raw}`); }
     if (!['127.0.0.1', 'localhost', '::1'].includes(u.hostname)) {
-        console.log(`ℹ️  ETH_RPC_URL points to external host: ${u.hostname} — ensure TLS and auth are configured.`);
+        console.log(`  ETH_RPC_URL points to external host: ${u.hostname} — ensure TLS and auth are configured.`);
     }
 })(ETH_RPC_URL);
 
@@ -163,12 +163,12 @@ function sleep(ms, jitter = 0) { // [23] jitter support
 // ─── Ethereum ─────────────────────────────────────────────────────────────────
 
 async function startEthSystem() {
-    console.log('🔵 ETH: Initializing...');
+    console.log(' ETH: Initializing...');
     if (await checkEthRpc()) {
-        console.log('🔵 ETH: Node detected. Connecting...');
+        console.log(' ETH: Node detected. Connecting...');
         await connectEthProvider();
     } else {
-        console.log('🔵 ETH: RPC not reachable. Start Hardhat manually.');
+        console.log(' ETH: RPC not reachable. Start Hardhat manually.');
     }
 }
 
@@ -189,7 +189,7 @@ function spawnHardhatNode() {
         hardhatProcess.stdout.on('data', (data) => {
             const line = data.toString();
             if (line.includes('Started HTTP and WebSocket JSON-RPC server')) {
-                console.log('✅ ETH: Local node started');
+                console.log(' ETH: Local node started');
                 connectEthProvider();
             }
         });
@@ -202,13 +202,13 @@ function spawnHardhatNode() {
         });
 
         hardhatProcess.on('close', (code) => {
-            console.warn(`⚠️ ETH: Hardhat exited (code ${code})`);
+            console.warn(` ETH: Hardhat exited (code ${code})`);
             isEthOnline = false;
             ethWallet = null;
             hardhatProcess = null;
         });
     } catch (e) {
-        console.error('❌ ETH: Failed to spawn Hardhat:', e.message); // [08] server-side only
+        console.error(' ETH: Failed to spawn Hardhat:', e.message); // [08] server-side only
     }
 }
 
@@ -265,12 +265,12 @@ async function connectEthProvider() {
                 process.env.ETH_PRIVATE_KEY = '0'.repeat(len);
                 delete process.env.ETH_PRIVATE_KEY;
 
-                console.log(`   🔑 Wallet loaded: ${maskAddress(ethWallet.address)}`); // [14]
+                console.log(`    Wallet loaded: ${maskAddress(ethWallet.address)}`); // [14]
             } else {
-                console.warn('   ⚠️ No ETH_PRIVATE_KEY in .env — read-only mode');
+                console.warn('    No ETH_PRIVATE_KEY in .env — read-only mode');
             }
 
-            console.log(`✅ ETH: Connected (Chain ID: ${net.chainId})`);
+            console.log(` ETH: Connected (Chain ID: ${net.chainId})`);
             isEthOnline = true;
             _connectingEth = false;
             return;
@@ -282,7 +282,7 @@ async function connectEthProvider() {
         }
     }
 
-    console.error('❌ ETH: Connection timed out');
+    console.error(' ETH: Connection timed out');
     _connectingEth = false;
 }
 
@@ -303,7 +303,7 @@ setInterval(async () => {
         await ethProvider.getBlockNumber();
         isEthOnline = true;
     } catch (_) {
-        if (isEthOnline) console.warn('⚠️ ETH: Provider became unreachable');
+        if (isEthOnline) console.warn(' ETH: Provider became unreachable');
         isEthOnline = false;
     }
 }, 30_000);
@@ -498,10 +498,10 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-    console.log(`\n🌉 Master Bridge Controller running on port ${PORT}`);
+    console.log(`\n Master Bridge Controller running on port ${PORT}`);
     console.log('─'.repeat(49));
-    console.log(`🟢 BTC: Expecting bitcoind -regtest on 18443`);
-    console.log(`🔵 ETH: Managed locally (8545)`);
+    console.log(` BTC: Expecting bitcoind -regtest on 18443`);
+    console.log(` ETH: Managed locally (8545)`);
     console.log('─'.repeat(49));
 });
 
@@ -509,7 +509,7 @@ server.listen(PORT, () => {
 // [24] Handle both SIGINT and SIGTERM
 
 function gracefulShutdown(signal) {
-    console.log(`\n🛑 ${signal} received — shutting down...`);
+    console.log(`\n ${signal} received — shutting down...`);
     killHardhatProcess(); // [11] SIGTERM → SIGKILL fallback
     server.close(() => {
         console.log('Bridge stopped.');

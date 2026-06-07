@@ -62,7 +62,7 @@ async function getBtcBalance() {
         const bal = await btcRpc('getbalance');
         return bal;
     } catch (e) {
-        console.warn(`⚠️ BTC Regtest: ${e.message}`);
+        console.warn(` BTC Regtest: ${e.message}`);
         return 0.0;
     }
 }

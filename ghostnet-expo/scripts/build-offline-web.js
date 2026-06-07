@@ -95,8 +95,8 @@ function transformScript(name, text) {
         '    }'
       ].join('\n')
     ).replace(
-      /const token = this\.authToken \|\| this\.getAuthToken\(\);\n        if \(token\) \{\n            this\.connectWebSocket\(\);\n        \} else \{\n            console\.log\('🔌 Mesh: Standing by for authentication before connecting\.'\);\n        \}/,
-      "const token = this.authToken || this.getAuthToken();\n        if (window.__GHOSTNET_OFFLINE__) {\n            this.wsReady = false;\n            this.onStatusChange({ state: 'offline', transport: 'local' });\n        } else if (token) {\n            this.connectWebSocket();\n        } else {\n            console.log('🔌 Mesh: Standing by for authentication before connecting.');\n        }"
+      /const token = this\.authToken \|\| this\.getAuthToken\(\);\n        if \(token\) \{\n            this\.connectWebSocket\(\);\n        \} else \{\n            console\.log\(' Mesh: Standing by for authentication before connecting\.'\);\n        \}/,
+      "const token = this.authToken || this.getAuthToken();\n        if (window.__GHOSTNET_OFFLINE__) {\n            this.wsReady = false;\n            this.onStatusChange({ state: 'offline', transport: 'local' });\n        } else if (token) {\n            this.connectWebSocket();\n        } else {\n            console.log(' Mesh: Standing by for authentication before connecting.');\n        }"
     );
   }
 
