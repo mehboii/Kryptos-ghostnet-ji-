@@ -169,13 +169,13 @@
         });
         call.on('error', function (e) {
             var code = e && e.code;
+            // 'locked' uses the single debounced unlock prompt (no loop / no nav spam),
+            // and keeps any incoming prompt up so the user can unlock and accept again.
+            if (code === 'locked') { _promptUnlock('continue the call'); return; }
+            _stopTimer(); _hideIncoming(); _hideBar();
             var msg = (e && e.message) ? e.message : 'Call error';
             if (code === 'mic-permission') msg = 'Microphone blocked. Grant mic access and try again.';
             else if (code === 'ice') msg = 'Could not get a relay (TURN) — call not started.';
-            else if (code === 'locked') msg = 'Unlock with your PIN to continue.';
-            // Keep the incoming prompt up on a 'locked' answer so the user can unlock
-            // and accept again; otherwise clear the call UI.
-            if (code !== 'locked') { _stopTimer(); _hideIncoming(); _hideBar(); }
             _toast(msg, 5000);
         });
     }
@@ -193,7 +193,7 @@
         try {
             var call = await _ensureCall();
             var pk = await _getKey();
-            if (!pk) { _toast('Unlock with your PIN to start the call…', 4000); _promptUnlockThenRetry(target, 'start'); return; }
+            if (!pk) { _promptUnlock('start a call'); return; }
             await call.startCall(String(target).trim());
             // The in-call bar is shown by the 'ringing' event once the offer is sent,
             // so a failed resolve doesn't leave a stuck "Calling…" bar.
@@ -203,30 +203,29 @@
         }
     }
 
-    // Calls need the PIN-derived signing key. If it's not loaded, surface the
-    // unlock screen and retry the call automatically once the identity unlocks.
-    function _promptUnlockThenRetry(target, mode) {
+    // Calls need the PIN-derived signing key. If it's not loaded, show the unlock
+    // screen ONCE so the user can unlock, then they press Call again.
+    //
+    // IMPORTANT: do NOT auto-retry on 'identity:updated'. A previous version did,
+    // and when getSessionPrivateKey() stayed null it re-showed the PIN screen on
+    // every identity event — stacking listeners and trapping the user in an
+    // inescapable PIN loop that looked like a forced logout.
+    var _unlockPromptAt = 0;
+    function _promptUnlock(action) {
+        _toast('Unlock with your PIN to ' + (action || 'continue') + ', then press Call again.', 4500);
+        if (Date.now() - _unlockPromptAt < 3000) return; // debounce — never spam the screen
+        _unlockPromptAt = Date.now();
         try {
-            if (window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
+            var stored = window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored();
+            if (stored && window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
                 window.IdentityUI.showScreen('pin');
-            } else if (typeof window.ghostnetEnsureAuth === 'function') {
-                window.ghostnetEnsureAuth();
             }
         } catch (_) { /* */ }
-        var done = false;
-        var retry = function () {
-            if (done) return;
-            done = true;
-            window.removeEventListener('identity:updated', retry);
-            setTimeout(function () { if (mode === 'accept') acceptCall(); else startCall(target); }, 400);
-        };
-        window.addEventListener('identity:updated', retry);
-        setTimeout(function () { window.removeEventListener('identity:updated', retry); }, 120000);
     }
 
     async function acceptCall() {
         var pk = await _getKey();
-        if (!pk) { _toast('Unlock with your PIN to answer…', 4000); _promptUnlockThenRetry(null, 'accept'); return; }
+        if (!pk) { _promptUnlock('answer the call'); return; }
         try { var call = await _ensureCall(); await call.acceptCall(); _hideIncoming(); _showBar('Connecting…', true); }
         catch (err) { _toast(err && err.message ? err.message : 'Could not accept', 4000); }
     }
