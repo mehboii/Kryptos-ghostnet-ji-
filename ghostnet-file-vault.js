@@ -240,6 +240,17 @@
         };
     }
 
+    async function _ensureVaultAuth() {
+        if (_hasToken()) return true;
+        if (typeof window.ghostnetEnsureAuth !== 'function') return false;
+        try {
+            const refreshed = await window.ghostnetEnsureAuth();
+            return !!refreshed && _hasToken();
+        } catch {
+            return false;
+        }
+    }
+
     // ─── Owner identity ───────────────────────────────────────────────────────
 
     // [FIX G] Use opaque nodeId from sessionStorage only — never email, never
@@ -349,7 +360,10 @@
 
             // When no auth token exists (offline / pre-login), skip server sync
             // and fall through to local key fallback instead of throwing.
-            const hasAuth = _hasToken();
+            let hasAuth = _hasToken();
+            if (!hasAuth) {
+                hasAuth = await _ensureVaultAuth();
+            }
             if (!hasAuth) {
                 console.warn('[Vault] No auth token — skipping vault key sync, using local key fallback');
             }
@@ -441,6 +455,9 @@
                 return this.key;
             } catch (fallbackErr) {
                 console.error('[Vault] Fallback failed:', fallbackErr);
+                if (fallbackErr && typeof fallbackErr.message === 'string' && /vault session expired/i.test(fallbackErr.message)) {
+                    throw fallbackErr;
+                }
                 throw new Error('Vault Key unavailable. Local fallback failed.');
             }
         },
@@ -588,6 +605,8 @@
             throw new Error('You are offline. File uploads require a network connection.');
         }
 
+        await _ensureVaultAuth();
+
         const owner = getOwner();
         if (!owner) throw new Error('Not authenticated. Please log in first.');
 
@@ -656,15 +675,32 @@
 
         let response;
         try {
-            // [FIX B] Auth token on every request.
-            const uploadHeaders = _secureHeaders();
-            delete uploadHeaders['Content-Type']; // Let browser set boundary for FormData
+            const doUpload = () => {
+                // [FIX B] Auth token on every request.
+                const uploadHeaders = _secureHeaders();
+                delete uploadHeaders['Content-Type']; // Let browser set boundary for FormData
 
-            response = await fetch(`${VAULT_API}/upload`, {
-                method: 'POST',
-                headers: uploadHeaders,
-                body: formData,
-            });
+                return fetch(`${VAULT_API}/upload`, {
+                    method: 'POST',
+                    headers: uploadHeaders,
+                    body: formData,
+                });
+            };
+
+            response = await doUpload();
+
+            // Stale/expired JWT: clear it, refresh once, then retry the upload so
+            // vault attachments behave like saved chat messages instead of hard-401ing.
+            if (response.status === 401 && typeof window.ghostnetEnsureAuth === 'function') {
+                try {
+                    sessionStorage.removeItem('ghostnet_token');
+                    localStorage.removeItem('ghostnet_token');
+                } catch { }
+                const refreshed = await window.ghostnetEnsureAuth();
+                if (refreshed) {
+                    response = await doUpload();
+                }
+            }
         } catch {
             throw new Error('Upload failed. Please check your connection.');
         }
@@ -673,6 +709,9 @@
             // [FIX K] Log server detail internally; expose only a generic message.
             const err = await response.json().catch(() => ({}));
             console.error('[Vault] Upload error:', err.error || response.status);
+            if (response.status === 401) {
+                throw new Error('Vault session expired. Please re-unlock with your PIN and try again.');
+            }
             throw new Error('Upload failed. Please try again.');
         }
 
