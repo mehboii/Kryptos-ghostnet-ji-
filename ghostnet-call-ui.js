@@ -152,16 +152,21 @@
     // ─── chat-header call button ────────────────────────
 
     function _mountCallButton() {
-        var header = document.querySelector('.chat-header-info');
-        if (!header || document.getElementById('ghost-call-btn')) return;
+        if (document.getElementById('ghost-call-btn')) return;
+        // The chat header's action group holds the Scan + delete buttons; drop the
+        // Call button right before Scan so it sits with the other header actions.
+        var scan = document.getElementById('btn-ble-scan');
+        if (!scan || !scan.parentNode) return;
         var btn = document.createElement('button');
         btn.id = 'ghost-call-btn';
+        btn.className = 'btn-tiny';
         btn.type = 'button';
-        btn.textContent = 'Call';
-        btn.style.cssText = 'margin-left:8px;padding:4px 12px;border:none;border-radius:14px;'
-            + 'background:#22c55e;color:#fff;font-size:0.8rem;font-weight:600;cursor:pointer;';
+        btn.title = 'Start voice call';
+        btn.style.cssText = 'display:flex;align-items:center;gap:5px;border-radius:20px;';
+        btn.innerHTML = '<i data-lucide="phone" style="width:12px;"></i><span>Call</span>';
         btn.addEventListener('click', function () { startCall(); });
-        header.appendChild(btn);
+        scan.parentNode.insertBefore(btn, scan);
+        if (window.lucide && window.lucide.createIcons) { try { window.lucide.createIcons(); } catch (_) {} }
     }
 
     // ─── overlays (built dynamically, no markup edits) ──
