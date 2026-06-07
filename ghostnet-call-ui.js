@@ -58,19 +58,29 @@
                 // @GhostTag is resolved via the GhostTag registry as a fallback.
                 resolveGhostTag: async function (arg) {
                     var s = String(arg || '').trim();
-                    if (/^0x[0-9a-fA-F]{40}$/.test(s) || /^0x0[234][0-9a-fA-F]{64,128}$/i.test(s)) {
+                    // Address or full public key: use directly (route + verify).
+                    if (/^0x[0-9a-fA-F]{40}$/.test(s) || _PUBKEY_RE.test(s)) {
                         return { routeId: s, publicKey: s };
                     }
+                    // nodeId (0x + 64 hex keccak): look its public key up server-side.
+                    if (/^0x[0-9a-fA-F]{64}$/i.test(s) || /^(gn_|node_)/.test(s)) {
+                        var pk = await _lookupNodePublicKey(s);
+                        if (pk) return { routeId: s, publicKey: pk };
+                        throw new Error('Peer has no key on file — they must sign in once so you can verify them');
+                    }
+                    // Bare @GhostTag.
                     var gt = _ghostTag();
-                    if (!gt) throw new Error('Not a node id/key, and GhostTag module is unavailable');
+                    if (!gt) throw new Error('Unrecognized contact id; enter a @GhostTag');
                     const r = await gt.resolveTag(_normTag(s));
                     if (!r || r.error || !r.publicKey) throw new Error((r && r.error) || 'GhostTag not found');
                     return { routeId: r.nodeId || r.id || s, publicKey: r.publicKey };
                 },
-                // Verify an INCOMING caller's key. Prefer independent GhostTag
-                // resolution; fall back to the key in the (mesh-authenticated)
-                // signed offer so calls work before the caller has a GhostTag.
+                // Verify an INCOMING caller's key. Prefer independent resolution
+                // (server registry, then GhostTag); fall back to the key in the
+                // (mesh-authenticated) signed offer so calls still work.
                 resolveIdentityKey: async function (peerId, msg) {
+                    var pk = await _lookupNodePublicKey(peerId);
+                    if (pk) return pk;
                     try {
                         var gt = _ghostTag();
                         if (gt) { const r = await gt.resolveTag(_normTag(peerId)); if (r && r.publicKey) return r.publicKey; }
@@ -96,6 +106,42 @@
     function _ghostTag() {
         if (typeof window !== 'undefined' && window.GhostTag) return window.GhostTag;
         try { return (typeof GhostTag !== 'undefined') ? GhostTag : null; } catch (_) { return null; }
+    }
+
+    function _backend() {
+        return (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http
+            : 'https://ghostnet-ji-production.up.railway.app';
+    }
+
+    function _authHeaders() {
+        var token = '';
+        try {
+            var raw = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token');
+            if (raw) { try { var p = JSON.parse(raw); token = (p && p.token) ? p.token : raw; } catch (_) { token = raw; } }
+        } catch (_) {}
+        var h = { 'Content-Type': 'application/json' };
+        if (token) h.Authorization = 'Bearer ' + token;
+        return h;
+    }
+
+    var _PUBKEY_RE = /^0x0[234][0-9a-fA-F]{64,128}$/i;
+
+    // Resolve a nodeId (0x+64hex keccak) to its secp256k1 public key via the
+    // existing /validate-node endpoint (the server's registry binds them). Returns
+    // null if the node has no usable key on file (e.g. it never authenticated).
+    async function _lookupNodePublicKey(nodeId) {
+        try {
+            if (!_authHeaders().Authorization && typeof window.ghostnetEnsureAuth === 'function') {
+                await window.ghostnetEnsureAuth();
+            }
+            var res = await fetch(_backend() + '/validate-node/' + encodeURIComponent(nodeId), { headers: _authHeaders() });
+            if (!res.ok) return null;
+            var data = await res.json();
+            var pk = data && data.publicKey;
+            // Accept only a real pubkey — /validate-node echoes the id back for
+            // unknown 0x ids, which is NOT a usable signing key.
+            return (typeof pk === 'string' && _PUBKEY_RE.test(pk)) ? pk : null;
+        } catch (_) { return null; }
     }
 
     // ─── event wiring → UI ──────────────────────────────

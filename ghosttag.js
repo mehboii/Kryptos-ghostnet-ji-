@@ -676,8 +676,9 @@ const GhostTag = (() => {
     };
 })();
 
-// Expose on window so `window.GhostTag` works. It was previously only a bare
-// top-level `const` (a global lexical binding, NOT a window property), so every
-// `window.GhostTag && ...` guard silently failed — including the GhostTag sync at
-// startup and voice-call GhostTag resolution.
-if (typeof window !== 'undefined' && !window.GhostTag) window.GhostTag = GhostTag;
+// NOTE: GhostTag is intentionally a bare top-level `const`, NOT exposed on window.
+// Several `if (window.GhostTag) {...} else {...}` branches in index.html were
+// written against window.GhostTag being falsy (the legacy/else path is the tested
+// one). Exposing window.GhostTag flips those onto never-run code and breaks
+// messaging/auth at startup. Code that needs GhostTag uses the global binding
+// directly (the voice-call UI resolves it via that binding).
