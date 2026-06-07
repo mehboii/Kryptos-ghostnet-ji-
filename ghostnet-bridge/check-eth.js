@@ -125,11 +125,11 @@ async function checkEth() {
     let parsedUrl;
     try { parsedUrl = validateRpcUrl(RPC_URL); }
     catch (e) {
-        console.error(`❌ Invalid RPC URL: ${e.message}`);
+        console.error(` Invalid RPC URL: ${e.message}`);
         return { ok: false, exitCode: e.exitCode || EXIT.INVALID_URL };
     }
 
-    console.log(`🔍 Checking Ethereum node at ${safeUrl(parsedUrl)}...`); // [12]
+    console.log(` Checking Ethereum node at ${safeUrl(parsedUrl)}...`); // [12]
 
     // [09] No staticNetwork — let ethers validate chain normally, then we re-check
     const provider = new ethers.JsonRpcProvider(RPC_URL);
@@ -145,13 +145,13 @@ async function checkEth() {
         // [03] Chain ID guard
         if (EXPECTED_CHAIN_ID !== null && net.chainId !== EXPECTED_CHAIN_ID) {
             console.error(
-                `❌ Wrong network: expected chainId ${EXPECTED_CHAIN_ID}, ` +
+                ` Wrong network: expected chainId ${EXPECTED_CHAIN_ID}, ` +
                 `got ${net.chainId}. Are you connected to the right node?`
             );
             return { ok: false, exitCode: EXIT.WRONG_NETWORK };
         }
 
-        console.log(`✅ ETH node online`);
+        console.log(` ETH node online`);
         console.log(`   Chain ID    : ${net.chainId}`);
         console.log(`   Block Number: ${blockNumber}`);
         // [12] Never log the full RPC_URL
@@ -162,12 +162,12 @@ async function checkEth() {
         const safeMsg = sanitizeMessage(e.message, RPC_URL);
 
         if (e.isTimeout) {
-            console.error(`❌ ETH node timed out: ${safeMsg}`);
+            console.error(` ETH node timed out: ${safeMsg}`);
             console.error(`   → Is Hardhat/Ganache running? (npx hardhat node)`);
             return { ok: false, exitCode: EXIT.TIMEOUT };
         }
 
-        console.error(`❌ ETH node offline: ${safeMsg}`); // [07]
+        console.error(` ETH node offline: ${safeMsg}`); // [07]
         console.error(`   → Is Hardhat/Ganache running? (npx hardhat node)`);
         return { ok: false, exitCode: EXIT.OFFLINE };
 

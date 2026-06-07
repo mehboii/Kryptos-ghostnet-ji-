@@ -60,7 +60,7 @@ async function getTransporter() {
             },
         });
         transporterReady = true;
-        console.log(`📧 SMTP configured: ${smtpHost}:${smtpPort}`);
+        console.log(` SMTP configured: ${smtpHost}:${smtpPort}`);
     } else {
         // Dev mode — use Ethereal (free test SMTP, no real emails sent)
         try {
@@ -75,9 +75,9 @@ async function getTransporter() {
                 },
             });
             transporterReady = true;
-            console.log(`📧 Dev SMTP (Ethereal): ${testAccount.user}`);
+            console.log(` Dev SMTP (Ethereal): ${testAccount.user}`);
         } catch (e) {
-            console.warn('⚠️ Could not create Ethereal test account:', e.message);
+            console.warn(' Could not create Ethereal test account:', e.message);
             transporterReady = false;
         }
     }
@@ -96,7 +96,7 @@ async function sendVerificationEmail(email, code) {
         const mailer = await getTransporter();
         if (!mailer) {
             if (process.env.NODE_ENV !== 'production') {
-                console.log(`📧 [DEV] Verification code generated (mailer unavailable)`);
+                console.log(` [DEV] Verification code generated (mailer unavailable)`);
             }
             return { sent: false, preview: null };
         }
@@ -106,7 +106,7 @@ async function sendVerificationEmail(email, code) {
         const info = await mailer.sendMail({
             from: fromAddr,
             to: email,
-            subject: '🔐 GhostNet — Verify Your Email',
+            subject: ' GhostNet — Verify Your Email',
             text: `Your GhostNet verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't create a GhostNet account, ignore this email.`,
             html: `
                 <div style="font-family: 'Inter', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: linear-gradient(135deg, #0f172a, #1e293b); border-radius: 16px; color: #e2e8f0;">
@@ -131,14 +131,14 @@ async function sendVerificationEmail(email, code) {
 
         const previewUrl = nodemailer.getTestMessageUrl(info);
         if (previewUrl) {
-            console.log(`📧 Preview verification email: ${previewUrl}`);
+            console.log(` Preview verification email: ${previewUrl}`);
         }
 
         return { sent: true, preview: previewUrl || null };
     } catch (e) {
-        console.error('📧 Email send error:', e.message);
+        console.error(' Email send error:', e.message);
         if (process.env.NODE_ENV !== 'production') {
-            console.log(`📧 [FALLBACK] Verification code generated (email send failed)`);
+            console.log(` [FALLBACK] Verification code generated (email send failed)`);
         }
         return { sent: false, preview: null };
     }
@@ -381,7 +381,7 @@ router.post('/login', loginLimiter, async (req, res) => {
             const shortCode = generateUniqueShortCode();
             updateUserFields(user.id, { shortCode });
             user.shortCode = shortCode;
-            console.log(`🔖 Generated GhostCode for existing user`);
+            console.log(` Generated GhostCode for existing user`);
         }
 
         res.json({

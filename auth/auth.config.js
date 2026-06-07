@@ -18,7 +18,7 @@ if (_isPlaceholder && process.env.NODE_ENV === 'production') {
     process.exit(1);
 }
 if (_isPlaceholder) {
-    console.warn('⚠️  AUTH_JWT_SECRET not configured — using ephemeral random secret (dev only). Sessions will not survive restarts.');
+    console.warn('  AUTH_JWT_SECRET not configured — using ephemeral random secret (dev only). Sessions will not survive restarts.');
 }
 const JWT_SECRET = _isPlaceholder
     ? crypto.randomBytes(64).toString('hex')

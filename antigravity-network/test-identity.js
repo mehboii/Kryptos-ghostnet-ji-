@@ -25,9 +25,9 @@ if (typeof window === 'undefined') {
     console.log("Verification Result:", valid);
 
     if (valid && id.nodeId) {
-        console.log("✅ TEST PASSED");
+        console.log(" TEST PASSED");
     } else {
-        console.error("❌ TEST FAILED");
+        console.error(" TEST FAILED");
         process.exit(1);
     }
 })();

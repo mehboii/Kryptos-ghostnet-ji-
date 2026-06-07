@@ -63,7 +63,7 @@ async function initDB() {
         );
     `);
 
-    console.log("✅ SQLite Database Initialized");
+    console.log(" SQLite Database Initialized");
 }
 
 initDB().catch(console.error);
@@ -166,5 +166,5 @@ app.delete('/cleanup', requireAuth, async (req, res) => {
 const BIND_HOST = process.env.GHOSTNET_MESSAGES_HOST || '127.0.0.1';
 
 app.listen(PORT, BIND_HOST, () => {
-    console.log(`🗄️ Message Service running on ${BIND_HOST}:${PORT}`);
+    console.log(` Message Service running on ${BIND_HOST}:${PORT}`);
 });

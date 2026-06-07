@@ -35,7 +35,7 @@
  * │   │ Self-Defense │  watchdog, PIN protection            │
  * │   └──────┬──────┘                                       │
  * │          ▼                                              │
- * │      ✅ ALLOW  or  🚫 BLOCK                             │
+ * │       ALLOW  or   BLOCK                             │
  * └─────────────────────────────────────────────────────────┘
  *
  * Exports:

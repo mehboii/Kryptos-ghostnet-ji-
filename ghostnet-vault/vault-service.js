@@ -155,7 +155,7 @@ async function chainAPI(method, endpoint, body = null) {
         const res = await fetch(`${CHAIN_URL}${endpoint}`, opts);
         return await res.json();
     } catch (err) {
-        console.warn(`⚠️  Chain service unreachable: ${err.message}`);
+        console.warn(`  Chain service unreachable: ${err.message}`);
         return { error: 'Chain service unavailable', fallback: true };
     }
 }
@@ -230,7 +230,7 @@ app.post('/vault/upload', requireAuth, upload.single('file'), async (req, res) =
         fileMeta.push(record);
         saveMeta();
 
-        console.log(`📦 Vault: File stored — ${record.fileName} (${formatBytes(record.fileSize)}) → ${fileId}`);
+        console.log(` Vault: File stored — ${record.fileName} (${formatBytes(record.fileSize)}) → ${fileId}`);
 
         res.json({
             success: true,
@@ -323,7 +323,7 @@ app.delete('/vault/file/:fileId', requireAuth, async (req, res) => {
     // Anchor deletion on chain
     await chainAPI('DELETE', `/chain/file/${record.fileId}`, { owner: ownerHash });
 
-    console.log(`🗑️  Vault: File deleted — ${record.fileName} (${record.fileId})`);
+    console.log(`  Vault: File deleted — ${record.fileName} (${record.fileId})`);
     res.json({ success: true, deleted: record.fileId });
 });
 
@@ -390,7 +390,7 @@ function formatBytes(bytes) {
 
 // ─── Start ──────────────────────────────────────────────────
 app.listen(PORT, process.env.VAULT_HOST || '127.0.0.1', () => {
-    console.log(`\n🔒 GhostNet Vault Service running on port ${PORT}`);
+    console.log(`\n GhostNet Vault Service running on port ${PORT}`);
     console.log(`   Chain API:  ${CHAIN_URL}`);
     console.log(`   Vault Dir:  ${VAULT_DIR}`);
     console.log(`   Health:     http://localhost:${PORT}/health`);

@@ -159,7 +159,7 @@ class GhostMesh {
         // Check BLE availability
         this.bleAvailable = typeof navigator !== 'undefined' && !!navigator.bluetooth;
 
-        console.log(`🕸️ GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
+        console.log(` GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
     }
 
     // ============================================
@@ -178,7 +178,7 @@ class GhostMesh {
 
         // 3. Try auto-reconnect to known BLE devices
         if (this.bleAvailable && this.knownBLEDevices.length > 0) {
-            console.log(`📲 Attempting BLE auto-reconnect to ${this.knownBLEDevices.length} known devices...`);
+            console.log(` Attempting BLE auto-reconnect to ${this.knownBLEDevices.length} known devices...`);
             // Note: Auto-reconnect to previously paired devices doesn't require gesture
             // But watchAdvertisements() has limited support
             this.attemptBLEAutoReconnect();
@@ -204,7 +204,7 @@ class GhostMesh {
         this.onStatusChange({ state: 'scanning', transport: 'ble' });
 
         try {
-            console.log('📲 BLE: Requesting device scan...');
+            console.log(' BLE: Requesting device scan...');
 
             // Request device with our service UUID, or accept all devices
             const device = await navigator.bluetooth.requestDevice({
@@ -213,7 +213,7 @@ class GhostMesh {
             });
 
             if (device) {
-                console.log(`📲 BLE: User selected: ${device.name || device.id}`);
+                console.log(` BLE: User selected: ${device.name || device.id}`);
                 await this.connectBLEDevice(device);
 
                 // Remember this device for auto-reconnect
@@ -562,7 +562,7 @@ class GhostMesh {
         try {
             // Listen for disconnection
             device.addEventListener('gattserverdisconnected', () => {
-                console.log(`📲 BLE: ${device.name || device.id} disconnected`);
+                console.log(` BLE: ${device.name || device.id} disconnected`);
                 const peerId = device.id;
                 if (this.peers.has(peerId)) {
                     const peer = this.peers.get(peerId);
@@ -587,7 +587,7 @@ class GhostMesh {
                 return;
             }
 
-            console.log(`📲 BLE: Connecting GATT to ${device.name || device.id}...`);
+            console.log(` BLE: Connecting GATT to ${device.name || device.id}...`);
             const server = await device.gatt.connect();
 
             let service, charData, charId, charKey;
@@ -715,7 +715,7 @@ class GhostMesh {
             this.onMeshUpdate(this.getPeers());
             this.onStatusChange({ state: 'connected', transport: 'ble', peerId });
 
-            console.log(`✅ BLE: Connected to ${peer.name} (${peerId})`);
+            console.log(` BLE: Connected to ${peer.name} (${peerId})`);
 
         } catch (e) {
             console.error('BLE connection failed:', e);
@@ -727,7 +727,7 @@ class GhostMesh {
         if (!device || !device.gatt) return;
 
         try {
-            console.log(`📲 BLE: Attempting reconnect to ${device.name || device.id}...`);
+            console.log(` BLE: Attempting reconnect to ${device.name || device.id}...`);
             await this.connectBLEDevice(device);
         } catch (e) {
             console.warn(`BLE reconnect failed for ${device.name || device.id}:`, e);
@@ -740,7 +740,7 @@ class GhostMesh {
         if (navigator.bluetooth && navigator.bluetooth.getDevices) {
             try {
                 const devices = await navigator.bluetooth.getDevices();
-                console.log(`📲 BLE: Found ${devices.length} previously paired devices`);
+                console.log(` BLE: Found ${devices.length} previously paired devices`);
 
                 for (const device of devices) {
                     // Check if this device is in our known list
@@ -751,12 +751,12 @@ class GhostMesh {
                             if (device.watchAdvertisements) {
                                 await device.watchAdvertisements();
                                 device.addEventListener('advertisementreceived', async (event) => {
-                                    console.log(`📲 BLE: ${device.name || device.id} detected nearby!`);
+                                    console.log(` BLE: ${device.name || device.id} detected nearby!`);
                                     if (!this.peers.has(device.id) || !this.peers.get(device.id).connected) {
                                         await this.connectBLEDevice(device);
                                     }
                                 });
-                                console.log(`📲 BLE: Watching for ${device.name || device.id}...`);
+                                console.log(` BLE: Watching for ${device.name || device.id}...`);
                             } else {
                                 // Fallback: try direct connect (device must be in range)
                                 await this.connectBLEDevice(device);
