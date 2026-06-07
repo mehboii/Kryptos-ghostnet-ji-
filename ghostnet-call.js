@@ -148,11 +148,15 @@
             this.nat = opts.nat || null;
             this.identity = opts.identity;
 
-            this.signer = opts.signer
-                || Fingerprint.createSecp256k1Signer({
-                    privateKey: opts.identity.privateKey,
-                    publicKey: opts.identity.publicKey,
-                });
+            // Signer is built LAZILY so GhostCall can be constructed — and wired to
+            // the mesh to receive incoming calls / ring — BEFORE the identity is
+            // unlocked. The secp256k1 signing key is only needed to place or answer.
+            this._injectedSigner = opts.signer || null;
+            this._identityPublicKey = opts.identity.publicKey || null;
+            this._getPrivateKey = (typeof opts.identity.getPrivateKey === 'function')
+                ? opts.identity.getPrivateKey
+                : function () { return opts.identity.privateKey; };
+            this._signer = null;
             this.verifier = opts.verifier || Fingerprint.secp256k1Verifier;
 
             this.resolveGhostTag = opts.resolveGhostTag || _defaultResolveGhostTag;
@@ -184,6 +188,17 @@
 
         get state() { return this._call ? this._call.state : STATES.IDLE; }
 
+        // Build (and cache) the secp256k1 signer on demand. Throws 'locked' if the
+        // identity has no signing key available yet (needs a PIN unlock).
+        async _ensureSigner() {
+            if (this._injectedSigner) return this._injectedSigner;
+            if (this._signer) return this._signer;
+            const pk = await this._getPrivateKey();
+            if (!pk) throw new Error('locked');
+            this._signer = Fingerprint.createSecp256k1Signer({ privateKey: pk, publicKey: this._identityPublicKey });
+            return this._signer;
+        }
+
         // ── public API ──────────────────────────────────
 
         /**
@@ -204,6 +219,11 @@
                 this._fail('resolve', `GhostTag ${ghostTag} did not resolve to an identity`);
                 return;
             }
+
+            // We must sign our offer's fingerprint — needs the unlocked signing key.
+            let signer;
+            try { signer = await this._ensureSigner(); }
+            catch (e) { this._emit('error', { code: 'locked', message: 'unlock your identity to place a call' }); return; }
 
             const call = this._newCall({
                 id: _uuid(),
@@ -229,7 +249,7 @@
                 const fp = await Fingerprint.buildProof({
                     kind: 'offer', callId: call.id, from: this.identity.id, to: call.peerId,
                     sdp: pc.localDescription || offer,
-                }, this.signer);
+                }, signer);
 
                 this._send(Signaling.buildOffer({
                     callId: call.id, from: this.identity.id, to: call.peerId,
@@ -253,6 +273,11 @@
             if (!call || call.role !== 'callee' || call.state !== STATES.RINGING) {
                 throw new Error('[GhostCall] no incoming call to accept');
             }
+            // Need the signing key to sign our answer. Stay ringing if it's locked so
+            // the user can unlock and accept again.
+            let signer;
+            try { signer = await this._ensureSigner(); }
+            catch (e) { this._emit('error', { code: 'locked', message: 'unlock your identity to answer the call' }); return; }
             this._clearRingTimeout(call);
             this._setState(call, STATES.CONNECTING);
 
@@ -275,7 +300,7 @@
                 const fp = await Fingerprint.buildProof({
                     kind: 'answer', callId: call.id, from: this.identity.id, to: call.peerId,
                     sdp: pc.localDescription || answer,
-                }, this.signer);
+                }, signer);
 
                 this._send(Signaling.buildAnswer({
                     callId: call.id, from: this.identity.id, to: call.peerId,
@@ -327,7 +352,12 @@
                 this._restoreMeshOnMessage = true;
                 const self = this;
                 this.mesh.onMessage = function (data, fromId, transport) {
-                    self._onMeshMessage(data, fromId);
+                    // Call signaling is NOT a chat message — intercept it and do NOT
+                    // forward to the app handler (which would render it as JSON).
+                    if (data && typeof data === 'object' && typeof data.t === 'string' && data.t.indexOf('call.') === 0) {
+                        self._onMeshMessage(data, fromId);
+                        return;
+                    }
                     if (self._prevOnMessage) {
                         try { self._prevOnMessage(data, fromId, transport); } catch (_) { /* isolate */ }
                     }

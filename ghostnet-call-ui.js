@@ -34,6 +34,13 @@
         return !!(window.GhostCall && window.GhostCallIce && window.app && window.app.mesh);
     }
 
+    // The PIN-derived secp256k1 signing key, or null if the identity is locked.
+    function _getKey() {
+        return (window.GhostIdentity && GhostIdentity.getSessionPrivateKey)
+            ? GhostIdentity.getSessionPrivateKey().catch(function () { return null; })
+            : Promise.resolve(null);
+    }
+
     // Build the GhostCall once. Requires an UNLOCKED identity (private key) so it
     // can sign DTLS fingerprints. Constructed early so incoming offers are caught.
     async function _ensureCall() {
@@ -42,15 +49,13 @@
         if (!_ready()) throw new Error('Call modules or mesh not ready yet.');
         const stored = _stored();
         if (!stored || !stored.nodeId || !stored.publicKey) throw new Error('No identity — sign in first.');
-        const pk = window.GhostIdentity && GhostIdentity.getSessionPrivateKey
-            ? await GhostIdentity.getSessionPrivateKey().catch(function () { return null; })
-            : null;
-        if (!pk) throw new Error('locked');
 
         _building = (async function () {
             const call = new window.GhostCall({
                 mesh: window.app.mesh,
-                identity: { id: stored.nodeId, publicKey: stored.publicKey, privateKey: pk },
+                // Lazy key: GhostCall is built (and wired to the mesh to RING incoming
+                // calls) without the PIN-derived key; it's only fetched to place/answer.
+                identity: { id: stored.nodeId, publicKey: stored.publicKey, getPrivateKey: _getKey },
                 getIceServers: window.GhostCallIce.createCloudflareIceProvider({}),
                 // Resolve the call target. Contacts are addressed by node id / public
                 // key / address — usable directly as BOTH the mesh routing id (the same
@@ -163,12 +168,14 @@
             _hideBar();
         });
         call.on('error', function (e) {
-            _stopTimer();
-            _hideIncoming();
-            _hideBar();
+            var code = e && e.code;
             var msg = (e && e.message) ? e.message : 'Call error';
-            if (e && e.code === 'mic-permission') msg = 'Microphone blocked. Grant mic access and try again.';
-            if (e && e.code === 'ice') msg = 'Could not get a relay (TURN) — call not started.';
+            if (code === 'mic-permission') msg = 'Microphone blocked. Grant mic access and try again.';
+            else if (code === 'ice') msg = 'Could not get a relay (TURN) — call not started.';
+            else if (code === 'locked') msg = 'Unlock with your PIN to continue.';
+            // Keep the incoming prompt up on a 'locked' answer so the user can unlock
+            // and accept again; otherwise clear the call UI.
+            if (code !== 'locked') { _stopTimer(); _hideIncoming(); _hideBar(); }
             _toast(msg, 5000);
         });
     }
@@ -185,23 +192,20 @@
         }
         try {
             var call = await _ensureCall();
+            var pk = await _getKey();
+            if (!pk) { _toast('Unlock with your PIN to start the call…', 4000); _promptUnlockThenRetry(target, 'start'); return; }
             await call.startCall(String(target).trim());
             // The in-call bar is shown by the 'ringing' event once the offer is sent,
             // so a failed resolve doesn't leave a stuck "Calling…" bar.
         } catch (err) {
             _hideBar();
-            if (err && err.message === 'locked') {
-                _toast('Unlock with your PIN to start the call…', 4000);
-                _promptUnlockThenRetry(target);
-            } else {
-                _toast(err && err.message ? err.message : 'Could not start call', 5000);
-            }
+            _toast(err && err.message ? err.message : 'Could not start call', 5000);
         }
     }
 
     // Calls need the PIN-derived signing key. If it's not loaded, surface the
     // unlock screen and retry the call automatically once the identity unlocks.
-    function _promptUnlockThenRetry(target) {
+    function _promptUnlockThenRetry(target, mode) {
         try {
             if (window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
                 window.IdentityUI.showScreen('pin');
@@ -214,13 +218,15 @@
             if (done) return;
             done = true;
             window.removeEventListener('identity:updated', retry);
-            setTimeout(function () { startCall(target); }, 400);
+            setTimeout(function () { if (mode === 'accept') acceptCall(); else startCall(target); }, 400);
         };
         window.addEventListener('identity:updated', retry);
         setTimeout(function () { window.removeEventListener('identity:updated', retry); }, 120000);
     }
 
     async function acceptCall() {
+        var pk = await _getKey();
+        if (!pk) { _toast('Unlock with your PIN to answer…', 4000); _promptUnlockThenRetry(null, 'accept'); return; }
         try { var call = await _ensureCall(); await call.acceptCall(); _hideIncoming(); _showBar('Connecting…', true); }
         catch (err) { _toast(err && err.message ? err.message : 'Could not accept', 4000); }
     }
