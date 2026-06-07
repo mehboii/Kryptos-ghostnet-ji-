@@ -190,7 +190,7 @@ function _showMnemonicBackupPrompt(mnemonic) {
 
     const title = document.createElement('h3');
     title.style.cssText = 'color:#f59e0b;margin-bottom:12px;';
-    safeText(title, '⚠️ Save Your Recovery Phrase');
+    safeText(title, ' Save Your Recovery Phrase');
 
     const warning = document.createElement('p');
     warning.style.cssText = 'color:#a1a1aa;font-size:0.85rem;margin-bottom:16px;';
@@ -447,13 +447,13 @@ const ContactManager = {
             el.classList.add('msg-ephemeral');
             const icon = document.createElement('span');
             icon.style.cssText = 'font-size:0.75rem;opacity:0.7;margin-left:6px;';
-            safeText(icon, '🔥 30s');
+            safeText(icon, ' 30s');
             bodyEl.appendChild(icon);
         } else if (msg.mode === 'DELETE' && type === 'me') {
             const delBtn = document.createElement('span');
             delBtn.style.cssText = 'cursor:pointer;margin-left:8px;opacity:0.6;';
             delBtn.title = 'Delete for everyone';
-            safeText(delBtn, '🗑️');
+            safeText(delBtn, '');
             // [3] Pass IDs by reference — never inject into HTML attribute string
             delBtn.onclick = () => app.ghostChat.sendDeleteRequest(msg.id, msg.to);
             bodyEl.appendChild(delBtn);
@@ -516,12 +516,12 @@ const PeerManager = {
 
             const scanBtn = document.createElement('button');
             scanBtn.className = 'btn-primary small';
-            safeText(scanBtn, '🔵 Scan BLE Mesh');
+            safeText(scanBtn, ' Scan BLE Mesh');
             scanBtn.onclick = () => app.transport.startBLEScan();
 
             const badge = document.createElement('div');
             badge.className = `status-badge ${bleActive ? 'active' : ''}`;
-            safeText(badge, bleActive ? '🟢 BLE Active' : '⚪ BLE Idle');
+            safeText(badge, bleActive ? ' BLE Active' : ' BLE Idle');
 
             controls.append(scanBtn, badge);
             target.appendChild(controls);
@@ -547,7 +547,7 @@ const PeerManager = {
 
                 const icon = document.createElement('div');
                 icon.className = `peer-icon ${p.type === 'Bridge' ? 'bridge' : ''}`;
-                safeText(icon, p.type === 'BLE' ? '📶' : '💻');
+                safeText(icon, p.type === 'BLE' ? '' : '');
 
                 const info = document.createElement('div');
                 info.className = 'peer-info';
@@ -655,11 +655,11 @@ const app = {
 
     init: async () => {
         try {
-            console.log('🚀 Initializing GhostNet...');
+            console.log(' Initializing GhostNet...');
 
             try {
                 await initWallet();
-                console.log('✅ Wallet Initialized');
+                console.log(' Wallet Initialized');
             } catch (e) { console.error('Wallet Init Failed:', e); }
 
             app.transport = new TransportManager({ nodeId: 'me' });
@@ -668,15 +668,15 @@ const app = {
             try {
                 if (typeof GhostChat !== 'undefined') {
                     ContactManager.init();
-                    console.log('✅ Chat Initialized');
+                    console.log(' Chat Initialized');
                 } else {
-                    console.error('❌ GhostChat Class Missing');
+                    console.error(' GhostChat Class Missing');
                 }
             } catch (e) { console.error('Chat Init Failed:', e); }
 
             try {
                 PeerManager.init();
-                console.log('✅ Peers Initialized');
+                console.log(' Peers Initialized');
             } catch (e) { console.error('Peer Init Failed:', e); }
 
             app.setupNavigation();
@@ -847,7 +847,7 @@ const app = {
             if (typeof lucide !== 'undefined') lucide.createIcons();
 
         } catch (err) {
-            console.error('🔥 APP FATAL CRASH:', err);
+            console.error(' APP FATAL CRASH:', err);
             // [12] Never alert() with error details — could leak internals
             const errEl = document.getElementById('app-error');
             if (errEl) safeText(errEl, 'Initialization failed. Please refresh.');

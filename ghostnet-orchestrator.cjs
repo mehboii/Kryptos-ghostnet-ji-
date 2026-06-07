@@ -130,7 +130,7 @@ const C = {
 function log(level, msg) {
     const safe = String(msg).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ''); // [O]
     const ts = new Date().toISOString().slice(0, 19).replace('T', ' ');
-    const icon = { info: '🔵', warn: '🟡', error: '🔴', ok: '🟢', sys: '⚙️ ', boot: '🚀' }[level] || '📋';
+    const icon = { info: '', warn: '', error: '', ok: '', sys: ' ', boot: '' }[level] || '';
     const col = { info: C.cyan, warn: C.yellow, error: C.red, ok: C.green, sys: C.gray, boot: C.magenta }[level] || C.reset;
     console.log(`${C.dim}[${ts}]${C.reset} ${icon} ${col}${safe}${C.reset}`);
 }
@@ -448,7 +448,7 @@ async function showStatus() {
         console.log(`║         GhostNet Service Status                  ║`);
         console.log(`╠══════════════════════════════════════════════════╣${C.reset}`);
         for (const p of procs) {
-            const icon = p.status === 'online' ? '🟢' : p.status === 'errored' ? '🔴' : '🟡';
+            const icon = p.status === 'online' ? '' : p.status === 'errored' ? '' : '';
             const mem = `${Math.round(p.memory / 1024 / 1024)}MB`;
             // [O] all values sanitized through whitelist map above
             console.log(`${C.bold}║${C.reset} ${icon} ${p.name.padEnd(20)} ${p.status.padEnd(10)} MEM:${mem.padEnd(7)} CPU:${String(p.cpu).padEnd(3)}% ↻${p.restarts}`);

@@ -34,7 +34,7 @@ function withTimeout(promise, ms, label) {
 // Never log full Error — only message, never stack (contains file paths)
 
 function failTest(label, err) {
-    console.error(`❌ FAILED [${label}]:`, err instanceof Error ? err.message : String(err));
+    console.error(` FAILED [${label}]:`, err instanceof Error ? err.message : String(err));
 }
 
 // ─── [6] IDENTITY VALIDATOR ─────────────────────────────
@@ -132,7 +132,7 @@ function scrubIdentity(id) {
             validateIdentity(idB, 'Identity B'); // [6]
             console.log('  ID B address:', idB.address);
 
-            console.log('✅ PASS: Identities generated');
+            console.log(' PASS: Identities generated');
             passed++;
         } catch (e) {
             failTest('generateIdentity', e);
@@ -166,7 +166,7 @@ function scrubIdentity(id) {
             // [3] Log envelope ID and payload LENGTH only — never payload content
             console.log('  Envelope ID     :', envelope.id);
             console.log('  Payload length  :', envelope.payload.length, 'chars');
-            console.log('✅ PASS: Envelope created');
+            console.log(' PASS: Envelope created');
             passed++;
         } catch (e) {
             failTest('createEnvelope', e);
@@ -186,7 +186,7 @@ function scrubIdentity(id) {
                 throw new Error(`Expected true, got: ${valid}`);
             }
 
-            console.log('✅ PASS: Signature verified');
+            console.log(' PASS: Signature verified');
             passed++;
         } catch (e) {
             failTest('verifyEnvelope', e);
@@ -216,8 +216,8 @@ function scrubIdentity(id) {
             }
 
             // [8] Only log that it matched — not the actual decrypted value
-            console.log('  Decrypted text matches original: ✅');
-            console.log('✅ PASS: Envelope decrypted correctly');
+            console.log('  Decrypted text matches original: ');
+            console.log(' PASS: Envelope decrypted correctly');
             passed++;
         } catch (e) {
             failTest('decryptEnvelope', e);
@@ -242,7 +242,7 @@ function scrubIdentity(id) {
                 throw new Error('verifyEnvelope accepted a forged envelope — CRITICAL');
             }
 
-            console.log('✅ PASS: Forged envelope correctly rejected');
+            console.log(' PASS: Forged envelope correctly rejected');
             passed++;
         } catch (e) {
             failTest('verifyEnvelope (forged)', e);
@@ -251,7 +251,7 @@ function scrubIdentity(id) {
 
     } catch (fatal) {
         // [1] Log message only — never full error object
-        console.error('\n🔥 FATAL:', fatal instanceof Error ? fatal.message : String(fatal));
+        console.error('\n FATAL:', fatal instanceof Error ? fatal.message : String(fatal));
     } finally {
         // [4] Always scrub key material before exit
         scrubIdentity(idA);
@@ -265,10 +265,10 @@ function scrubIdentity(id) {
 
         // [10] Always exit with correct code
         if (failed === 0 && passed === 5) {
-            console.log('✅ ALL TESTS PASSED');
+            console.log(' ALL TESTS PASSED');
             process.exit(0);
         } else {
-            console.error('❌ SOME TESTS FAILED');
+            console.error(' SOME TESTS FAILED');
             process.exit(1); // [10] non-zero exit on failure
         }
     }

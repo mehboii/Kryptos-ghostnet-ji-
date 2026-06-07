@@ -91,8 +91,8 @@ function rotateLogs() {
 
 function logEntry(level, msg, meta = {}) {
     const entry = { ts: new Date().toISOString(), level, msg, ...meta };
-    const icons = { info: '📋', warn: '⚠️', error: '🔴', ok: '✅', sys: '⚙️' };
-    console.log(`[${entry.ts.substr(11, 8)}] ${icons[level] || '📋'} ${msg}`);
+    const icons = { info: '', warn: '', error: '', ok: '', sys: '' };
+    console.log(`[${entry.ts.substr(11, 8)}] ${icons[level] || ''} ${msg}`);
     try {
         rotateLogs();
         fs.appendFileSync(LOG_FILE, JSON.stringify(entry) + '\n');
@@ -244,9 +244,9 @@ async function main() {
         console.log('│ Service           │ Port   │ HTTP   │ WS     │');
         console.log('├───────────────────┼────────┼────────┼────────┤');
         for (const r of results) {
-            const p = r.port ? '  ✅  ' : '  ❌  ';
-            const h = r.http ? '  ✅  ' : (r.httpData === null && r.port ? '  ➖  ' : '  ❌  ');
-            const w = r.ws === null ? '  ➖  ' : (r.ws ? '  ✅  ' : '  ❌  ');
+            const p = r.port ? '    ' : '    ';
+            const h = r.http ? '    ' : (r.httpData === null && r.port ? '    ' : '    ');
+            const w = r.ws === null ? '    ' : (r.ws ? '    ' : '    ');
             console.log(`│ ${r.name.padEnd(17)} │${p}│${h}│${w}│`);
         }
         console.log('└───────────────────┴────────┴────────┴────────┘\n');

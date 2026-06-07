@@ -80,6 +80,7 @@
     <script src="ghostnet-call-fingerprint.js"></script>
     <script src="ghostnet-call-ice.js"></script>
     <script src="ghostnet-call.js"></script>
+    <script src="ghostnet-call-ui.js"></script>
     <script src="app.js"></script>
     <script src="shieldConfig.js"></script>
     <script src="signal-intelligence.js"></script>
@@ -910,7 +911,7 @@
                                 </p>
                                 <div style="text-align:center; margin-top:15px; margin-bottom:15px;">
                                     <p style="color:var(--text-muted); font-size:0.78rem; margin:0;">
-                                        🔒 Stays unlocked until you close this tab
+                                         Stays unlocked until you close this tab
                                     </p>
                                 </div>
                                 <button class="auth-btn-primary" id="btn-pin-unlock"
@@ -1197,7 +1198,7 @@
                                 <div id="pin-set-error" class="id-error"></div>
                                 <div style="text-align:center; margin-top:15px; margin-bottom:15px;">
                                     <p style="color:var(--text-muted); font-size:0.78rem; margin:0;">
-                                        🔒 Stays unlocked until you close this tab
+                                         Stays unlocked until you close this tab
                                     </p>
                                 </div>
                                 <button class="auth-btn-primary" onclick="IdentityUI.submitPin()">SET PIN & ENCRYPT
@@ -2639,7 +2640,7 @@
                     }
 
                     async function destroyIdentity() {
-                        if (!confirm('⚠️ This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase.\n\nYour GhostTag will be RELEASED and become available to other users.\n\nAre you sure?')) return;
+                        if (!confirm(' This will completely erase your identity, messages, files, and all data from this device. You can only recover your identity with your seed phrase.\n\nYour GhostTag will be RELEASED and become available to other users.\n\nAre you sure?')) return;
                         
                         // Release GhostTag on server BEFORE clearing local data
                         // This makes the tag available to other users
@@ -2678,7 +2679,7 @@
                             if (stored && stored.nodeId) {
                                 const sessionPk = await GhostIdentity.getSessionPrivateKey();
                                 if (sessionPk) {
-                                    console.log("🔓 Valid session found, auto-unlocking...");
+                                    console.log(" Valid session found, auto-unlocking...");
                                     if (window.AppState) {
                                         AppState.identity = {
                                             displayName: stored.displayName,
@@ -2735,7 +2736,7 @@
                                                     console.error('[Sync] GhostTag conflict: @' + result.tag + ' was taken while offline!');
                                                     // Notify user of the conflict
                                                     if (typeof showToast === 'function') {
-                                                        showToast('⚠ Your GhostTag was claimed by another user!', 5000);
+                                                        showToast(' Your GhostTag was claimed by another user!', 5000);
                                                     }
                                                 }
                                             });
@@ -2746,7 +2747,7 @@
                                         if (conflict) {
                                             console.warn('[GhostTag] Unresolved sync conflict:', conflict);
                                             if (typeof showToast === 'function') {
-                                                showToast('⚠ Your GhostTag @' + conflict.tag + ' was taken. Tap Profile to reclaim.', 5000);
+                                                showToast(' Your GhostTag @' + conflict.tag + ' was taken. Tap Profile to reclaim.', 5000);
                                             }
                                         }
                                     } else {

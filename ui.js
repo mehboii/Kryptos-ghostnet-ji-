@@ -956,7 +956,7 @@ const UI = {
             if (document.hidden) {
                 bubbles.forEach(b => {
                     b.dataset.originalText = b.innerText;
-                    b.innerText = '🔒 Protected';
+                    b.innerText = ' Protected';
                 });
             } else {
                 bubbles.forEach(b => {
@@ -983,7 +983,7 @@ const UI = {
             const badge = document.createElement('span');
             badge.id = 'ss-protected-badge';
             badge.className = 'e2e-badge';
-            badge.textContent = '📵 SS Protected';
+            badge.textContent = ' SS Protected';
             headerInfo.appendChild(badge);
         }
     },
@@ -1688,7 +1688,7 @@ const UI = {
                 // The re-unlock PIN prompt is shown by the auth gate but sits BEHIND this
                 // modal — close the modal so the user can actually see and use it.
                 if (res.status === 401) {
-                    if (errEl) errEl.textContent = '🔒 Session expired — re-unlock with your PIN, then try again.';
+                    if (errEl) errEl.textContent = ' Session expired — re-unlock with your PIN, then try again.';
                     if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
                     setTimeout(() => {
                         const ov = document.querySelector('.modal-overlay');
@@ -1697,7 +1697,7 @@ const UI = {
                     if (startBtn) { startBtn.disabled = false; startBtn.textContent = 'START SESSION'; }
                     return;
                 }
-                if (errEl) errEl.textContent = `⚠ Validation failed (HTTP ${res.status}). Try again.`;
+                if (errEl) errEl.textContent = ` Validation failed (HTTP ${res.status}). Try again.`;
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -1714,7 +1714,7 @@ const UI = {
                     acceptContactOffline(name);
                     return;
                 }
-                if (errEl) errEl.textContent = '⚠ Server returned invalid response. Please try again.';
+                if (errEl) errEl.textContent = ' Server returned invalid response. Please try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -1731,7 +1731,7 @@ const UI = {
                     acceptContactOffline(name);
                     return;
                 }
-                if (errEl) errEl.textContent = '⚠ Node not found. Check the Node ID and try again.';
+                if (errEl) errEl.textContent = ' Node not found. Check the Node ID and try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -1774,7 +1774,7 @@ const UI = {
                 if (errEl) {
                     errEl.innerHTML = '';
                     const warnText = document.createElement('span');
-                    warnText.textContent = '⚠ Server unreachable. ';
+                    warnText.textContent = ' Server unreachable. ';
                     errEl.appendChild(warnText);
 
                     const offlineBtn = document.createElement('button');
@@ -1793,7 +1793,7 @@ const UI = {
                     startBtn.textContent = 'START SESSION';
                 }
             } else {
-                if (errEl) errEl.textContent = '⚠ Could not verify node. Please try again.';
+                if (errEl) errEl.textContent = ' Could not verify node. Please try again.';
                 if (startBtn) {
                     startBtn.disabled = false;
                     startBtn.textContent = 'START SESSION';
@@ -2069,7 +2069,7 @@ const UI = {
         const _readIds = []; // incoming ids to flush as read receipts after history loads
         if (_burnOn && feed) {
             const burnNote = document.createElement('div');
-            burnNote.textContent = '🔥 Burn mode on — previous messages erased';
+            burnNote.textContent = ' Burn mode on — previous messages erased';
             burnNote.style.cssText = 'text-align:center;color:#9aa3b2;font-size:0.72rem;padding:4px 0 8px;opacity:0.85;';
             feed.appendChild(burnNote);
             // Drop locally cached messages for this peer so nothing lingers in memory.
@@ -2366,7 +2366,7 @@ const UI = {
                 
                 <div style="display:flex; align-items:center; gap:10px;">
                      <div class="status-badge ${bleActive ? 'active' : ''}">
-                        ${bleActive ? '🟢 Active' : '⚪ Idle'}
+                        ${bleActive ? ' Active' : ' Idle'}
                     </div>
                     <button class="btn-primary small" onclick="window.app.transport.startBLEScan()">
                         SCAN NETWORK
@@ -2546,9 +2546,9 @@ const UI = {
                 // (ephemeral) message. sendMessage() reads the active .mode-btn.
                 const mode = m.getAttribute('data-mode');
                 if (mode === 'EPHEMERAL') {
-                    UI.showToast('🔥 Burn message: the next message self-destructs after viewing (your contact stays).', '#f59e0b');
+                    UI.showToast(' Burn message: the next message self-destructs after viewing (your contact stays).', '#f59e0b');
                 } else {
-                    UI.showToast('💾 Save: messages are kept in this chat.', '#10b981');
+                    UI.showToast(' Save: messages are kept in this chat.', '#10b981');
                 }
             };
             m.addEventListener('click', modeHandler);
@@ -2580,7 +2580,7 @@ const UI = {
                         }
                     }
                 } catch (_) {}
-                UI.showToast('🗑️ Chat deleted — contact kept.', '#10b981');
+                UI.showToast(' Chat deleted — contact kept.', '#10b981');
                 const uid = window.AppState?.identity?.id || window.AppState?.identity?.nodeId;
                 if (uid) UI.loadConversations(uid);
             } else {
@@ -2713,7 +2713,7 @@ const UI = {
         if (fileId) {
             msg.innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:8px; background:rgba(0,0,0,0.1); padding:8px; border-radius:8px;">
-                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;">📎 ${_escapeHTML(fileName)}</div>
+                    <div style="font-weight:bold; font-size:0.9em; word-break:break-all;"> ${_escapeHTML(fileName)}</div>
                     <button class="btn-primary" style="padding:6px 12px; font-size:0.85em; cursor:pointer;" onclick="this.textContent='Decrypting...'; window.GhostVault.downloadFile('${_escapeJSString(fileId)}', '${_escapeJSString(encKeyStr)}').then(() => this.textContent='Decrypted &amp; Downloaded!').catch(() => { showToast('Download failed'); this.textContent='Download Failed'; })">
                         Secure Download
                     </button>
@@ -2774,7 +2774,7 @@ const UI = {
             statusEl.style.opacity = '0.7';
             statusEl.style.color = '#9aa3b2';
         } else if (status === 'queued') {
-            statusEl.textContent = '🕐';
+            statusEl.textContent = '';
             statusEl.title = 'Queued';
             statusEl.style.opacity = '0.7';
             statusEl.style.color = '#9aa3b2';
@@ -3058,13 +3058,13 @@ const UI = {
 
         const webCryptoOk = !!(window.crypto && window.crypto.subtle);
         if (!webCryptoOk) {
-            ensureVaultBanner(`🔒 Vault requires a secure context (HTTPS or localhost). Current: ${location.protocol}`);
+            ensureVaultBanner(` Vault requires a secure context (HTTPS or localhost). Current: ${location.protocol}`);
             showToast('Vault encryption unavailable — HTTPS required');
             setVaultEnabled(false);
             return;
         }
         if (!window.GhostVault) {
-            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
+            ensureVaultBanner(' Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
             showToast('Vault encryption unavailable — module not loaded');
             setVaultEnabled(false);
             return;
@@ -3407,7 +3407,7 @@ const UI = {
             const rows = [
                 { label: 'File', value: result.fileName, cls: '' },
                 { label: 'Disk Integrity', value: result.diskIntegrity ? '✓ PASS' : '✕ TAMPERED', cls: result.diskIntegrity ? 'pass' : 'fail' },
-                { label: 'Chain Verified', value: result.chainVerified ? '✓ ON-CHAIN' : '⏳ PENDING', cls: result.chainVerified ? 'pass' : 'fail' },
+                { label: 'Chain Verified', value: result.chainVerified ? '✓ ON-CHAIN' : ' PENDING', cls: result.chainVerified ? 'pass' : 'fail' },
                 { label: 'SHA-256 Hash', value: result.storedHash ? result.storedHash.substring(0, 16) + '...' : 'N/A', cls: '', style: 'font-size:0.65rem;' },
             ];
             if (result.txHash) {

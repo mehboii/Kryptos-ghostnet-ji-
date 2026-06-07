@@ -373,7 +373,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
             
             <button class="btn-full-ghost" id="btn-full-ghost" onclick="GhostShieldUI.toggleEnableAll()">
-                ⚡ FULL GHOST PROTOCOL
+                 FULL GHOST PROTOCOL
             </button>
 
             <button class="btn-disable-shield" id="btn-disable-shield" onclick="GhostShieldUI.disable()" style="display:none;">
@@ -456,10 +456,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const fullGhostBtn = document.getElementById('btn-full-ghost');
             if (status.currentLevel === 'ALL') {
                 fullGhostBtn.classList.add('active');
-                fullGhostBtn.innerText = '🔴 FULL PROTOCOL ACTIVE — TAP TO DISABLE';
+                fullGhostBtn.innerText = ' FULL PROTOCOL ACTIVE — TAP TO DISABLE';
             } else {
                 fullGhostBtn.classList.remove('active');
-                fullGhostBtn.innerText = '⚡ FULL GHOST PROTOCOL';
+                fullGhostBtn.innerText = ' FULL GHOST PROTOCOL';
             }
 
             if (status.level === 0) {

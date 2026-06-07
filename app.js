@@ -339,10 +339,10 @@ window.addEventListener('DOMContentLoaded', async () => {
                 log.error('Message rejected:', errMsg);
                 // Surface auth failures so the message isn't silently lost — prompt re-unlock.
                 if (response.status === 401) {
-                    if (typeof _showDevWarning === 'function') _showDevWarning('⚠ Message not sent — please unlock to re-authenticate.');
+                    if (typeof _showDevWarning === 'function') _showDevWarning(' Message not sent — please unlock to re-authenticate.');
                     if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
                 } else if (response.status === 404 && window.UI) {
-                    UI.addMessage(`⚠ ${errMsg}`, 'them');
+                    UI.addMessage(` ${errMsg}`, 'them');
                 }
             }
         } catch (e) {
@@ -373,14 +373,14 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             if (text.length > MAX_MSG_LENGTH) {
                 // ─── [FIX B] Replace alert() with non-blocking UI banner. ──────
-                _showDevWarning(`⚠ Message too long — maximum ${MAX_MSG_LENGTH} characters.`);
+                _showDevWarning(` Message too long — maximum ${MAX_MSG_LENGTH} characters.`);
                 return;
             }
 
             // ─── [FIX D] Rate limit checked here (ONCE), not also in persistMessage.
             if (!MsgRateLimit.check()) {
                 log.warn('Rate limit hit.');
-                _showDevWarning('⚠ Slow down — message rate limit reached (30/min).');
+                _showDevWarning(' Slow down — message rate limit reached (30/min).');
                 return;
             }
 
@@ -449,14 +449,14 @@ window.addEventListener('DOMContentLoaded', async () => {
                 const maxBytes = isVideo ? (3 * 1024 * 1024 * 1024) : (10 * 1024 * 1024);
 
                 if (file.size > maxBytes) {
-                    _showDevWarning(`⚠ File too large — maximum size is ${isVideo ? '3 GB' : '10 MB'}.`);
+                    _showDevWarning(` File too large — maximum size is ${isVideo ? '3 GB' : '10 MB'}.`);
                     fileInput.value = '';
                     return;
                 }
 
                 // Warn but allow if missing from direct Set
                 if (file.type && !ALLOWED_ATTACHMENT_MIME.has(file.type)) {
-                    _showDevWarning(`⚠ File type "${sanitize(file.type)}" is unexpected, attempting upload anyway.`);
+                    _showDevWarning(` File type "${sanitize(file.type)}" is unexpected, attempting upload anyway.`);
                 }
 
                 if (window.GhostVault) {
@@ -473,12 +473,12 @@ window.addEventListener('DOMContentLoaded', async () => {
                             _showDevWarning(`Upload Complete!`);
                         }
                     } catch (e) {
-                        _showDevWarning(`⚠ Upload failed: ${e.message}`);
+                        _showDevWarning(` Upload failed: ${e.message}`);
                     }
                 } else {
                     const safeName = sanitize(file.name);
                     const sizeKB = (file.size / 1024).toFixed(1);
-                    if (window.UI) UI.addMessage(`📎 FILE: ${safeName} (${sizeKB} KB)`, 'me');
+                    if (window.UI) UI.addMessage(` FILE: ${safeName} (${sizeKB} KB)`, 'me');
                 }
 
                 fileInput.value = '';
@@ -760,7 +760,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     if (window.location.protocol === 'file:') {
         _showDevWarning(
-            '⚠ Running from file:// — run node ghostnet-server.js and visit http://localhost:8080'
+            ' Running from file:// — run node ghostnet-server.js and visit http://localhost:8080'
         );
     }
 

@@ -34,7 +34,7 @@ startCall(@bob)
   getUserMedia(audio)
   createOffer → munge Opus(DTX,bitrate) → setLocalDescription
   extract DTLS fingerprint → sign with A's key
-  ── call.offer {sdp, fp:sign_A(fp)} ─────────────────────────────────▶ _onOffer
+  ── call.offer {sdp, fp:sign_A(fp)} ───────────────────────────────── _onOffer
                                                                           resolve A's pubKey (independent)
                                                                           verifyProof(fp, pubKey_A)  ← BEFORE applying SDP
                                                                           ✗ mismatch → hangup(fingerprint)
@@ -44,13 +44,13 @@ startCall(@bob)
                                                                           getUserMedia(audio)
                                                                           createAnswer → munge Opus → setLocalDescription
                                                                           extract fingerprint → sign with B's key
-  _onAnswer ◀──────────────────── call.answer {sdp, fp:sign_B(fp)} ──────
+  _onAnswer ──────────────────── call.answer {sdp, fp:sign_B(fp)} ──────
   verifyProof(fp, pubKey_B)  ← BEFORE applying SDP
   ✗ mismatch → endCall (error)
   ✓ → setRemoteDescription(answer)
-  ◀───────────── call.ice (trickle, both directions) ─────────────▶
+  ───────────── call.ice (trickle, both directions) ─────────────
   ICE connected → emit 'connected' (state: active)
-  ── call.hangup {reason} ── (either side) ──▶  emit 'ended'
+  ── call.hangup {reason} ── (either side) ──  emit 'ended'
 ```
 
 ## Privacy by mathematics — identity-bound DTLS fingerprint
@@ -82,12 +82,12 @@ fingerprint binding, so it cannot insert itself into the media path.
 
 ```
         startCall / incoming offer
- idle ───────────────────────────▶ ringing
+ idle ─────────────────────────── ringing
                                       │ accept (callee) / answer recv (caller)
                                       ▼
-                                  connecting ──ICE connected──▶ active
+                                  connecting ──ICE connected── active
    ▲                                  │                           │
-   └──────────── ended ◀──────────────┴───── hangup / timeout / error / endCall ─┘
+   └──────────── ended ──────────────┴───── hangup / timeout / error / endCall ─┘
 ```
 
 - **Ring timeout:** an unanswered call auto-hangs-up (`timeout`) after
@@ -175,7 +175,7 @@ CLOUDFLARE_TURN_KEY_ID=...
 CLOUDFLARE_TURN_API_TOKEN=...
 ```
 
-## ⚠️ Follow-up: microphone permission in the Expo WebView
+##  Follow-up: microphone permission in the Expo WebView
 
 `RTCPeerConnection` works inside the Android System WebView, **but `getUserMedia`
 (mic) needs native permission plumbing that is NOT implemented in Phase 1**:

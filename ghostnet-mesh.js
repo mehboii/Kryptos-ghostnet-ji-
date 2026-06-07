@@ -144,7 +144,7 @@ class GhostMesh {
         this._loadKnownBleDevices();
 
         this.bleAvailable = typeof navigator !== 'undefined' && !!navigator.bluetooth;
-        console.log(`🕸️ GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
+        console.log(` GhostMesh initialized. BLE: ${this.bleAvailable ? 'available' : 'unavailable'}`);
 
         // [Feature 4] Relay Monitor State
         this.relayStats = {
@@ -263,13 +263,13 @@ class GhostMesh {
         if (token) {
             this.connectWebSocket();
         } else {
-            console.log('🔌 Mesh: Standing by for authentication before connecting.');
+            console.log(' Mesh: Standing by for authentication before connecting.');
         }
         
         this.startHeartbeat();
 
         if (this.bleAvailable && this.knownBLEDevices.length > 0) {
-            console.log(`📲 BLE auto-reconnect: ${this.knownBLEDevices.length} known device(s)`);
+            console.log(` BLE auto-reconnect: ${this.knownBLEDevices.length} known device(s)`);
             this.attemptBLEAutoReconnect();
         }
         return true;
@@ -476,7 +476,7 @@ class GhostMesh {
             // Without it, the server immediately destroys the socket.
             const base = this.buildWsUrl();
             const wsUrl = `${base}?token=${encodeURIComponent(token)}`;
-            console.log(`🔌 Mesh: Connecting WebSocket to ${base}...`);
+            console.log(` Mesh: Connecting WebSocket to ${base}...`);
 
             const ws = new WebSocket(wsUrl);
             this.ws = ws;
@@ -485,7 +485,7 @@ class GhostMesh {
                 // Guard: if we've been replaced by a newer socket, ignore
                 if (this.ws !== ws) return;
 
-                console.log('✅ Mesh: WebSocket connected');
+                console.log(' Mesh: WebSocket connected');
 
                 this.wsReady = true;
                 this._connecting = false;
@@ -524,7 +524,7 @@ class GhostMesh {
 
                 // Only log first 3 disconnects to avoid console flood
                 if (!this._reconnectAttempts || this._reconnectAttempts < 3) {
-                    console.warn('🔌 Mesh: WebSocket disconnected');
+                    console.warn(' Mesh: WebSocket disconnected');
                 }
                 this.wsReady = false;
                 this._connecting = false;
@@ -898,7 +898,7 @@ class GhostMesh {
             this.onPeerJoin(peer);
             this.onMeshUpdate(this.getPeers());
             this.onStatusChange({ state: 'connected', transport: 'ble', peerId });
-            console.log(`✅ BLE: Connected to ${peer.name}`);
+            console.log(` BLE: Connected to ${peer.name}`);
 
         } catch (e) {
             console.warn('BLE connection failed:', e.message);

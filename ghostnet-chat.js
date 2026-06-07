@@ -168,7 +168,7 @@
             ikmBytes = new Uint8Array(cleanHex.match(/.{1,2}/g).map(b => parseInt(b, 16)));
         } else {
             // ── FALLBACK: sorted public keys (NOT secure — for backward compat) ──
-            console.warn('[GhostChat] ⚠ No ECDH callback provided — using legacy sorted-key derivation. This is NOT secure for production.');
+            console.warn('[GhostChat]  No ECDH callback provided — using legacy sorted-key derivation. This is NOT secure for production.');
             const [a, b] = [myPub, peerPub].sort();
             const ikmStr = `${a.length}:${a}|${b.length}:${b}`;
             ikmBytes = enc.encode(ikmStr);
@@ -356,7 +356,7 @@
                 throw new Error(`Message too large (max ${MAX_BODY_BYTES} bytes).`);
             }
 
-            // Use the caller-supplied id (so sender bubble ↔ packet ↔ receipts align).
+            // Use the caller-supplied id (so sender bubble  packet  receipts align).
             const msgId = (typeof msgIdOverride === 'string' && msgIdOverride) ? msgIdOverride : _uuid();
             const ts = Date.now();
             const iv = crypto.getRandomValues(new Uint8Array(12));

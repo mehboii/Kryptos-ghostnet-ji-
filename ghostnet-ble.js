@@ -185,9 +185,9 @@ export default class GhostBLE {
             if (!navigator.bluetooth) {
                 if (!window.isSecureContext) {
                     // [FIX G] Fixed user message — no internal detail exposed.
-                    _showError('⚠ Bluetooth requires a secure connection (HTTPS or localhost).');
+                    _showError(' Bluetooth requires a secure connection (HTTPS or localhost).');
                 } else {
-                    _showError('⚠ WebBluetooth is not supported or is disabled in this browser.');
+                    _showError(' WebBluetooth is not supported or is disabled in this browser.');
                 }
                 return false;
             }
@@ -222,9 +222,9 @@ export default class GhostBLE {
                 if (_isDev) console.log('GhostBLE: Scan cancelled by user.');
             } else if (e.name === 'SecurityError') {
                 // [FIX G] Generic message, no raw e.message.
-                _showError('⚠ Bluetooth scan must be triggered by a user interaction.');
+                _showError(' Bluetooth scan must be triggered by a user interaction.');
             } else {
-                _showError('⚠ Bluetooth scan failed. Please try again.', e);
+                _showError(' Bluetooth scan failed. Please try again.', e);
             }
         }
     }
@@ -236,7 +236,7 @@ export default class GhostBLE {
         try {
             server = await device.gatt.connect();
         } catch (e) {
-            _showError('⚠ Could not connect to the Bluetooth device.', e);
+            _showError(' Could not connect to the Bluetooth device.', e);
             return;
         }
 
@@ -244,7 +244,7 @@ export default class GhostBLE {
         try {
             service = await server.getPrimaryService(SERVICE_UUID);
         } catch (e) {
-            _showError('⚠ Connected device is not running GhostNet.', e);
+            _showError(' Connected device is not running GhostNet.', e);
             device.gatt.disconnect();
             return;
         }
@@ -255,7 +255,7 @@ export default class GhostBLE {
             charKey = await service.getCharacteristic(CHAR_PUB_KEY);
             charData = await service.getCharacteristic(CHAR_DATA);
         } catch (e) {
-            _showError('⚠ GhostNet service on device is incomplete.', e);
+            _showError(' GhostNet service on device is incomplete.', e);
             device.gatt.disconnect();
             return;
         }
