@@ -49,11 +49,11 @@ async function test(name, fn) {
     try {
         await fn();
         passed++;
-        console.log(`  ✅ ${name}`);
+        console.log(`   ${name}`);
     } catch (err) {
         failed++;
         failures.push({ name, error: err.message });
-        console.log(`  ❌ ${name}`);
+        console.log(`   ${name}`);
         console.log(`     → ${err.message}`);
     }
 }

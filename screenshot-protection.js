@@ -40,5 +40,5 @@
   overlay.className = 'ghost-blur-overlay'
   document.body.appendChild(overlay)
   
-  console.log('🛡️ GhostNet Screenshot Protection Active');
+  console.log(' GhostNet Screenshot Protection Active');
 })()

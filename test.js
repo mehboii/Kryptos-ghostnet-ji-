@@ -56,13 +56,13 @@ function withTimeout(promise, ms, label) {
             : (node.publicKey.byteLength ?? '?');
 
         console.log('PUBLIC KEY: OK (' + pubKeyLen + ' chars)');
-        console.log('✅ Identity created successfully');
+        console.log(' Identity created successfully');
 
         process.exit(0); // [5] explicit success exit
 
     } catch (e) {
         // [2] Log message only — never full error object (leaks stack/paths)
-        console.error('❌ FAILED:', e instanceof Error ? e.message : String(e));
+        console.error(' FAILED:', e instanceof Error ? e.message : String(e));
         process.exit(1); // [5] non-zero on failure
     }
 })();

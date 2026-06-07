@@ -120,7 +120,7 @@ function scrubIdentity(id) {
             console.log('  pubKey : OK (' + (id.publicKey?.length ?? 0) + ' chars)');
             // [1] privateKey existence confirmed by validateIdentity — never printed
             console.log('  privKey: OK (not logged)');
-            console.log('✅ PASS: Identity generated');
+            console.log(' PASS: Identity generated');
             passed++;
         } catch (e) {
             failTest('generateIdentity', e);
@@ -146,7 +146,7 @@ function scrubIdentity(id) {
 
             // [4] Log ONLY the byte length — never any signature content
             console.log('  Signature length:', sig.length, 'chars');
-            console.log('✅ PASS: Message signed');
+            console.log(' PASS: Message signed');
             passed++;
         } catch (e) {
             failTest('signMessage', e);
@@ -167,7 +167,7 @@ function scrubIdentity(id) {
                 throw new Error(`Expected true, got ${valid}`);
             }
 
-            console.log('✅ PASS: Valid signature verified');
+            console.log(' PASS: Valid signature verified');
             passed++;
         } catch (e) {
             failTest('verifySignature (valid)', e);
@@ -189,7 +189,7 @@ function scrubIdentity(id) {
                 throw new Error(`verifySignature accepted a fake signature — CRITICAL`);
             }
 
-            console.log('✅ PASS: Wrong signature correctly rejected');
+            console.log(' PASS: Wrong signature correctly rejected');
             passed++;
         } catch (e) {
             failTest('verifySignature (wrong sig)', e);
@@ -211,7 +211,7 @@ function scrubIdentity(id) {
                 throw new Error(`verifySignature accepted a tampered message — CRITICAL`);
             }
 
-            console.log('✅ PASS: Tampered message correctly rejected');
+            console.log(' PASS: Tampered message correctly rejected');
             passed++;
         } catch (e) {
             failTest('verifySignature (tampered msg)', e);
@@ -220,7 +220,7 @@ function scrubIdentity(id) {
 
     } catch (fatal) {
         // [7] Fatal crash — log message only, not stack
-        console.error('\n🔥 FATAL:', fatal instanceof Error ? fatal.message : String(fatal));
+        console.error('\n FATAL:', fatal instanceof Error ? fatal.message : String(fatal));
     } finally {
         // [1][3] Always scrub key material before exit — even on failure
         scrubIdentity(id);
@@ -231,11 +231,11 @@ function scrubIdentity(id) {
         console.log(`Results: ${passed} passed, ${failed} failed`);
 
         if (failed === 0 && passed === 5) {
-            console.log('✅ ALL TESTS PASSED');
+            console.log(' ALL TESTS PASSED');
             // [3] Clean exit after scrub
             process.exit(0);
         } else {
-            console.error('❌ SOME TESTS FAILED');
+            console.error(' SOME TESTS FAILED');
             process.exit(1);
         }
     }

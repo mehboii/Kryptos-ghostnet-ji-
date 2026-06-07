@@ -123,11 +123,11 @@ async function main() {
   const allResults = [];
 
   for (const endpoint of ENDPOINTS) {
-    process.stdout.write(`  ⏳ Hitting ${endpoint} with ${CONCURRENCY} concurrent requests...`);
+    process.stdout.write(`   Hitting ${endpoint} with ${CONCURRENCY} concurrent requests...`);
     const result = await testEndpoint(endpoint);
     allResults.push(result);
     process.stdout.write(' done.\n');
-    logLines.push(`  ⏳ Hitting ${endpoint} with ${CONCURRENCY} concurrent requests... done.`);
+    logLines.push(`   Hitting ${endpoint} with ${CONCURRENCY} concurrent requests... done.`);
 
     // Per-endpoint detail
     log('');
@@ -176,17 +176,17 @@ async function main() {
   log(`  Overall avg latency: ${overallAvg}ms  |  Worst p95: ${overallP95}ms`);
 
   if (totalFails === 0 && total5xx === 0) {
-    log('\n  🟢 ALL ENDPOINTS RESPONDED — No failures under load.\n');
+    log('\n   ALL ENDPOINTS RESPONDED — No failures under load.\n');
   } else if (totalFails === 0) {
-    log(`\n  🟡 NO NETWORK FAILURES but ${total5xx} server errors (5xx) detected.\n`);
+    log(`\n   NO NETWORK FAILURES but ${total5xx} server errors (5xx) detected.\n`);
   } else {
-    log(`\n  🔴 ${totalFails} NETWORK FAILURES + ${total5xx} SERVER ERRORS under ${CONCURRENCY}-concurrent load.\n`);
+    log(`\n   ${totalFails} NETWORK FAILURES + ${total5xx} SERVER ERRORS under ${CONCURRENCY}-concurrent load.\n`);
   }
 
   // Save to file
   const logFile = `load-test-results-${Date.now()}.txt`;
   fs.writeFileSync(logFile, logLines.join('\n'), 'utf-8');
-  log(`  📄 Results saved to ${logFile}`);
+  log(`   Results saved to ${logFile}`);
 }
 
 main().catch((e) => {

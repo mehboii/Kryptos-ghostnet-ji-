@@ -89,7 +89,7 @@ function recordResult(phase, testName, passed, detail = '') {
         stats.phases[phase].failed++;
         stats.errors.push(`[${phase}] ${testName}: ${detail}`);
     }
-    const icon = passed ? '✅' : '❌';
+    const icon = passed ? '' : '';
     console.log(`  ${icon} ${testName}${detail ? ` — ${detail}` : ''}`);
 }
 
@@ -134,7 +134,7 @@ async function requestWithRetry(method, path, opts = {}, retries = MAX_RETRIES) 
             // Retry on rate-limit
             if (res.status === 429 && attempt < retries) {
                 const wait = Math.min(2000 * Math.pow(2, attempt - 1), 15000);
-                console.log(`    ⏳ Rate-limited (429). Retrying in ${wait}ms... (attempt ${attempt}/${retries})`);
+                console.log(`     Rate-limited (429). Retrying in ${wait}ms... (attempt ${attempt}/${retries})`);
                 await sleep(wait);
                 continue;
             }
@@ -142,7 +142,7 @@ async function requestWithRetry(method, path, opts = {}, retries = MAX_RETRIES) 
         } catch (e) {
             if (attempt < retries && e.message.includes('timeout')) {
                 const wait = Math.min(3000 * attempt, 10000);
-                console.log(`    ⏳ Timeout. Retrying in ${wait}ms... (attempt ${attempt}/${retries})`);
+                console.log(`     Timeout. Retrying in ${wait}ms... (attempt ${attempt}/${retries})`);
                 await sleep(wait);
                 continue;
             }
@@ -498,7 +498,7 @@ async function phase4() {
 
     try {
         // 4.1 — Register N users with stagger
-        console.log(`  ⏳ Creating ${NUM_USERS} users...`);
+        console.log(`   Creating ${NUM_USERS} users...`);
         const users = [];
         const createErrors = [];
 
@@ -527,7 +527,7 @@ async function phase4() {
         const preLogoutTokens = users.map(u => u.token);
 
         // 4.2 — All users call POST /auth/logout simultaneously
-        console.log(`  ⏳ Firing ${users.length} simultaneous logouts...`);
+        console.log(`   Firing ${users.length} simultaneous logouts...`);
         const logoutStart = Date.now();
         const logoutResults = await Promise.allSettled(
             users.map(u => logoutUser(u.token))
@@ -548,7 +548,7 @@ async function phase4() {
         await sleep(500);
 
         // 4.3 — All old tokens must fail
-        console.log(`  ⏳ Verifying ${preLogoutTokens.length} revoked tokens...`);
+        console.log(`   Verifying ${preLogoutTokens.length} revoked tokens...`);
         const revokeChecks = await Promise.allSettled(
             preLogoutTokens.map(t => request('GET', '/auth/me', { token: t }))
         );
@@ -562,7 +562,7 @@ async function phase4() {
             `${allRevokedCount}/${preLogoutTokens.length} correctly rejected`);
 
         // 4.4 — All users re-login; new tokens must work
-        console.log(`  ⏳ Re-logging ${users.length} users...`);
+        console.log(`   Re-logging ${users.length} users...`);
         const reLoginResults = await Promise.allSettled(
             users.map(u => loginUser(u.email))
         );
@@ -654,7 +654,7 @@ async function phase6() {
 
     try {
         // 6.1 — Create users and connect via WebSocket
-        console.log(`  ⏳ Creating ${wsTestCount} WebSocket-connected users...`);
+        console.log(`   Creating ${wsTestCount} WebSocket-connected users...`);
         const users = [];
         const sockets = [];
 
@@ -676,7 +676,7 @@ async function phase6() {
             `${sockets.length}/${wsTestCount} connected`);
 
         // 6.2 — All logout simultaneously
-        console.log(`  ⏳ Firing ${users.length} simultaneous logouts...`);
+        console.log(`   Firing ${users.length} simultaneous logouts...`);
         const logoutResults = await Promise.allSettled(
             users.map(u => logoutUser(u.token))
         );
@@ -694,7 +694,7 @@ async function phase6() {
         await sleep(1000);
 
         // 6.3 — Attempt reconnect with old tokens → all must fail
-        console.log(`  ⏳ Attempting ${users.length} WS reconnects with revoked tokens...`);
+        console.log(`   Attempting ${users.length} WS reconnects with revoked tokens...`);
         const reconnectResults = await Promise.allSettled(
             users.map(u => attemptWebSocket(u.token, 4000))
         );
@@ -743,14 +743,14 @@ async function printReport() {
     // Per-phase summary
     console.log('  ── Phase Breakdown ──');
     for (const [phase, data] of Object.entries(stats.phases)) {
-        const icon = data.failed === 0 ? '✅' : '❌';
+        const icon = data.failed === 0 ? '' : '';
         console.log(`  ${icon} ${phase}: ${data.passed} passed, ${data.failed} failed`);
     }
 
     if (stats.errors.length > 0) {
         console.log('');
         console.log('  ── Failures ──');
-        stats.errors.forEach(e => console.log(`  ❌ ${e}`));
+        stats.errors.forEach(e => console.log(`   ${e}`));
     }
 
     console.log('');
@@ -758,11 +758,11 @@ async function printReport() {
     // Verdict
     if (stats.failed === 0) {
         console.log('  ╔══════════════════════════════════════════════════════════╗');
-        console.log('  ║  🟢 ALL TESTS PASSED — Logout flow is SOLID            ║');
+        console.log('  ║   ALL TESTS PASSED — Logout flow is SOLID            ║');
         console.log('  ╚══════════════════════════════════════════════════════════╝');
     } else {
         console.log('  ╔══════════════════════════════════════════════════════════╗');
-        console.log(`  ║  🔴 ${stats.failed} TEST(S) FAILED — Logout flow has issues       ║`);
+        console.log(`  ║   ${stats.failed} TEST(S) FAILED — Logout flow has issues       ║`);
         console.log('  ╚══════════════════════════════════════════════════════════╝');
     }
 
@@ -782,7 +782,7 @@ async function printReport() {
             ...stats.errors.map(e => `FAIL: ${e}`),
         ];
         fs.writeFileSync(logFile, logLines.join('\n') + '\n');
-        console.log(`\n  📝 Log written to: ${logFile}`);
+        console.log(`\n   Log written to: ${logFile}`);
     } catch (_) {}
 }
 
@@ -808,12 +808,12 @@ async function main() {
     try {
         const health = await request('GET', '/health');
         if (health.status !== 200 && health.status !== 404) {
-            console.log(`  ⚠️  Server health check returned ${health.status}. Proceeding anyway...`);
+            console.log(`    Server health check returned ${health.status}. Proceeding anyway...`);
         } else {
-            console.log(`  ✅ Server is reachable.`);
+            console.log(`   Server is reachable.`);
         }
     } catch (e) {
-        console.error(`  ❌ Server unreachable: ${e.message}`);
+        console.error(`   Server unreachable: ${e.message}`);
         console.error(`  → Is the server running at ${BACKEND_URL}?`);
         process.exit(1);
     }
@@ -831,6 +831,6 @@ async function main() {
 }
 
 main().catch(e => {
-    console.error('\n💥 Stress test crashed:', e);
+    console.error('\n Stress test crashed:', e);
     process.exit(1);
 });

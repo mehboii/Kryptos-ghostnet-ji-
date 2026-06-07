@@ -1635,8 +1635,11 @@ app.get('/health/bridge', requireAuth, async (_req, res) => { // [09]
 // in env vars and NEVER reach the client — the client receives a temporary
 // username + credential (TTL below). TURN is the relay fallback for calls; the
 // client keeps its own STUN/hole-punching as the primary path.
-const CLOUDFLARE_TURN_KEY_ID = '339f3745ad28f2f29b0ba6b7ca21f1b1';
-const CLOUDFLARE_TURN_API_TOKEN = '66efc5b4e79eaaae6d3bcc4e2db583f7ef400cad9926d258f0d2ea1a073f805a';
+// Secrets are read from env ONLY — never hardcode them in source. Put real
+// values in .env (gitignored); a token committed to git history is exposed to
+// everyone with repo access, so treat any committed token as compromised.
+const CLOUDFLARE_TURN_KEY_ID = process.env.CLOUDFLARE_TURN_KEY_ID || '';
+const CLOUDFLARE_TURN_API_TOKEN = process.env.CLOUDFLARE_TURN_API_TOKEN || '';
 const TURN_CREDENTIAL_TTL_SECONDS = 3600; // 1 hour
 
 app.post('/turn/credentials', requireAuth, async (_req, res) => {
@@ -1987,7 +1990,7 @@ app.use(monitor.expressErrorHandler());
 // ─── HTTP server ─────────────────────────────────────────────────────────────
 
 const server = app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🟢 GhostNet Server on port ${PORT} [${GHOSTNET_MODE}]`);
+    console.log(` GhostNet Server on port ${PORT} [${GHOSTNET_MODE}]`);
     analytics.init().catch(err => console.error('Analytics init failed:', err.message));
 
     // Postgres startup checks
@@ -2340,7 +2343,7 @@ wss.on('connection', (ws) => {
                     let content = msg.content || msg.data;
                     if (!content) return;
                     // Capture the client's message id BEFORE stringifying so the sender's
-                    // bubble ↔ delivery/read receipts line up.
+                    // bubble  delivery/read receipts line up.
                     const clientMsgId = (content && typeof content === 'object' && typeof content.id === 'string')
                         ? content.id
                         : (typeof msg.id === 'string' ? msg.id : null);
@@ -2478,7 +2481,7 @@ const STALE_CLEANUP_INTERVAL = setInterval(() => {
         if (!peer.ws || peer.ws.readyState !== 1) toRemove.push(id);
     }
     toRemove.forEach(id => {
-        console.log(`🕸️ Stale peer removed: ${id.slice(0, 15)}`);
+        console.log(` Stale peer removed: ${id.slice(0, 15)}`);
         meshPeers.delete(id);
     });
 }, 60_000);
