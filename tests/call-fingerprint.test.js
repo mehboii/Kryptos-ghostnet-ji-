@@ -133,6 +133,20 @@ describe('verifyProof — fails closed', () => {
     });
 });
 
+describe('verifyProof — accepts an address as the expected identity', () => {
+    it('verifies when the peer is identified by address (not full pubkey)', async () => {
+        const id = newIdentity();
+        const address = E.computeAddress(id.publicKey); // how contacts are often stored
+        const sdp = sdpWithFingerprint(FP_A);
+        const proof = await makeOfferProof(id, sdp);
+        const ok = FP.verifyProof(proof, { kind: 'offer', callId: CALL_ID, from: FROM, to: TO, sdp }, address);
+        assert.equal(ok.ok, true);
+        // wrong address still fails closed
+        const other = E.computeAddress(newIdentity().publicKey);
+        assert.equal(FP.verifyProof(proof, { kind: 'offer', callId: CALL_ID, from: FROM, to: TO, sdp }, other).ok, false);
+    });
+});
+
 describe('secp256k1Verify round-trip', () => {
     it('verifies a hand-built canonical message and rejects a wrong key', async () => {
         const id = newIdentity();

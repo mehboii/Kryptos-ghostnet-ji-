@@ -52,13 +52,20 @@
                 mesh: window.app.mesh,
                 identity: { id: stored.nodeId, publicKey: stored.publicKey, privateKey: pk },
                 getIceServers: window.GhostCallIce.createCloudflareIceProvider({}),
-                // Resolve the callee's identity key from their GhostTag (Option A).
-                resolveGhostTag: async function (tag) {
+                // Resolve the call target. Contacts are addressed by node id / public
+                // key / address — usable directly as BOTH the mesh routing id (the same
+                // id messages already deliver to) and the verifiable identity. A bare
+                // @GhostTag is resolved via the GhostTag registry as a fallback.
+                resolveGhostTag: async function (arg) {
+                    var s = String(arg || '').trim();
+                    if (/^0x[0-9a-fA-F]{40}$/.test(s) || /^0x0[234][0-9a-fA-F]{64,128}$/i.test(s)) {
+                        return { routeId: s, publicKey: s };
+                    }
                     var gt = _ghostTag();
-                    if (!gt) throw new Error('GhostTag module not loaded');
-                    const r = await gt.resolveTag(_normTag(tag));
+                    if (!gt) throw new Error('Not a node id/key, and GhostTag module is unavailable');
+                    const r = await gt.resolveTag(_normTag(s));
                     if (!r || r.error || !r.publicKey) throw new Error((r && r.error) || 'GhostTag not found');
-                    return { routeId: r.nodeId || r.id || tag, publicKey: r.publicKey };
+                    return { routeId: r.nodeId || r.id || s, publicKey: r.publicKey };
                 },
                 // Verify an INCOMING caller's key. Prefer independent GhostTag
                 // resolution; fall back to the key in the (mesh-authenticated)
@@ -95,7 +102,7 @@
 
     function _wireEvents(call) {
         call.on('incoming', function (e) { _showIncoming(e); });
-        call.on('ringing', function (e) { _showBar('Calling ' + (e.peer || '') + '…', true); });
+        call.on('ringing', function (e) { _showBar('Calling ' + _peerLabel(e && e.peer) + '…', true); });
         call.on('connected', function (e) {
             if (e && e.remoteStream) _attachAudio(e.remoteStream);
             _startedAt = Date.now();
@@ -122,16 +129,19 @@
 
     // ─── public actions ─────────────────────────────────
 
-    async function startCall(tagArg) {
-        var tag = tagArg || _currentPeerTag();
-        if (!tag) {
-            tag = window.prompt('Call which @GhostTag?', _currentPeerTag() || '@');
-            if (!tag) return;
+    async function startCall(targetArg) {
+        // Default to the OPEN chat's peer id (what messages already route to), not
+        // the display name. Fall back to a prompt for a node id / @GhostTag.
+        var target = targetArg || _currentTarget();
+        if (!target) {
+            target = window.prompt('Call which contact? Enter their node id / public key or @GhostTag:', '');
+            if (!target) return;
         }
         try {
             var call = await _ensureCall();
-            _showBar('Calling ' + _normTag(tag) + '…', true);
-            await call.startCall(_normTag(tag));
+            await call.startCall(String(target).trim());
+            // The in-call bar is shown by the 'ringing' event once the offer is sent,
+            // so a failed resolve doesn't leave a stuck "Calling…" bar.
         } catch (err) {
             _hideBar();
             if (err && err.message === 'locked') {
@@ -151,11 +161,17 @@
     function rejectCall() { try { if (_call) _call.rejectCall(); } catch (_) {} _hideIncoming(); }
     function endCall() { try { if (_call) _call.endCall(); } catch (_) {} _hideBar(); }
 
-    // Best-effort: use the open chat's contact name if it looks like a @GhostTag.
-    function _currentPeerTag() {
+    // The open chat's peer id — the same id messages route to (node id / key / address).
+    function _currentTarget() {
+        return (window.app && window.app.chatTarget) ? String(window.app.chatTarget) : null;
+    }
+
+    // Friendly label for the in-call bar: contact name, else a shortened id.
+    function _peerLabel(p) {
         var name = window.app && window.app.chatContactName;
-        if (name && /^@?[a-zA-Z0-9_]{2,}$/.test(String(name))) return String(name);
-        return null;
+        if (name) return String(name);
+        p = String(p || '');
+        return p.length > 16 ? p.slice(0, 8) + '…' + p.slice(-4) : p;
     }
 
     // ─── chat-header call button ────────────────────────

@@ -145,11 +145,16 @@
      * @param {string} expectedPublicKey  secp256k1 public key bound to the GhostTag
      * @returns {boolean}
      */
-    function secp256k1Verify(message, signature, expectedPublicKey) {
+    function secp256k1Verify(message, signature, expectedKey) {
         try {
             const u = _utils();
             const recovered = u.verifyMessage(message, signature).toLowerCase();
-            const expected = u.computeAddress(expectedPublicKey).toLowerCase();
+            // `expectedKey` may be a full secp256k1 public key OR an Ethereum-style
+            // address (contacts are often identified by address). Both reduce to an
+            // address for comparison.
+            const expected = /^0x[0-9a-fA-F]{40}$/.test(String(expectedKey))
+                ? String(expectedKey).toLowerCase()
+                : u.computeAddress(expectedKey).toLowerCase();
             return recovered === expected;
         } catch (_) {
             return false; // malformed signature / key ⇒ fail closed
