@@ -191,12 +191,33 @@
         } catch (err) {
             _hideBar();
             if (err && err.message === 'locked') {
-                _toast('Unlock with your PIN first, then call.', 4000);
-                if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
+                _toast('Unlock with your PIN to start the call…', 4000);
+                _promptUnlockThenRetry(target);
             } else {
                 _toast(err && err.message ? err.message : 'Could not start call', 5000);
             }
         }
+    }
+
+    // Calls need the PIN-derived signing key. If it's not loaded, surface the
+    // unlock screen and retry the call automatically once the identity unlocks.
+    function _promptUnlockThenRetry(target) {
+        try {
+            if (window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
+                window.IdentityUI.showScreen('pin');
+            } else if (typeof window.ghostnetEnsureAuth === 'function') {
+                window.ghostnetEnsureAuth();
+            }
+        } catch (_) { /* */ }
+        var done = false;
+        var retry = function () {
+            if (done) return;
+            done = true;
+            window.removeEventListener('identity:updated', retry);
+            setTimeout(function () { startCall(target); }, 400);
+        };
+        window.addEventListener('identity:updated', retry);
+        setTimeout(function () { window.removeEventListener('identity:updated', retry); }, 120000);
     }
 
     async function acceptCall() {
