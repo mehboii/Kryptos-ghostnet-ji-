@@ -54,7 +54,9 @@
                 getIceServers: window.GhostCallIce.createCloudflareIceProvider({}),
                 // Resolve the callee's identity key from their GhostTag (Option A).
                 resolveGhostTag: async function (tag) {
-                    const r = await window.GhostTag.resolveTag(_normTag(tag));
+                    var gt = _ghostTag();
+                    if (!gt) throw new Error('GhostTag module not loaded');
+                    const r = await gt.resolveTag(_normTag(tag));
                     if (!r || r.error || !r.publicKey) throw new Error((r && r.error) || 'GhostTag not found');
                     return { routeId: r.nodeId || r.id || tag, publicKey: r.publicKey };
                 },
@@ -63,8 +65,8 @@
                 // signed offer so calls work before the caller has a GhostTag.
                 resolveIdentityKey: async function (peerId, msg) {
                     try {
-                        const r = await window.GhostTag.resolveTag(_normTag(peerId));
-                        if (r && r.publicKey) return r.publicKey;
+                        var gt = _ghostTag();
+                        if (gt) { const r = await gt.resolveTag(_normTag(peerId)); if (r && r.publicKey) return r.publicKey; }
                     } catch (_) { /* fall through */ }
                     return (msg && msg.fp && msg.fp.pub) ? msg.fp.pub : null;
                 },
@@ -80,6 +82,13 @@
     function _normTag(t) {
         t = String(t || '').trim();
         return t.charAt(0) === '@' ? t.slice(1) : t;
+    }
+
+    // GhostTag is defined as a bare top-level `const` in ghosttag.js; depending on
+    // load context it may be reachable via window.GhostTag or the global binding.
+    function _ghostTag() {
+        if (typeof window !== 'undefined' && window.GhostTag) return window.GhostTag;
+        try { return (typeof GhostTag !== 'undefined') ? GhostTag : null; } catch (_) { return null; }
     }
 
     // ─── event wiring → UI ──────────────────────────────

@@ -675,3 +675,9 @@ const GhostTag = (() => {
         normalize: _normalizeTag,
     };
 })();
+
+// Expose on window so `window.GhostTag` works. It was previously only a bare
+// top-level `const` (a global lexical binding, NOT a window property), so every
+// `window.GhostTag && ...` guard silently failed — including the GhostTag sync at
+// startup and voice-call GhostTag resolution.
+if (typeof window !== 'undefined' && !window.GhostTag) window.GhostTag = GhostTag;
