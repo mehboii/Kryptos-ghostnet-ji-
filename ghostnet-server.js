@@ -2352,6 +2352,20 @@ wss.on('connection', (ws) => {
                     // [16] Size cap on WS messages too
                     if (Buffer.byteLength(content, 'utf8') > MAX_CONTENT_LENGTH) return;
 
+                    // ROOT-CAUSE FIX (chat data leak): voice-call signaling
+                    // (call.offer/answer/ice/hangup) rides the mesh over MESH_DIRECT
+                    // but is NOT a chat message. Without this it was stored as chat
+                    // history + set as the conversation's lastMessage, so signaling
+                    // envelopes leaked into the chat UI on reload. Relay it live,
+                    // never persist it.
+                    let isCallSignal = false;
+                    if (content.charAt(0) === '{' && content.indexOf('"t":"call.') !== -1) {
+                        try {
+                            const probe = JSON.parse(content);
+                            isCallSignal = !!(probe && typeof probe.t === 'string' && probe.t.indexOf('call.') === 0);
+                        } catch (_) { isCallSignal = false; }
+                    }
+
                     const senderId = clientId || ws._user?.id;
                     if (!senderId) return; // must have an identity to send
                     const timestamp = Date.now(); // Server-authoritative — never trust client timestamps
@@ -2372,12 +2386,18 @@ wss.on('connection', (ws) => {
                     if (targetWs && targetWs.readyState === 1) {
                         safeSend(targetWs, safeMsg);
                         wsDelivered = true;
-                        safeSend(ws, { type: 'receipt', status: 'delivered', msgId });
-                    } else {
+                        if (!isCallSignal) safeSend(ws, { type: 'receipt', status: 'delivered', msgId });
+                    } else if (!isCallSignal) {
+                        // Chat to an offline peer → queue it. Signaling to an offline
+                        // peer is dropped (stale ICE/SDP is useless; no queueing).
                         queueMessage(safeTarget, safeMsg);
                         safeSend(ws, { type: 'receipt', status: 'queued', msgId });
                     }
-                    
+
+                    // call.* signaling was relayed live above; it must NEVER be stored
+                    // as chat (no history rows, no conversation, no lastMessage).
+                    if (isCallSignal) break;
+
                     // Legacy persist for internal tracking
                     let convo = conversations.find(c =>
                         c?.participants?.includes(senderId) && c.participants.includes(safeTarget)
