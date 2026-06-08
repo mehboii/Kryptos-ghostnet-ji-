@@ -186,6 +186,21 @@ function hasAuthToken() {
 }
 
 /**
+ * Detect a GhostCall signaling envelope (call.offer/answer/ice/hangup) so it is
+ * NEVER rendered as a chat message. The server persists MESH_DIRECT payloads as
+ * chat history, so these can resurface on reload even though live signaling is
+ * intercepted by GhostCall — filter them at every render point.
+ */
+function _isCallSignal(text) {
+    if (text && typeof text === 'object') {
+        return typeof text.t === 'string' && text.t.indexOf('call.') === 0;
+    }
+    if (typeof text !== 'string' || text.charAt(0) !== '{' || text.indexOf('"t":"call.') === -1) return false;
+    try { const o = JSON.parse(text); return !!(o && typeof o.t === 'string' && o.t.indexOf('call.') === 0); }
+    catch (_) { return false; }
+}
+
+/**
  * Build { Authorization, Content-Type } headers if a token exists.
  * If no token is present, returns {} — callers MUST check first
  * with hasAuthToken() or check `!headers.Authorization`.
@@ -1856,6 +1871,7 @@ const UI = {
 
             const username = c.otherUser ? (c.otherUser.username || c.otherUser.address || c.otherUser.id) : 'Unknown';
             let preview = c.lastMessage || 'Message...';
+            if (_isCallSignal(preview)) preview = 'Voice call';
             if (typeof preview === 'object' && preview.body) preview = preview.body;
             if (typeof preview === 'string' && preview.includes('body":"')) {
                 try { preview = JSON.parse(preview).body; } catch (e) { }
@@ -2683,6 +2699,10 @@ const UI = {
     addMessage: (text, type, msgId = null) => {
         const feed = document.getElementById('chat-feed');
         if (!feed) return;
+
+        // Never render voice-call signaling as a chat bubble (it can arrive from
+        // persisted history even though live signaling is handled by GhostCall).
+        if (_isCallSignal(text)) return;
 
         // [FIX #7] Skip messages already rendered (live message + history reload,
         // or a re-delivered packet) so threads don't show duplicates.

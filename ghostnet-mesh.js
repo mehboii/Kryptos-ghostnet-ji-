@@ -699,23 +699,40 @@ class GhostMesh {
             case 'MESH_DIRECT': {
                 const toId = this.validatePeerId(msg.to);
                 const fromId = this.validatePeerId(msg.from);
-                
+                // Normalize the local id the same way (lowercased) so a casing
+                // mismatch can't misroute a self-addressed direct message to relay.
+                const myId = this.validatePeerId(this.identity.id);
+
                 // If it's for me, it will be handled by onMessage via standard MSG flow if renamed on server,
                 // but usually direct messages in mesh are intended for relay.
-                if (toId && toId !== this.identity.id) {
+                if (toId && toId !== myId) {
                     // SILENT RELAY [Feature 4]
                     this.relayStats.packets++;
                     this.relayStats.bytes += JSON.stringify(msg).length;
-                    
+
                     const hops = typeof msg.hops === 'number' ? msg.hops : 0;
                     if (hops < this.MAX_HOPS) {
                         const relayMsg = { ...msg, hops: hops + 1 };
                         this.relayToWS(relayMsg);
                         this.relayToBLE(relayMsg);
                     }
-                } else if (toId === this.identity.id) {
-                    // It's for me!
-                    this.onMessage(msg.data || msg, fromId, 'mesh-direct');
+                } else if (toId === myId) {
+                    // It's for me! The server relays the inner payload as `content`
+                    // (usually a JSON string), NOT `data` — mirror the 'message' case
+                    // and reconstruct the original object so call.* signaling envelopes
+                    // (and any other direct payloads) round-trip to onMessage. Without
+                    // this, msg.data was undefined and the whole MESH_DIRECT wrapper was
+                    // handed to GhostCall, whose `data.t` check dropped every offer →
+                    // the callee never rang.
+                    let inner = msg.data;
+                    if (inner === undefined) {
+                        inner = msg.content;
+                        if (typeof inner === 'string') {
+                            try { inner = JSON.parse(inner); } catch (_) { /* keep raw string */ }
+                        }
+                    }
+                    if (inner === undefined) inner = msg;
+                    this.onMessage(inner, fromId, 'mesh-direct');
                 }
                 break;
             }

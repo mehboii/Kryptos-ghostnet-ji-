@@ -347,21 +347,32 @@
         // ── mesh wiring (non-invasive: preserves the app's handler) ──
 
         _wireMesh() {
-            if (typeof this.mesh.onMessage !== 'undefined') {
-                this._prevOnMessage = typeof this.mesh.onMessage === 'function' ? this.mesh.onMessage : null;
+            const self = this;
+            let appHandler = (typeof this.mesh.onMessage === 'function') ? this.mesh.onMessage : null;
+            this._prevOnMessage = appHandler;
+            const wrapped = function (data, fromId, transport) {
+                // Call signaling is NOT a chat message — intercept it and do NOT
+                // forward to the app handler (which would render it as JSON).
+                if (data && typeof data === 'object' && typeof data.t === 'string' && data.t.indexOf('call.') === 0) {
+                    self._onMeshMessage(data, fromId);
+                    return;
+                }
+                if (appHandler) { try { appHandler(data, fromId, transport); } catch (_) { /* isolate */ } }
+            };
+            // Install as an accessor so the app re-assigning mesh.onMessage (which it
+            // does after mesh init) updates the APP handler but keeps our interceptor
+            // in front — otherwise the wrapper gets clobbered and the callee never rings.
+            try {
+                Object.defineProperty(this.mesh, 'onMessage', {
+                    configurable: true,
+                    enumerable: true,
+                    get: function () { return wrapped; },
+                    set: function (fn) { if (typeof fn === 'function') { appHandler = fn; self._prevOnMessage = fn; } },
+                });
+                this._restoreMeshOnMessage = false;
+            } catch (e) {
+                this.mesh.onMessage = wrapped; // fallback for non-configurable engines
                 this._restoreMeshOnMessage = true;
-                const self = this;
-                this.mesh.onMessage = function (data, fromId, transport) {
-                    // Call signaling is NOT a chat message — intercept it and do NOT
-                    // forward to the app handler (which would render it as JSON).
-                    if (data && typeof data === 'object' && typeof data.t === 'string' && data.t.indexOf('call.') === 0) {
-                        self._onMeshMessage(data, fromId);
-                        return;
-                    }
-                    if (self._prevOnMessage) {
-                        try { self._prevOnMessage(data, fromId, transport); } catch (_) { /* isolate */ }
-                    }
-                };
             }
         }
 
