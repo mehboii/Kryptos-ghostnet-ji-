@@ -12,7 +12,6 @@
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <meta name="ghostnet-offline" content="true">
     <!-- SECURITY: 'unsafe-inline' is required in script-src because the app uses 100+ inline
          onclick handlers that cannot be easily refactored. This weakens CSP protection against XSS.
          TODO: Migrate inline handlers to addEventListener() and remove 'unsafe-inline'. -->
@@ -4145,7 +4144,7 @@ canvas#mesh {
 .empty-icon { background: var(--ig-bubble-them); color: #8b5cf6; }
 .empty-icon::before { border-color: transparent; }
 
-/* On mobile the back chevron must be visible (IG slides list  thread) */
+/* On mobile the back chevron must be visible (IG slides list ↔ thread) */
 @media (max-width: 768px) {
     .chat-back-btn { display: flex; }
     .chat-layout-split { border: none; }
@@ -24375,450 +24374,6 @@ const __$G=typeof globalThis!=="undefined"?globalThis:typeof window!=="undefined
 //# sourceMappingURL=lucide.js.map
 
 </script>
-<script>
-(function () {
-  'use strict';
-
-  const OFFLINE_ORIGIN = 'https://ghostnet-offline.local';
-  const STORE_KEY = 'ghostnet_offline_store_v1';
-  const PROFILE_CACHE_KEY = 'ghostnet_profile_cache';
-  const USER_CACHE_KEY = 'ghostnet_user';
-
-  window.__GHOSTNET_OFFLINE__ = true;
-  window.__GHOSTNET_BACKEND__ = OFFLINE_ORIGIN;
-  window.BACKEND = {
-    http: OFFLINE_ORIGIN,
-    ws: 'wss://ghostnet-offline.local/ws',
-    url: (path) => `${OFFLINE_ORIGIN}${path}`
-  };
-
-  const originalFetch = window.fetch.bind(window);
-
-  function clone(obj) {
-    return JSON.parse(JSON.stringify(obj));
-  }
-
-  function readIdentity() {
-    try {
-      const raw = localStorage.getItem('ghostnet_identity');
-      return raw ? JSON.parse(raw) : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function randomToken(seed) {
-    const safeSeed = String(seed || 'ghost').replace(/[^a-z0-9]/gi, '').slice(0, 24) || 'ghost';
-    return `offline.${safeSeed}.${Date.now().toString(36)}`;
-  }
-
-  function normalizeTag(tag) {
-    return String(tag || '').trim().replace(/^@/, '').toLowerCase();
-  }
-
-  function normalizeCode(code) {
-    return String(code || '').trim().toUpperCase();
-  }
-
-  function shortCodeFor(nodeId, displayName) {
-    const seed = String(nodeId || displayName || 'ghostnet');
-    let hash = 0;
-    for (let i = 0; i < seed.length; i += 1) {
-      hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
-    }
-    const code = Math.abs(hash).toString(36).toUpperCase().replace(/[^A-Z0-9]/g, '').padEnd(6, '0');
-    return `GN-${code.slice(0, 6)}`;
-  }
-
-  function readStore() {
-    try {
-      const raw = localStorage.getItem(STORE_KEY);
-      if (raw) return JSON.parse(raw);
-    } catch (_) {}
-
-    return {
-      conversations: {},
-      messages: {},
-      profiles: {},
-      ghostTags: {},
-      nodes: {},
-      shortCodes: {}
-    };
-  }
-
-  function writeStore(store) {
-    localStorage.setItem(STORE_KEY, JSON.stringify(store));
-    return store;
-  }
-
-  function inferCurrentUser() {
-    const identity = readIdentity();
-    if (identity && (identity.nodeId || identity.id)) {
-      return identity.nodeId || identity.id;
-    }
-    try {
-      const user = JSON.parse(localStorage.getItem(USER_CACHE_KEY) || 'null');
-      if (user && (user.nodeId || user.id)) return user.nodeId || user.id;
-    } catch (_) {}
-    return localStorage.getItem('ghostnet_node_id') || localStorage.getItem('ghostnet_user_id') || 'local-user';
-  }
-
-  function convoKey(a, b) {
-    const left = String(a || 'unknown');
-    const right = String(b || 'unknown');
-    return [left, right].sort().join('::');
-  }
-
-  function safeJsonParse(text) {
-    if (!text) return {};
-    try {
-      return JSON.parse(text);
-    } catch (_) {
-      return {};
-    }
-  }
-
-  async function parseBody(options) {
-    if (!options || !options.body) return {};
-    if (typeof options.body === 'string') return safeJsonParse(options.body);
-    return {};
-  }
-
-  function responseJson(data, status = 200) {
-    return new Response(JSON.stringify(data), {
-      status,
-      headers: { 'Content-Type': 'application/json' }
-    });
-  }
-
-  function responseText(data, status = 200) {
-    return new Response(String(data), {
-      status,
-      headers: { 'Content-Type': 'text/plain' }
-    });
-  }
-
-  function ensureProfile(store, identity) {
-    const source = identity || readIdentity() || {};
-    const userId = source.nodeId || source.id || inferCurrentUser();
-    const existing = store.profiles[userId] || {};
-    const profile = {
-      id: userId,
-      nodeId: userId,
-      displayName: source.displayName || existing.displayName || 'Ghost User',
-      username: source.displayName || existing.username || 'Ghost User',
-      address: source.address || existing.address || '',
-      publicKey: source.publicKey || existing.publicKey || source.address || '',
-      ghostTag: source.ghostTag || existing.ghostTag || '',
-      avatar: existing.avatar || ''
-    };
-    store.profiles[userId] = profile;
-    store.nodes[userId] = {
-      nodeId: userId,
-      displayName: profile.displayName,
-      publicKey: profile.publicKey,
-      address: profile.address,
-      avatar: profile.avatar,
-      shortCode: shortCodeFor(userId, profile.displayName)
-    };
-    store.shortCodes[store.nodes[userId].shortCode] = userId;
-    localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
-    localStorage.setItem(USER_CACHE_KEY, JSON.stringify(profile));
-    return profile;
-  }
-
-  async function handleOfflineApi(requestUrl, options) {
-    const url = new URL(requestUrl, OFFLINE_ORIGIN);
-    const path = url.pathname;
-    const method = String(options?.method || 'GET').toUpperCase();
-    const store = readStore();
-    const currentIdentity = readIdentity();
-    const currentProfile = ensureProfile(store, currentIdentity);
-
-    if (path === '/health') {
-      writeStore(store);
-      return responseJson({ ok: true, offline: true, mode: 'standalone' });
-    }
-
-    if (path === '/auth/node' && method === 'POST') {
-      const body = await parseBody(options);
-      const nodeId = body.nodeId || currentProfile.nodeId || inferCurrentUser();
-      ensureProfile(store, {
-        ...currentProfile,
-        nodeId,
-        id: nodeId,
-        publicKey: body.publicKey || currentProfile.publicKey
-      });
-      writeStore(store);
-      return responseJson({ token: randomToken(nodeId), offline: true });
-    }
-
-    if (path === '/auth/logout') {
-      return responseJson({ success: true, offline: true });
-    }
-
-    if (path === '/user/profile' && method === 'GET') {
-      writeStore(store);
-      return responseJson(clone(currentProfile));
-    }
-
-    if (path === '/user/profile' && (method === 'PATCH' || method === 'POST' || method === 'PUT')) {
-      const body = await parseBody(options);
-      const merged = {
-        ...currentProfile,
-        displayName: body.displayName || currentProfile.displayName,
-        username: body.displayName || currentProfile.username,
-        avatar: body.avatar || currentProfile.avatar
-      };
-      store.profiles[currentProfile.nodeId] = merged;
-      store.nodes[currentProfile.nodeId] = {
-        ...store.nodes[currentProfile.nodeId],
-        displayName: merged.displayName,
-        avatar: merged.avatar,
-        shortCode: shortCodeFor(merged.nodeId, merged.displayName)
-      };
-      store.shortCodes[store.nodes[currentProfile.nodeId].shortCode] = currentProfile.nodeId;
-      writeStore(store);
-      localStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(merged));
-      localStorage.setItem(USER_CACHE_KEY, JSON.stringify(merged));
-      return responseJson({ user: clone(merged), offline: true });
-    }
-
-    if (path === '/user/shortcode' && method === 'GET') {
-      const nodeId = url.searchParams.get('nodeId') || currentProfile.nodeId;
-      const displayName = url.searchParams.get('displayName') || currentProfile.displayName;
-      const shortCode = shortCodeFor(nodeId, displayName);
-      store.shortCodes[shortCode] = nodeId;
-      writeStore(store);
-      return responseJson({ shortCode, nodeId, displayName, offline: true });
-    }
-
-    if (path.startsWith('/resolve/') && method === 'GET') {
-      const code = normalizeCode(decodeURIComponent(path.slice('/resolve/'.length)));
-      const nodeId = store.shortCodes[code];
-      if (!nodeId) return responseJson({ error: 'Not found' }, 404);
-      const profile = store.profiles[nodeId] || store.nodes[nodeId] || {};
-      return responseJson({
-        nodeId,
-        displayName: profile.displayName || profile.username || 'Ghost User',
-        shortCode: code,
-        publicKey: profile.publicKey || ''
-      });
-    }
-
-    if (path.startsWith('/ghosttag/check/') && method === 'GET') {
-      const tag = normalizeTag(decodeURIComponent(path.slice('/ghosttag/check/'.length)));
-      const owner = store.ghostTags[tag];
-      const available = !owner || owner.nodeId === currentProfile.nodeId;
-      writeStore(store);
-      return responseJson({ available, tag: `@${tag}`, offline: true });
-    }
-
-    if ((path === '/ghosttag/claim' || path === '/ghosttag/release') && method === 'POST') {
-      const body = await parseBody(options);
-      const tag = normalizeTag(body.tag || currentProfile.ghostTag);
-      if (!tag) return responseJson({ error: 'Tag required' }, 400);
-
-      if (path === '/ghosttag/release') {
-        delete store.ghostTags[tag];
-        if (store.profiles[currentProfile.nodeId]) store.profiles[currentProfile.nodeId].ghostTag = '';
-        writeStore(store);
-        return responseJson({ success: true, released: true, tag: `@${tag}`, offline: true });
-      }
-
-      const existing = store.ghostTags[tag];
-      if (existing && existing.nodeId !== currentProfile.nodeId) {
-        return responseJson({
-          error: 'GhostTag already taken.',
-          suggestions: [`${tag}_1`, `${tag}_${Math.floor(Math.random() * 90 + 10)}`]
-        }, 409);
-      }
-
-      store.ghostTags[tag] = {
-        nodeId: body.nodeId || currentProfile.nodeId,
-        publicKey: body.publicKey || currentProfile.publicKey,
-        displayName: body.displayName || currentProfile.displayName
-      };
-      if (store.profiles[currentProfile.nodeId]) {
-        store.profiles[currentProfile.nodeId].ghostTag = tag;
-      }
-      writeStore(store);
-      return responseJson({ success: true, tag: `@${tag}`, offline: true });
-    }
-
-    if (path.startsWith('/ghosttag/resolve/') && method === 'GET') {
-      const tag = normalizeTag(decodeURIComponent(path.slice('/ghosttag/resolve/'.length)));
-      const owner = store.ghostTags[tag];
-      if (!owner) return responseJson({ error: 'Not found' }, 404);
-      return responseJson({
-        tag: `@${tag}`,
-        nodeId: owner.nodeId,
-        publicKey: owner.publicKey || '',
-        displayName: owner.displayName || 'Ghost User',
-        offline: true
-      });
-    }
-
-    if (path === '/identity' && method === 'DELETE') {
-      const tag = normalizeTag(currentProfile.ghostTag);
-      if (tag) delete store.ghostTags[tag];
-      delete store.profiles[currentProfile.nodeId];
-      delete store.nodes[currentProfile.nodeId];
-      writeStore(store);
-      return responseJson({ success: true, offline: true });
-    }
-
-    if (path === '/register-node' && method === 'POST') {
-      const body = await parseBody(options);
-      const nodeId = body.nodeId || currentProfile.nodeId;
-      store.nodes[nodeId] = {
-        nodeId,
-        displayName: body.displayName || currentProfile.displayName,
-        publicKey: body.publicKey || currentProfile.publicKey,
-        address: body.address || currentProfile.address,
-        avatar: body.avatar || currentProfile.avatar,
-        shortCode: shortCodeFor(nodeId, body.displayName || currentProfile.displayName)
-      };
-      store.shortCodes[store.nodes[nodeId].shortCode] = nodeId;
-      writeStore(store);
-      return responseJson({ success: true, offline: true, node: clone(store.nodes[nodeId]) });
-    }
-
-    if (path === '/message' && method === 'POST') {
-      const body = await parseBody(options);
-      const senderId = body.senderId || currentProfile.nodeId;
-      const receiverId = body.receiverId || 'broadcast';
-      const convoId = convoKey(senderId, receiverId);
-      const timestamp = Date.now();
-      const message = {
-        id: body.id || `msg_${timestamp.toString(36)}`,
-        senderId,
-        receiverId,
-        content: body.content,
-        contactName: body.contactName || '',
-        encrypted: !!body.encrypted,
-        created: timestamp,
-        updated: timestamp
-      };
-      const messages = store.messages[convoId] || [];
-      messages.push(message);
-      store.messages[convoId] = messages;
-      store.conversations[convoId] = {
-        id: convoId,
-        participants: [senderId, receiverId],
-        updated: timestamp
-      };
-      writeStore(store);
-      return responseJson({
-        success: true,
-        message: clone(message),
-        convo: { id: convoId },
-        offline: true
-      });
-    }
-
-    if (path === '/conversations' && method === 'GET') {
-      const userId = url.searchParams.get('userId') || currentProfile.nodeId;
-      const convos = Object.values(store.conversations)
-        .filter((convo) => Array.isArray(convo.participants) && convo.participants.includes(userId))
-        .map((convo) => {
-          const otherId = convo.participants.find((id) => id !== userId) || userId;
-          const otherProfile = store.profiles[otherId] || store.nodes[otherId] || {};
-          const convoMessages = store.messages[convo.id] || [];
-          const lastMessage = convoMessages[convoMessages.length - 1];
-          return {
-            id: convo.id,
-            updated: convo.updated || (lastMessage ? lastMessage.updated : Date.now()),
-            lastMessage: lastMessage ? lastMessage.content : '',
-            otherUser: {
-              id: otherId,
-              nodeId: otherId,
-              username: otherProfile.displayName || otherProfile.username || (otherId === 'broadcast' ? 'Broadcast' : otherId),
-              displayName: otherProfile.displayName || otherProfile.username || (otherId === 'broadcast' ? 'Broadcast' : otherId),
-              address: otherProfile.address || '',
-              avatar: otherProfile.avatar || ''
-            }
-          };
-        })
-        .sort((a, b) => (b.updated || 0) - (a.updated || 0));
-      writeStore(store);
-      return responseJson(convos);
-    }
-
-    if (path === '/history' && method === 'GET') {
-      const convoId = url.searchParams.get('convoId') || '';
-      return responseJson(clone(store.messages[convoId] || []));
-    }
-
-    if (path === '/analytics/event') {
-      return responseJson({ queued: true, offline: true }, 202);
-    }
-
-    if (path === '/wallet/send' && method === 'POST') {
-      return responseJson({ success: true, txid: `offline_${Date.now().toString(36)}`, offline: true });
-    }
-
-    return null;
-  }
-
-  window.fetch = async function offlineFetch(input, options) {
-    const requestUrl = typeof input === 'string' ? input : input?.url;
-    if (!requestUrl) return originalFetch(input, options);
-
-    const shouldIntercept =
-      requestUrl.includes('ghostnet-ji-production.up.railway.app') ||
-      requestUrl.includes('ghostnet-offline.local') ||
-      requestUrl.startsWith('/message') ||
-      requestUrl.startsWith('/conversations') ||
-      requestUrl.startsWith('/history') ||
-      requestUrl.startsWith('/resolve/') ||
-      requestUrl.includes('/ghosttag/') ||
-      requestUrl.includes('/user/profile') ||
-      requestUrl.includes('/user/shortcode') ||
-      requestUrl.includes('/auth/node') ||
-      requestUrl.includes('/auth/logout') ||
-      requestUrl.includes('/register-node') ||
-      requestUrl.includes('/analytics/event') ||
-      requestUrl.includes('/identity') ||
-      requestUrl.endsWith('/health') ||
-      requestUrl.includes('rpc.ankr.com/eth') ||
-      requestUrl.includes('api.mainnet-beta.solana.com') ||
-      requestUrl.includes('api.coingecko.com') ||
-      requestUrl.includes('api.qrserver.com') ||
-      requestUrl.includes('localhost:3001/wallet/send');
-
-    if (requestUrl.includes('rpc.ankr.com/eth')) {
-      return responseJson({ jsonrpc: '2.0', id: 1, result: '0x0' });
-    }
-
-    if (requestUrl.includes('api.mainnet-beta.solana.com')) {
-      return responseJson({ jsonrpc: '2.0', id: 1, result: { value: 0 } });
-    }
-
-    if (requestUrl.includes('api.coingecko.com')) {
-      return responseJson({
-        ethereum: { usd: 0 },
-        bitcoin: { usd: 0 },
-        solana: { usd: 0 },
-        tether: { usd: 1 }
-      });
-    }
-
-    if (requestUrl.includes('api.qrserver.com')) {
-      return responseText('');
-    }
-
-    if (!shouldIntercept) {
-      return originalFetch(input, options);
-    }
-
-    const offlineResponse = await handleOfflineApi(requestUrl, options);
-    if (offlineResponse) return offlineResponse;
-    return responseJson({ error: 'Offline endpoint not implemented', url: requestUrl }, 404);
-  };
-})();
-
-</script>
 
     <!-- Logic Scripts -->
     <script>
@@ -26151,23 +25706,40 @@ class GhostMesh {
             case 'MESH_DIRECT': {
                 const toId = this.validatePeerId(msg.to);
                 const fromId = this.validatePeerId(msg.from);
-                
+                // Normalize the local id the same way (lowercased) so a casing
+                // mismatch can't misroute a self-addressed direct message to relay.
+                const myId = this.validatePeerId(this.identity.id);
+
                 // If it's for me, it will be handled by onMessage via standard MSG flow if renamed on server,
                 // but usually direct messages in mesh are intended for relay.
-                if (toId && toId !== this.identity.id) {
+                if (toId && toId !== myId) {
                     // SILENT RELAY [Feature 4]
                     this.relayStats.packets++;
                     this.relayStats.bytes += JSON.stringify(msg).length;
-                    
+
                     const hops = typeof msg.hops === 'number' ? msg.hops : 0;
                     if (hops < this.MAX_HOPS) {
                         const relayMsg = { ...msg, hops: hops + 1 };
                         this.relayToWS(relayMsg);
                         this.relayToBLE(relayMsg);
                     }
-                } else if (toId === this.identity.id) {
-                    // It's for me!
-                    this.onMessage(msg.data || msg, fromId, 'mesh-direct');
+                } else if (toId === myId) {
+                    // It's for me! The server relays the inner payload as `content`
+                    // (usually a JSON string), NOT `data` — mirror the 'message' case
+                    // and reconstruct the original object so call.* signaling envelopes
+                    // (and any other direct payloads) round-trip to onMessage. Without
+                    // this, msg.data was undefined and the whole MESH_DIRECT wrapper was
+                    // handed to GhostCall, whose `data.t` check dropped every offer →
+                    // the callee never rang.
+                    let inner = msg.data;
+                    if (inner === undefined) {
+                        inner = msg.content;
+                        if (typeof inner === 'string') {
+                            try { inner = JSON.parse(inner); } catch (_) { /* keep raw string */ }
+                        }
+                    }
+                    if (inner === undefined) inner = msg;
+                    this.onMessage(inner, fromId, 'mesh-direct');
                 }
                 break;
             }
@@ -28315,6 +27887,13 @@ const GhostTag = (() => {
     };
 })();
 
+// NOTE: GhostTag is intentionally a bare top-level `const`, NOT exposed on window.
+// Several `if (window.GhostTag) {...} else {...}` branches in index.html were
+// written against window.GhostTag being falsy (the legacy/else path is the tested
+// one). Exposing window.GhostTag flips those onto never-run code and breaks
+// messaging/auth at startup. Code that needs GhostTag uses the global binding
+// directly (the voice-call UI resolves it via that binding).
+
 </script>
     <script>
 /**
@@ -29111,10 +28690,1801 @@ const GhostSync = (() => {
 
 </script>
     <!-- 1:1 encrypted voice calls (signaling over the mesh; iceServers from NAT) -->
-    <script src="ghostnet-call-signaling.js"></script>
-    <script src="ghostnet-call-fingerprint.js"></script>
-    <script src="ghostnet-call-ice.js"></script>
-    <script src="ghostnet-call.js"></script>
+    <script>
+/**
+ * GhostNet Call Signaling — Schema & Validation
+ * =============================================
+ *
+ * Typed message schema + fail-closed runtime validators for 1:1 voice-call
+ * signaling. These messages ride over the EXISTING encrypted mesh channel
+ * (GhostMesh.sendToPeer / onMessage) — there is NO new signaling server or
+ * socket. This module is pure (no DOM, no crypto, no network) so it loads and
+ * runs identically in the browser/WebView and under Node for unit tests.
+ *
+ * Message types (Phase 1 — 1:1 only):
+ *   call.offer   caller → callee   SDP offer  + identity-bound fingerprint proof
+ *   call.answer  callee → caller   SDP answer + identity-bound fingerprint proof
+ *   call.ice     either → either   trickled ICE candidate
+ *   call.hangup  either → either   teardown (reason)
+ *
+ * SECURITY NOTE: structural validation only. The cryptographic verification of
+ * the DTLS-fingerprint proof (binding the media keys to a GhostTag identity)
+ * lives in ghostnet-call-fingerprint.js and is enforced by ghostnet-call.js
+ * BEFORE any remote SDP is applied. A malformed message is dropped silently by
+ * the caller; an invalid proof aborts the call.
+ *
+ * @module ghostnet-call-signaling
+ */
+
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        module.exports = factory();
+    } else {
+        root.GhostCallSignaling = factory();
+    }
+}(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this), function () {
+    'use strict';
+
+    // ─── CONSTANTS ──────────────────────────────────────
+
+    /** Bump when the wire format changes incompatibly. */
+    const PROTOCOL_VERSION = 1;
+
+    const TYPES = Object.freeze({
+        OFFER: 'call.offer',
+        ANSWER: 'call.answer',
+        ICE: 'call.ice',
+        HANGUP: 'call.hangup',
+    });
+
+    const VALID_TYPES = new Set(Object.values(TYPES));
+
+    /** Realistic audio-only SDPs are < 4 KB; cap well above that, reject abuse. */
+    const MAX_SDP_LENGTH = 16384;
+    /** A single trickled ICE candidate line is tiny. */
+    const MAX_CANDIDATE_LENGTH = 1024;
+    /** GhostTag / nodeId routing identifiers. */
+    const MAX_PEER_ID_LENGTH = 256;
+
+    /** callId is a UUID v4 minted by the caller (crypto.randomUUID). */
+    const CALL_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+    /** Hangup reasons surfaced to the state machine / UI. */
+    const HANGUP_REASONS = new Set([
+        'normal',       // user ended an active call
+        'rejected',     // callee declined a ringing call
+        'busy',         // callee already in a call
+        'timeout',      // unanswered within the ring window
+        'cancelled',    // caller aborted before answer
+        'fingerprint',  // SECURITY: remote fingerprint proof failed verification
+        'error',        // internal/transport failure
+    ]);
+
+    // ─── TYPEDEFS (JSDoc) ───────────────────────────────
+
+    /**
+     * @typedef {Object} FingerprintProof
+     * @property {number} v          Proof format version.
+     * @property {'offer'|'answer'} kind  Which SDP this proof binds.
+     * @property {string} alg        Identity signature algorithm (e.g. 'secp256k1').
+     * @property {string} fingerprint  Canonical DTLS fingerprint ("sha-256 AB:CD:...").
+     * @property {string} sig        Identity signature over the canonical proof message.
+     * @property {string} pub        Signer public key (informational; trust comes from the
+     *                               resolved GhostTag key, not this field).
+     */
+
+    /**
+     * @typedef {Object} CallEnvelope
+     * @property {number} v          PROTOCOL_VERSION.
+     * @property {string} t          One of TYPES.*
+     * @property {string} callId     UUID v4 shared across one call's messages.
+     * @property {string} from       Sender GhostTag / nodeId.
+     * @property {string} to         Recipient GhostTag / nodeId.
+     * @property {number} ts         Sender unix-ms timestamp.
+     * @property {Object} [sdp]      RTCSessionDescriptionInit ({type, sdp}) for offer/answer.
+     * @property {FingerprintProof} [fp]  Identity-bound fingerprint proof for offer/answer.
+     * @property {Object} [candidate]  RTCIceCandidateInit for call.ice.
+     * @property {string} [reason]   Hangup reason for call.hangup.
+     */
+
+    // ─── INTERNAL GUARDS ────────────────────────────────
+
+    function isPlainObject(v) {
+        return !!v && typeof v === 'object' && !Array.isArray(v);
+    }
+
+    function isPeerId(v) {
+        return typeof v === 'string' && v.length > 0 && v.length <= MAX_PEER_ID_LENGTH;
+    }
+
+    function isCallId(v) {
+        return typeof v === 'string' && CALL_ID_REGEX.test(v);
+    }
+
+    /** Accepts either an RTCSessionDescriptionInit-like object or a raw SDP string. */
+    function validateSdp(sdp, expectedType) {
+        if (!isPlainObject(sdp)) return 'sdp must be an object';
+        if (sdp.type !== expectedType) return `sdp.type must be "${expectedType}"`;
+        if (typeof sdp.sdp !== 'string') return 'sdp.sdp must be a string';
+        if (sdp.sdp.length === 0 || sdp.sdp.length > MAX_SDP_LENGTH) return 'sdp.sdp length out of range';
+        if (!sdp.sdp.trim().startsWith('v=')) return 'sdp.sdp failed structural check';
+        return null;
+    }
+
+    function validateFingerprintProof(fp, expectedKind) {
+        if (!isPlainObject(fp)) return 'fp must be an object';
+        if (typeof fp.alg !== 'string' || fp.alg.length === 0) return 'fp.alg required';
+        if (fp.kind !== expectedKind) return `fp.kind must be "${expectedKind}"`;
+        if (typeof fp.fingerprint !== 'string' || fp.fingerprint.length === 0) return 'fp.fingerprint required';
+        if (fp.fingerprint.length > 512) return 'fp.fingerprint too long';
+        if (typeof fp.sig !== 'string' || fp.sig.length === 0) return 'fp.sig required';
+        if (typeof fp.pub !== 'string' || fp.pub.length === 0) return 'fp.pub required';
+        return null;
+    }
+
+    function validateCandidate(candidate) {
+        if (!isPlainObject(candidate)) return 'candidate must be an object';
+        if (typeof candidate.candidate !== 'string') return 'candidate.candidate must be a string';
+        if (candidate.candidate.length > MAX_CANDIDATE_LENGTH) return 'candidate.candidate too long';
+        const hasMid = typeof candidate.sdpMid === 'string';
+        const hasIdx = Number.isInteger(candidate.sdpMLineIndex);
+        if (!hasMid && !hasIdx) return 'candidate needs sdpMid or sdpMLineIndex';
+        return null;
+    }
+
+    // ─── PUBLIC: VALIDATION ─────────────────────────────
+
+    /**
+     * Validate an incoming signaling message. Returns a result object rather
+     * than throwing so the mesh handler can drop bad input silently.
+     *
+     * @param {*} msg
+     * @returns {{ ok: boolean, error?: string }}
+     */
+    function validateMessage(msg) {
+        if (!isPlainObject(msg)) return { ok: false, error: 'message must be an object' };
+        if (msg.v !== PROTOCOL_VERSION) return { ok: false, error: `unsupported version: ${msg.v}` };
+        if (!VALID_TYPES.has(msg.t)) return { ok: false, error: `invalid type: ${msg.t}` };
+        if (!isCallId(msg.callId)) return { ok: false, error: 'invalid callId' };
+        if (!isPeerId(msg.from)) return { ok: false, error: 'invalid from' };
+        if (!isPeerId(msg.to)) return { ok: false, error: 'invalid to' };
+        if (typeof msg.ts !== 'number' || !Number.isFinite(msg.ts)) return { ok: false, error: 'invalid ts' };
+
+        switch (msg.t) {
+            case TYPES.OFFER: {
+                const e = validateSdp(msg.sdp, 'offer') || validateFingerprintProof(msg.fp, 'offer');
+                if (e) return { ok: false, error: e };
+                break;
+            }
+            case TYPES.ANSWER: {
+                const e = validateSdp(msg.sdp, 'answer') || validateFingerprintProof(msg.fp, 'answer');
+                if (e) return { ok: false, error: e };
+                break;
+            }
+            case TYPES.ICE: {
+                const e = validateCandidate(msg.candidate);
+                if (e) return { ok: false, error: e };
+                break;
+            }
+            case TYPES.HANGUP: {
+                if (typeof msg.reason !== 'string' || !HANGUP_REASONS.has(msg.reason)) {
+                    return { ok: false, error: 'invalid hangup reason' };
+                }
+                break;
+            }
+            default:
+                return { ok: false, error: `unhandled type: ${msg.t}` };
+        }
+        return { ok: true };
+    }
+
+    /** Throwing variant for call sites that prefer exceptions. */
+    function assertValid(msg) {
+        const r = validateMessage(msg);
+        if (!r.ok) throw new Error(`[GhostCallSignaling] invalid message: ${r.error}`);
+        return msg;
+    }
+
+    // ─── PUBLIC: BUILDERS ───────────────────────────────
+
+    function _base(type, { callId, from, to }) {
+        return { v: PROTOCOL_VERSION, t: type, callId, from, to, ts: Date.now() };
+    }
+
+    /**
+     * @param {{callId:string, from:string, to:string, sdp:Object, fp:FingerprintProof}} p
+     * @returns {CallEnvelope}
+     */
+    function buildOffer(p) {
+        return assertValid({ ..._base(TYPES.OFFER, p), sdp: p.sdp, fp: p.fp });
+    }
+
+    function buildAnswer(p) {
+        return assertValid({ ..._base(TYPES.ANSWER, p), sdp: p.sdp, fp: p.fp });
+    }
+
+    function buildIce(p) {
+        return assertValid({ ..._base(TYPES.ICE, p), candidate: p.candidate });
+    }
+
+    function buildHangup(p) {
+        const reason = HANGUP_REASONS.has(p.reason) ? p.reason : 'normal';
+        return assertValid({ ..._base(TYPES.HANGUP, p), reason });
+    }
+
+    // ─── EXPORTS ────────────────────────────────────────
+
+    return {
+        PROTOCOL_VERSION,
+        TYPES,
+        HANGUP_REASONS,
+        MAX_SDP_LENGTH,
+        CALL_ID_REGEX,
+        validateMessage,
+        assertValid,
+        buildOffer,
+        buildAnswer,
+        buildIce,
+        buildHangup,
+    };
+}));
+
+</script>
+    <script>
+/**
+ * GhostNet Call Fingerprint — Identity-Bound DTLS Verification
+ * ===========================================================
+ *
+ * "Privacy by mathematics." The signaling relay (the mesh) must never be able
+ * to MITM the media keys. WebRTC already encrypts media under DTLS-SRTP, where
+ * the DTLS handshake is authenticated by the certificate fingerprints carried
+ * in the SDP. The weak point is SDP delivery: a relay could swap an SDP and its
+ * fingerprint to insert itself. We close that by binding the local DTLS
+ * fingerprint to the caller's GhostTag identity key with a signature, and
+ * verifying the remote fingerprint against the *resolved* GhostTag identity
+ * BEFORE the SDP is ever applied. Mismatch ⇒ fail closed (abort the call).
+ *
+ * The cryptographic core is dependency-injected (signer / verifier) so the
+ * algorithm can change without touching call logic. The LIVE implementation is
+ * secp256k1 — the same identity key the app already uses for GhostTag / node
+ * auth (ethers wallet: personal-sign + address recovery). An Ed25519 signer can
+ * be dropped in later via the same interface.
+ *
+ * Pure except for the secp256k1 default impl, which resolves `ethers` from
+ * `window.ethers` (browser/WebView, v6) or `require('ethers')` (Node tests, v5).
+ * Both versions interoperate for personal-sign + computeAddress.
+ *
+ * @module ghostnet-call-fingerprint
+ */
+
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        module.exports = factory();
+    } else {
+        root.GhostCallFingerprint = factory();
+    }
+}(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this), function () {
+    'use strict';
+
+    const PROOF_VERSION = 1;
+    const DOMAIN = 'GhostNet.CallFingerprint.v1';
+    /** Matches `a=fingerprint:<hash-func> <hex:colon:bytes>` in an SDP blob. */
+    const SDP_FINGERPRINT_REGEX = /^a=fingerprint:(\S+)\s+([0-9A-Fa-f:]+)\s*$/m;
+
+    // ─── ethers resolver + v5/v6 API adapter ────────────
+
+    let _ethers = null;
+    function _getEthers() {
+        if (_ethers) return _ethers;
+        if (typeof window !== 'undefined' && window.ethers) {
+            _ethers = window.ethers;
+        } else if (typeof globalThis !== 'undefined' && globalThis.ethers) {
+            _ethers = globalThis.ethers;
+        } else if (typeof require === 'function') {
+            try { _ethers = require('ethers'); } catch (_) { _ethers = null; }
+        }
+        if (!_ethers) throw new Error('[GhostCallFingerprint] ethers is not available');
+        return _ethers;
+    }
+
+    /**
+     * ethers v5 exposes helpers under `ethers.utils`; v6 hoists them to the top
+     * level. Normalise so the same code path works in browser (v6) and Node (v5).
+     */
+    function _utils() {
+        const e = _getEthers();
+        return e.utils ? e.utils : e;
+    }
+
+    // ─── canonical proof message ────────────────────────
+
+    function _lp(field, value) {
+        const s = String(value);
+        return `${field}=${s.length}:${s}`;
+    }
+
+    /**
+     * Deterministic, length-prefixed message that BOTH sides sign/verify. Binding
+     * callId + from + to + kind + fingerprint prevents replay across calls,
+     * directions, and offer/answer roles.
+     *
+     * @param {{kind:'offer'|'answer', callId:string, from:string, to:string, fingerprint:string}} ctx
+     * @returns {string}
+     */
+    function canonicalMessage(ctx) {
+        return [
+            DOMAIN,
+            _lp('kind', ctx.kind),
+            _lp('callId', ctx.callId),
+            _lp('from', ctx.from),
+            _lp('to', ctx.to),
+            _lp('fp', ctx.fingerprint),
+        ].join('|');
+    }
+
+    // ─── SDP fingerprint extraction ─────────────────────
+
+    /**
+     * Extract the DTLS fingerprint from an SDP string or RTCSessionDescription.
+     *
+     * @param {string|{sdp:string}} sdp
+     * @returns {{ algorithm: string, value: string, canonical: string }}
+     * @throws if no fingerprint line is present
+     */
+    function extractFingerprint(sdp) {
+        const text = typeof sdp === 'string' ? sdp : (sdp && sdp.sdp);
+        if (typeof text !== 'string' || text.length === 0) {
+            throw new Error('[GhostCallFingerprint] cannot extract fingerprint: empty SDP');
+        }
+        const m = SDP_FINGERPRINT_REGEX.exec(text);
+        if (!m) throw new Error('[GhostCallFingerprint] no a=fingerprint line in SDP');
+        const algorithm = m[1].toLowerCase();
+        const value = m[2].toUpperCase();
+        return { algorithm, value, canonical: `${algorithm} ${value}` };
+    }
+
+    // ─── LIVE secp256k1 signer / verifier ───────────────
+
+    /**
+     * Build a signer bound to a secp256k1 private key (the app's GhostTag key).
+     *
+     * @param {{ privateKey: string, publicKey?: string }} opts
+     * @returns {{ alg:string, sign:(msg:string)=>Promise<string>, getPublicKey:()=>string }}
+     */
+    function createSecp256k1Signer(opts) {
+        const ethers = _getEthers();
+        if (!opts || typeof opts.privateKey !== 'string') {
+            throw new Error('[GhostCallFingerprint] secp256k1 signer requires a privateKey');
+        }
+        const wallet = new ethers.Wallet(opts.privateKey);
+        // v6: wallet.signingKey.publicKey ; v5: wallet._signingKey().publicKey.
+        const publicKey = opts.publicKey
+            || (wallet.signingKey ? wallet.signingKey.publicKey : wallet._signingKey().publicKey);
+        return {
+            alg: 'secp256k1',
+            getPublicKey() { return publicKey; },
+            async sign(message) { return wallet.signMessage(message); },
+        };
+    }
+
+    /**
+     * Verify a personal-sign signature against the public key the GhostTag
+     * resolves to. Trust comes from `expectedPublicKey` (resolved from GhostTag),
+     * NOT from any key embedded in the proof. Returns boolean; never throws on a
+     * bad signature — it FAILS CLOSED (returns false).
+     *
+     * @param {string} message
+     * @param {string} signature
+     * @param {string} expectedPublicKey  secp256k1 public key bound to the GhostTag
+     * @returns {boolean}
+     */
+    function secp256k1Verify(message, signature, expectedKey) {
+        try {
+            const u = _utils();
+            const recovered = u.verifyMessage(message, signature).toLowerCase();
+            // `expectedKey` may be a full secp256k1 public key OR an Ethereum-style
+            // address (contacts are often identified by address). Both reduce to an
+            // address for comparison.
+            const expected = /^0x[0-9a-fA-F]{40}$/.test(String(expectedKey))
+                ? String(expectedKey).toLowerCase()
+                : u.computeAddress(expectedKey).toLowerCase();
+            return recovered === expected;
+        } catch (_) {
+            return false; // malformed signature / key ⇒ fail closed
+        }
+    }
+
+    /** Default verifier object (DI-compatible). */
+    const secp256k1Verifier = {
+        alg: 'secp256k1',
+        verify: secp256k1Verify,
+    };
+
+    // ─── proof build / verify (DI core) ─────────────────
+
+    /**
+     * Build a fingerprint proof for a local SDP. Signs the canonical message
+     * with the injected identity signer.
+     *
+     * @param {{ kind:'offer'|'answer', callId:string, from:string, to:string, sdp:(string|{sdp:string}) }} ctx
+     * @param {{ alg:string, sign:Function, getPublicKey:Function }} signer
+     * @returns {Promise<import('./ghostnet-call-signaling.js').FingerprintProof>}
+     */
+    async function buildProof(ctx, signer) {
+        if (!signer || typeof signer.sign !== 'function') {
+            throw new Error('[GhostCallFingerprint] buildProof requires a signer');
+        }
+        const fp = extractFingerprint(ctx.sdp);
+        const message = canonicalMessage({
+            kind: ctx.kind, callId: ctx.callId, from: ctx.from, to: ctx.to, fingerprint: fp.canonical,
+        });
+        const sig = await signer.sign(message);
+        return {
+            v: PROOF_VERSION,
+            kind: ctx.kind,
+            alg: signer.alg || 'secp256k1',
+            fingerprint: fp.canonical,
+            sig,
+            pub: typeof signer.getPublicKey === 'function' ? signer.getPublicKey() : '',
+        };
+    }
+
+    /**
+     * Verify a remote fingerprint proof against the SDP that carried it AND the
+     * GhostTag-resolved identity key. FAILS CLOSED: returns {ok:false,...} on any
+     * mismatch — the caller MUST abort before applying the remote SDP.
+     *
+     *   1. The proof's fingerprint must exactly equal the SDP's fingerprint
+     *      (a relay can't sign one fingerprint and ship a different SDP).
+     *   2. The signature must verify against `expectedPublicKey` (resolved from
+     *      the callee/caller's GhostTag), over the canonical message.
+     *
+     * @param {Object} proof  FingerprintProof from the remote message.
+     * @param {{ kind:'offer'|'answer', callId:string, from:string, to:string, sdp:(string|{sdp:string}) }} ctx
+     * @param {string} expectedPublicKey  Identity key resolved from the peer's GhostTag.
+     * @param {{ verify:Function }} [verifier]  Defaults to secp256k1.
+     * @returns {{ ok: boolean, error?: string }}
+     */
+    function verifyProof(proof, ctx, expectedPublicKey, verifier) {
+        const v = verifier || secp256k1Verifier;
+        if (!proof || typeof proof !== 'object') return { ok: false, error: 'missing proof' };
+        if (typeof expectedPublicKey !== 'string' || expectedPublicKey.length === 0) {
+            return { ok: false, error: 'missing expected public key' };
+        }
+        if (proof.kind !== ctx.kind) return { ok: false, error: 'proof kind mismatch' };
+
+        let sdpFp;
+        try {
+            sdpFp = extractFingerprint(ctx.sdp);
+        } catch (e) {
+            return { ok: false, error: `sdp fingerprint: ${e.message}` };
+        }
+        // (1) Proof must describe the SAME fingerprint the SDP actually carries.
+        if (proof.fingerprint !== sdpFp.canonical) {
+            return { ok: false, error: 'fingerprint does not match SDP' };
+        }
+
+        // (2) Signature must verify against the GhostTag-resolved identity key.
+        const message = canonicalMessage({
+            kind: ctx.kind, callId: ctx.callId, from: ctx.from, to: ctx.to, fingerprint: sdpFp.canonical,
+        });
+        let ok = false;
+        try {
+            ok = !!v.verify(message, proof.sig, expectedPublicKey);
+        } catch (_) {
+            ok = false; // verifier threw ⇒ fail closed
+        }
+        if (!ok) return { ok: false, error: 'signature does not match GhostTag identity' };
+        return { ok: true };
+    }
+
+    // ─── EXPORTS ────────────────────────────────────────
+
+    return {
+        PROOF_VERSION,
+        DOMAIN,
+        canonicalMessage,
+        extractFingerprint,
+        buildProof,
+        verifyProof,
+        // live secp256k1 impl (DI defaults)
+        createSecp256k1Signer,
+        secp256k1Verify,
+        secp256k1Verifier,
+    };
+}));
+
+</script>
+    <script>
+/**
+ * GhostNet Call — ICE / TURN credential provider
+ * ==============================================
+ *
+ * Supplies the `iceServers` array for a voice call's RTCPeerConnection. It does
+ * NOT touch call signaling, the state machine, or the DTLS-fingerprint flow — it
+ * only assembles ICE configuration:
+ *
+ *   • Keeps the existing STUN / hole-punching servers (primary, direct P2P).
+ *   • Appends SHORT-LIVED Cloudflare Realtime TURN credentials (relay fallback),
+ *     minted server-side at `${BACKEND}/turn/credentials`. The Cloudflare API
+ *     token / key ID NEVER reach the client — only the ephemeral username +
+ *     credential do.
+ *
+ * Wire it into GhostCall via the `getIceServers` hook:
+ *
+ *     const provider = GhostCallIce.createCloudflareIceProvider({ stunServers });
+ *     const call = new GhostCall({ ..., getIceServers: provider });
+ *
+ * GhostCall calls `getIceServers()` at peer-connection creation — i.e. fresh per
+ * call, on BOTH startCall and acceptCall. FAIL CLOSED: if the fetch fails this
+ * REJECTS, and GhostCall aborts the call rather than proceeding with no relay.
+ *
+ * @module ghostnet-call-ice
+ */
+
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        module.exports = factory();
+    } else {
+        root.GhostCallIce = factory();
+    }
+}(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this), function () {
+    'use strict';
+
+    const DEFAULT_BACKEND = 'https://ghostnet-ji-production.up.railway.app';
+    const DEFAULT_PATH = '/turn/credentials';
+    /** STUN kept in the list so direct P2P is tried before relay. */
+    const DEFAULT_STUN_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+    ];
+
+    // ─── helpers ────────────────────────────────────────
+
+    function _defaultBackend() {
+        if (typeof window !== 'undefined' && window.BACKEND && window.BACKEND.http) return window.BACKEND.http;
+        return DEFAULT_BACKEND;
+    }
+
+    /** Read the app's JWT (unwraps the {token,expiresAt} envelope) — no external deps. */
+    function _defaultReadToken() {
+        if (typeof sessionStorage === 'undefined' && typeof localStorage === 'undefined') return '';
+        const sources = [];
+        try { sources.push(sessionStorage.getItem('ghostnet_token')); } catch (_) { /* */ }
+        try { sources.push(localStorage.getItem('ghostnet_token')); } catch (_) { /* */ }
+        for (const raw of sources) {
+            if (!raw) continue;
+            try {
+                const p = JSON.parse(raw);
+                if (p && typeof p.token === 'string') {
+                    if (p.expiresAt && Date.now() > p.expiresAt) continue;
+                    return p.token;
+                }
+            } catch (_) { /* not JSON */ }
+            if (typeof raw === 'string' && raw.length > 10) return raw;
+        }
+        return '';
+    }
+
+    function _defaultAuthHeaders() {
+        const token = _defaultReadToken();
+        const h = { 'Content-Type': 'application/json' };
+        if (token) h.Authorization = `Bearer ${token}`;
+        return h;
+    }
+
+    function _defaultEnsureAuth() {
+        if (typeof window !== 'undefined' && typeof window.ghostnetEnsureAuth === 'function') {
+            return window.ghostnetEnsureAuth();
+        }
+        return Promise.resolve(null);
+    }
+
+    function _hasAuth(headers) {
+        return !!(headers && (headers.Authorization || headers.authorization));
+    }
+
+    /**
+     * Merge the local STUN/hole-punch servers with the fetched TURN credentials.
+     * STUN first (direct P2P preferred), TURN appended as fallback. Accepts the
+     * server response in either `{ iceServers: [...] }` (array) or
+     * `{ iceServers: { urls, username, credential } }` (single object) form.
+     *
+     * @param {Array} stunServers
+     * @param {Object} fetched  Parsed server response.
+     * @returns {Array<RTCIceServer>}
+     */
+    function mergeIceServers(stunServers, fetched) {
+        const stun = Array.isArray(stunServers) ? stunServers.slice() : [];
+        let turn = [];
+        const ice = fetched && fetched.iceServers;
+        if (Array.isArray(ice)) {
+            turn = ice;
+        } else if (ice && (ice.urls || ice.url)) {
+            turn = [ice];
+        }
+        const merged = stun.concat(turn);
+        if (!merged.length) throw new Error('no ICE servers available after merge');
+        return merged;
+    }
+
+    // ─── provider ───────────────────────────────────────
+
+    /**
+     * Build a `getIceServers()` function that fetches fresh Cloudflare TURN
+     * credentials and merges them with STUN. Throws (fail closed) on any failure.
+     *
+     * @param {Object} [opts]
+     * @param {string}   [opts.endpoint]      Full URL to the credential endpoint.
+     * @param {Array}    [opts.stunServers]   STUN/hole-punch servers to keep (primary).
+     * @param {Function} [opts.getAuthHeaders] () => headers object (default reads JWT).
+     * @param {Function} [opts.ensureAuth]    async () => token|null (default window.ghostnetEnsureAuth).
+     * @param {Function} [opts.fetchImpl]     fetch implementation (default global fetch; injectable for tests).
+     * @returns {() => Promise<Array<RTCIceServer>>}
+     */
+    function createCloudflareIceProvider(opts) {
+        opts = opts || {};
+        const endpoint = opts.endpoint || (_defaultBackend() + DEFAULT_PATH);
+        const stunServers = opts.stunServers || DEFAULT_STUN_SERVERS;
+        const getAuthHeaders = opts.getAuthHeaders || _defaultAuthHeaders;
+        const ensureAuth = opts.ensureAuth || _defaultEnsureAuth;
+        const fetchImpl = opts.fetchImpl
+            || (typeof fetch === 'function' ? fetch.bind(typeof globalThis !== 'undefined' ? globalThis : null) : null);
+
+        if (!fetchImpl) {
+            return async function getIceServers() {
+                throw new Error('[GhostCallIce] no fetch implementation available');
+            };
+        }
+
+        async function _doFetch(headers) {
+            return fetchImpl(endpoint, { method: 'POST', headers, body: JSON.stringify({}) });
+        }
+
+        return async function getIceServers() {
+            let headers = getAuthHeaders();
+            // Ensure we have a token before the first attempt (mirrors the app pattern).
+            if (!_hasAuth(headers) && ensureAuth) {
+                try { await ensureAuth(); } catch (_) { /* surfaced below if still 401 */ }
+                headers = getAuthHeaders();
+            }
+
+            let res;
+            try {
+                res = await _doFetch(headers);
+            } catch (e) {
+                throw new Error(`TURN credential request failed: ${e && e.message ? e.message : 'network error'}`);
+            }
+
+            // Token expired/invalid → re-auth once and retry (no relay if it still fails).
+            if (res && res.status === 401 && ensureAuth) {
+                try { await ensureAuth(); } catch (_) { /* */ }
+                try { res = await _doFetch(getAuthHeaders()); } catch (e) {
+                    throw new Error(`TURN credential retry failed: ${e && e.message ? e.message : 'network error'}`);
+                }
+            }
+
+            if (!res || !res.ok) {
+                throw new Error(`TURN credential fetch failed: HTTP ${res ? res.status : 'no response'}`);
+            }
+
+            let body;
+            try {
+                body = await res.json();
+            } catch (e) {
+                throw new Error('TURN credential response was not valid JSON');
+            }
+            if (!body || !body.iceServers) {
+                throw new Error('TURN credential response missing iceServers');
+            }
+            return mergeIceServers(stunServers, body);
+        };
+    }
+
+    // ─── EXPORTS ────────────────────────────────────────
+
+    return {
+        DEFAULT_STUN_SERVERS,
+        DEFAULT_PATH,
+        mergeIceServers,
+        createCloudflareIceProvider,
+    };
+}));
+
+</script>
+    <script>
+/**
+ * GhostNet 1:1 Encrypted Voice Call
+ * =================================
+ *
+ * Phase 1: identity-authenticated 1:1 audio calls between two GhostTag
+ * identities. Reuses existing infrastructure — NOTHING new is stood up:
+ *
+ *   • Signaling  → the existing encrypted mesh channel (GhostMesh.sendToPeer /
+ *                  onMessage). No new server, no new socket.
+ *   • iceServers → the existing STUN consensus + TURN relay (GhostNATManager).
+ *   • Identity   → the app's GhostTag identity key (secp256k1) signs the local
+ *                  DTLS fingerprint; the remote fingerprint is verified against
+ *                  the resolved GhostTag identity BEFORE any SDP is applied.
+ *
+ * Media transport is WebRTC. Both the React web client and the React Native
+ * Expo client run inside a WebView, so a single browser-`RTCPeerConnection`
+ * adapter serves both today; a native `react-native-webrtc` adapter can be
+ * dropped in behind the same injection points (see EXTENSION POINTS below).
+ *
+ * EXTENSION POINTS (intentionally NOT implemented in Phase 1):
+ *   • Group calls / SFU — `_call` is a single 1:1 session by design. A future
+ *     multi-party layer would manage a map of peer connections.
+ *   • Insertable streams (per-frame E2EE on top of DTLS) — left out; the
+ *     security guarantee here is the identity-bound DTLS fingerprint.
+ *   • Native `react-native-webrtc` — inject `RTCPeerConnection` / `getUserMedia`
+ *     via the constructor to swap the media engine without changing call logic.
+ *
+ * @module ghostnet-call
+ */
+
+(function (root, factory) {
+    if (typeof module === 'object' && module.exports) {
+        module.exports = factory(
+            require('./ghostnet-call-signaling.js'),
+            require('./ghostnet-call-fingerprint.js')
+        );
+    } else {
+        root.GhostCall = factory(root.GhostCallSignaling, root.GhostCallFingerprint);
+    }
+}(typeof self !== 'undefined' ? self : (typeof globalThis !== 'undefined' ? globalThis : this), function (Signaling, Fingerprint) {
+    'use strict';
+
+    // ─── CONSTANTS ──────────────────────────────────────
+
+    const STATES = Object.freeze({
+        IDLE: 'idle',
+        RINGING: 'ringing',
+        CONNECTING: 'connecting',
+        ACTIVE: 'active',
+        ENDED: 'ended',
+    });
+
+    const DEFAULT_RING_TIMEOUT_MS = 30000;
+    /** Opus, tuned for mobile data — DTX on, modest average bitrate. */
+    const DEFAULT_MAX_AVG_BITRATE = 24000; // bits/s
+    const OPUS_RTPMAP_REGEX = /^a=rtpmap:(\d+)\s+opus\/48000(?:\/2)?\s*$/im;
+
+    const DEFAULT_ICE_SERVERS = [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun.cloudflare.com:3478' },
+    ];
+
+    // ─── small helpers ──────────────────────────────────
+
+    function _now() { return Date.now(); }
+
+    function _uuid() {
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID();
+        const b = (typeof crypto !== 'undefined' && crypto.getRandomValues)
+            ? crypto.getRandomValues(new Uint8Array(16))
+            : Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+        b[6] = (b[6] & 0x0f) | 0x40;
+        b[8] = (b[8] & 0x3f) | 0x80;
+        const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+        return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+    }
+
+    /**
+     * Munge an SDP to: keep Opus, enable DTX, and cap the average bitrate so the
+     * call stays friendly on mobile data. Returns a new SDP string.
+     */
+    function shapeOpusSdp(sdp, maxAvgBitrate) {
+        const m = OPUS_RTPMAP_REGEX.exec(sdp);
+        if (!m) return sdp; // no opus line — leave untouched
+        const pt = m[1];
+        const params = `usedtx=1;useinbandfec=1;maxaveragebitrate=${maxAvgBitrate}`;
+        const fmtpRe = new RegExp(`^a=fmtp:${pt} (.*)$`, 'im');
+        if (fmtpRe.test(sdp)) {
+            return sdp.replace(fmtpRe, (line, existing) => {
+                // Append our params if not already present.
+                const has = /usedtx=/.test(existing);
+                return has ? line : `a=fmtp:${pt} ${existing};${params}`;
+            });
+        }
+        // No fmtp line for opus — insert one right after its rtpmap.
+        return sdp.replace(m[0], `${m[0]}\r\na=fmtp:${pt} ${params}`);
+    }
+
+    // ─── tiny event emitter (matches the app's lightweight style) ──
+
+    function createEmitter() {
+        const handlers = new Map(); // event -> Set<fn>
+        return {
+            on(event, fn) {
+                if (!handlers.has(event)) handlers.set(event, new Set());
+                handlers.get(event).add(fn);
+                return () => handlers.get(event) && handlers.get(event).delete(fn);
+            },
+            off(event, fn) { if (handlers.has(event)) handlers.get(event).delete(fn); },
+            emit(event, payload) {
+                if (!handlers.has(event)) return;
+                for (const fn of handlers.get(event)) {
+                    try { fn(payload); } catch (e) { /* never let a listener break call logic */ }
+                }
+            },
+        };
+    }
+
+    // ─── MAIN CLASS ─────────────────────────────────────
+
+    class GhostCall {
+        /**
+         * @param {Object} opts
+         * @param {Object} opts.mesh   GhostMesh-like: sendToPeer(peerId,msg) + onMessage hook.
+         * @param {Object} [opts.nat]  GhostNATManager-like (used for iceServers).
+         * @param {Object} opts.identity  { id, publicKey, privateKey } — the local GhostTag identity.
+         * @param {Object} [opts.signer]   DI signer; defaults to secp256k1 from identity.privateKey.
+         * @param {Object} [opts.verifier] DI verifier; defaults to secp256k1.
+         * @param {Function} [opts.resolveGhostTag]    async (tag) => { routeId, publicKey }.
+         * @param {Function} [opts.resolveIdentityKey] async (peerId, msg) => publicKey|null (verify incoming).
+         * @param {Function} [opts.getIceServers]      async () => RTCIceServer[].
+         * @param {Array}    [opts.iceServers]          static iceServers (overrides getIceServers).
+         * @param {Function} [opts.RTCPeerConnection]   constructor injection (native adapter / tests).
+         * @param {Function} [opts.getUserMedia]        async (constraints) => MediaStream (injection).
+         * @param {number}   [opts.ringTimeoutMs]
+         * @param {number}   [opts.maxAverageBitrate]
+         */
+        constructor(opts) {
+            opts = opts || {};
+            if (!opts.mesh || typeof opts.mesh.sendToPeer !== 'function') {
+                throw new Error('[GhostCall] opts.mesh with sendToPeer() is required');
+            }
+            if (!opts.identity || typeof opts.identity.id !== 'string') {
+                throw new Error('[GhostCall] opts.identity.id is required');
+            }
+
+            this.mesh = opts.mesh;
+            this.nat = opts.nat || null;
+            this.identity = opts.identity;
+
+            // Signer is built LAZILY so GhostCall can be constructed — and wired to
+            // the mesh to receive incoming calls / ring — BEFORE the identity is
+            // unlocked. The secp256k1 signing key is only needed to place or answer.
+            this._injectedSigner = opts.signer || null;
+            this._identityPublicKey = opts.identity.publicKey || null;
+            this._getPrivateKey = (typeof opts.identity.getPrivateKey === 'function')
+                ? opts.identity.getPrivateKey
+                : function () { return opts.identity.privateKey; };
+            this._signer = null;
+            this.verifier = opts.verifier || Fingerprint.secp256k1Verifier;
+
+            this.resolveGhostTag = opts.resolveGhostTag || _defaultResolveGhostTag;
+            this.resolveIdentityKey = opts.resolveIdentityKey || _defaultResolveIdentityKey;
+            this._getIceServers = opts.getIceServers || null;
+            this._staticIceServers = opts.iceServers || null;
+
+            this._PC = opts.RTCPeerConnection
+                || (typeof RTCPeerConnection !== 'undefined' ? RTCPeerConnection : null)
+                || (typeof window !== 'undefined' && window.RTCPeerConnection) || null;
+            this._getUserMedia = opts.getUserMedia
+                || ((typeof navigator !== 'undefined' && navigator.mediaDevices)
+                    ? (c) => navigator.mediaDevices.getUserMedia(c)
+                    : null);
+
+            this.ringTimeoutMs = opts.ringTimeoutMs || DEFAULT_RING_TIMEOUT_MS;
+            this.maxAverageBitrate = opts.maxAverageBitrate || DEFAULT_MAX_AVG_BITRATE;
+
+            this._emitter = createEmitter();
+            this._call = null; // single 1:1 session (see EXTENSION POINTS)
+
+            this._wireMesh();
+        }
+
+        // ── events ──────────────────────────────────────
+        /** Events: 'incoming' | 'ringing' | 'connected' | 'ended' | 'error'. */
+        on(event, fn) { return this._emitter.on(event, fn); }
+        off(event, fn) { this._emitter.off(event, fn); }
+
+        get state() { return this._call ? this._call.state : STATES.IDLE; }
+
+        // Build (and cache) the secp256k1 signer on demand. Throws 'locked' if the
+        // identity has no signing key available yet (needs a PIN unlock).
+        async _ensureSigner() {
+            if (this._injectedSigner) return this._injectedSigner;
+            if (this._signer) return this._signer;
+            const pk = await this._getPrivateKey();
+            if (!pk) throw new Error('locked');
+            this._signer = Fingerprint.createSecp256k1Signer({ privateKey: pk, publicKey: this._identityPublicKey });
+            return this._signer;
+        }
+
+        // ── public API ──────────────────────────────────
+
+        /**
+         * Place a call to a GhostTag. Resolves the tag → identity key + route,
+         * builds an SDP offer with an identity-bound fingerprint proof, and sends
+         * it over the mesh. Verifies the answer's fingerprint before connecting.
+         */
+        async startCall(ghostTag) {
+            if (this._call) throw new Error('[GhostCall] already in a call');
+            let resolved;
+            try {
+                resolved = await this.resolveGhostTag(ghostTag);
+            } catch (e) {
+                this._fail('resolve', `could not resolve ${ghostTag}: ${e.message}`);
+                return;
+            }
+            if (!resolved || !resolved.publicKey || !resolved.routeId) {
+                this._fail('resolve', `GhostTag ${ghostTag} did not resolve to an identity`);
+                return;
+            }
+
+            // We must sign our offer's fingerprint — needs the unlocked signing key.
+            let signer;
+            try { signer = await this._ensureSigner(); }
+            catch (e) { this._emit('error', { code: 'locked', message: 'unlock your identity to place a call' }); return; }
+
+            const call = this._newCall({
+                id: _uuid(),
+                role: 'caller',
+                peerId: resolved.routeId,
+                peerTag: ghostTag,
+                peerKey: resolved.publicKey,
+            });
+
+            const pc = await this._createPeerConnection(call);
+            if (!pc) return; // _fail already emitted
+
+            const stream = await this._acquireMic(call);
+            if (!stream) return; // mic error already surfaced
+
+            try {
+                stream.getTracks().forEach(t => pc.addTrack(t, stream));
+                let offer = await pc.createOffer({ offerToReceiveAudio: true });
+                offer = { type: 'offer', sdp: shapeOpusSdp(offer.sdp, this.maxAverageBitrate) };
+                await pc.setLocalDescription(offer);
+                this._applySenderBitrate(pc);
+
+                const fp = await Fingerprint.buildProof({
+                    kind: 'offer', callId: call.id, from: this.identity.id, to: call.peerId,
+                    sdp: pc.localDescription || offer,
+                }, signer);
+
+                this._send(Signaling.buildOffer({
+                    callId: call.id, from: this.identity.id, to: call.peerId,
+                    sdp: { type: 'offer', sdp: (pc.localDescription || offer).sdp }, fp,
+                }));
+
+                this._setState(call, STATES.RINGING);
+                this._emit('ringing', { callId: call.id, peer: ghostTag, direction: 'outgoing' });
+                this._armRingTimeout(call);
+            } catch (e) {
+                this._fail('offer', `failed to create offer: ${e.message}`);
+            }
+        }
+
+        /**
+         * Accept the current incoming (ringing) call. The offer's fingerprint
+         * proof was already verified at receipt, so it's safe to apply here.
+         */
+        async acceptCall() {
+            const call = this._call;
+            if (!call || call.role !== 'callee' || call.state !== STATES.RINGING) {
+                throw new Error('[GhostCall] no incoming call to accept');
+            }
+            // Need the signing key to sign our answer. Stay ringing if it's locked so
+            // the user can unlock and accept again.
+            let signer;
+            try { signer = await this._ensureSigner(); }
+            catch (e) { this._emit('error', { code: 'locked', message: 'unlock your identity to answer the call' }); return; }
+            this._clearRingTimeout(call);
+            this._setState(call, STATES.CONNECTING);
+
+            const pc = await this._createPeerConnection(call);
+            if (!pc) return;
+
+            const stream = await this._acquireMic(call);
+            if (!stream) return;
+
+            try {
+                stream.getTracks().forEach(t => pc.addTrack(t, stream));
+                await pc.setRemoteDescription({ type: 'offer', sdp: call.pendingOffer.sdp.sdp });
+                this._drainRemoteCandidates(call);
+
+                let answer = await pc.createAnswer();
+                answer = { type: 'answer', sdp: shapeOpusSdp(answer.sdp, this.maxAverageBitrate) };
+                await pc.setLocalDescription(answer);
+                this._applySenderBitrate(pc);
+
+                const fp = await Fingerprint.buildProof({
+                    kind: 'answer', callId: call.id, from: this.identity.id, to: call.peerId,
+                    sdp: pc.localDescription || answer,
+                }, signer);
+
+                this._send(Signaling.buildAnswer({
+                    callId: call.id, from: this.identity.id, to: call.peerId,
+                    sdp: { type: 'answer', sdp: (pc.localDescription || answer).sdp }, fp,
+                }));
+                call.pendingOffer = null;
+            } catch (e) {
+                this._fail('answer', `failed to answer: ${e.message}`);
+            }
+        }
+
+        /** Decline a ringing incoming call. */
+        rejectCall() {
+            const call = this._call;
+            if (!call || call.role !== 'callee' || call.state !== STATES.RINGING) return;
+            this._send(Signaling.buildHangup({
+                callId: call.id, from: this.identity.id, to: call.peerId, reason: 'rejected',
+            }));
+            this._teardown('rejected');
+        }
+
+        /** End the current call (ringing/connecting/active) from either side. */
+        endCall() {
+            const call = this._call;
+            if (!call) return;
+            const reason = call.role === 'caller' && call.state === STATES.RINGING ? 'cancelled' : 'normal';
+            try {
+                this._send(Signaling.buildHangup({
+                    callId: call.id, from: this.identity.id, to: call.peerId, reason,
+                }));
+            } catch (_) { /* best-effort notify */ }
+            this._teardown(reason);
+        }
+
+        /** Tear down everything and release the mesh hook. */
+        destroy() {
+            if (this._call) this._teardown('normal');
+            if (this._restoreMeshOnMessage) {
+                this.mesh.onMessage = this._prevOnMessage;
+                this._restoreMeshOnMessage = false;
+            }
+        }
+
+        // ── mesh wiring (non-invasive: preserves the app's handler) ──
+
+        _wireMesh() {
+            const self = this;
+            let appHandler = (typeof this.mesh.onMessage === 'function') ? this.mesh.onMessage : null;
+            this._prevOnMessage = appHandler;
+            const wrapped = function (data, fromId, transport) {
+                // Call signaling is NOT a chat message — intercept it and do NOT
+                // forward to the app handler (which would render it as JSON).
+                if (data && typeof data === 'object' && typeof data.t === 'string' && data.t.indexOf('call.') === 0) {
+                    self._onMeshMessage(data, fromId);
+                    return;
+                }
+                if (appHandler) { try { appHandler(data, fromId, transport); } catch (_) { /* isolate */ } }
+            };
+            // Install as an accessor so the app re-assigning mesh.onMessage (which it
+            // does after mesh init) updates the APP handler but keeps our interceptor
+            // in front — otherwise the wrapper gets clobbered and the callee never rings.
+            try {
+                Object.defineProperty(this.mesh, 'onMessage', {
+                    configurable: true,
+                    enumerable: true,
+                    get: function () { return wrapped; },
+                    set: function (fn) { if (typeof fn === 'function') { appHandler = fn; self._prevOnMessage = fn; } },
+                });
+                this._restoreMeshOnMessage = false;
+            } catch (e) {
+                this.mesh.onMessage = wrapped; // fallback for non-configurable engines
+                this._restoreMeshOnMessage = true;
+            }
+        }
+
+        _onMeshMessage(data, fromId) {
+            // Only handle our call.* envelopes; everything else flows to the app.
+            if (!data || typeof data !== 'object' || typeof data.t !== 'string' || data.t.indexOf('call.') !== 0) {
+                return;
+            }
+            const v = Signaling.validateMessage(data);
+            if (!v.ok) return; // drop malformed signaling silently
+
+            switch (data.t) {
+                case Signaling.TYPES.OFFER: return this._onOffer(data, fromId);
+                case Signaling.TYPES.ANSWER: return this._onAnswer(data);
+                case Signaling.TYPES.ICE: return this._onIce(data);
+                case Signaling.TYPES.HANGUP: return this._onHangup(data);
+                default: return;
+            }
+        }
+
+        async _onOffer(msg, fromId) {
+            if (this._call) {
+                // Busy — politely decline without disturbing the active call.
+                this._send(Signaling.buildHangup({
+                    callId: msg.callId, from: this.identity.id, to: msg.from, reason: 'busy',
+                }));
+                return;
+            }
+            // Resolve the caller's identity key INDEPENDENTLY (trust the GhostTag,
+            // not the proof) and verify the fingerprint BEFORE we even ring.
+            let peerKey = null;
+            try {
+                peerKey = await this.resolveIdentityKey(msg.from, msg);
+            } catch (_) { peerKey = null; }
+            if (!peerKey) {
+                this._emit('error', { code: 'peer-unresolved', message: `cannot resolve identity for ${msg.from}` });
+                this._send(Signaling.buildHangup({
+                    callId: msg.callId, from: this.identity.id, to: msg.from, reason: 'error',
+                }));
+                return;
+            }
+
+            const check = Fingerprint.verifyProof(msg.fp, {
+                kind: 'offer', callId: msg.callId, from: msg.from, to: this.identity.id, sdp: msg.sdp,
+            }, peerKey, this.verifier);
+            if (!check.ok) {
+                // SECURITY: fingerprint not bound to the claimed identity ⇒ abort.
+                this._emit('error', { code: 'fingerprint', message: `offer fingerprint rejected: ${check.error}` });
+                this._send(Signaling.buildHangup({
+                    callId: msg.callId, from: this.identity.id, to: msg.from, reason: 'fingerprint',
+                }));
+                return;
+            }
+
+            const call = this._newCall({
+                id: msg.callId, role: 'callee', peerId: msg.from, peerTag: msg.from, peerKey,
+            });
+            call.pendingOffer = msg;
+            this._setState(call, STATES.RINGING);
+            this._emit('incoming', { callId: call.id, from: msg.from, direction: 'incoming' });
+            this._armRingTimeout(call);
+        }
+
+        async _onAnswer(msg) {
+            const call = this._call;
+            if (!call || call.role !== 'caller' || call.id !== msg.callId) return;
+
+            // Verify the answer's fingerprint against the GhostTag we dialed.
+            const check = Fingerprint.verifyProof(msg.fp, {
+                kind: 'answer', callId: msg.callId, from: msg.from, to: this.identity.id, sdp: msg.sdp,
+            }, call.peerKey, this.verifier);
+            if (!check.ok) {
+                this._emit('error', { code: 'fingerprint', message: `answer fingerprint rejected: ${check.error}` });
+                this.endCall();
+                return;
+            }
+
+            this._clearRingTimeout(call);
+            this._setState(call, STATES.CONNECTING);
+            try {
+                await call.pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp.sdp });
+                this._drainRemoteCandidates(call);
+            } catch (e) {
+                this._fail('answer', `failed to apply answer: ${e.message}`);
+            }
+        }
+
+        async _onIce(msg) {
+            const call = this._call;
+            if (!call || call.id !== msg.callId) return;
+            const cand = msg.candidate;
+            // Buffer until remoteDescription exists, else addIceCandidate throws.
+            if (!call.pc || !call.pc.remoteDescription) {
+                call.remoteCandidates.push(cand);
+                return;
+            }
+            try { await call.pc.addIceCandidate(cand); } catch (_) { /* ignore bad candidate */ }
+        }
+
+        _onHangup(msg) {
+            const call = this._call;
+            if (!call || call.id !== msg.callId) return;
+            this._teardown(msg.reason || 'normal');
+        }
+
+        // ── peer connection / media ─────────────────────
+
+        async _iceServers() {
+            if (this._staticIceServers) return this._staticIceServers;
+            // A configured ICE provider (e.g. Cloudflare TURN) is authoritative.
+            // It is FAIL CLOSED: if it throws or returns nothing we propagate the
+            // error so the caller aborts — never start a call with no relay.
+            if (this._getIceServers) {
+                const s = await this._getIceServers();
+                if (!Array.isArray(s) || !s.length) throw new Error('ICE provider returned no servers');
+                return s;
+            }
+            // Best-effort reuse of the NAT manager's STUN consensus if present.
+            if (this.nat && typeof this.nat.getIceServers === 'function') {
+                try { const s = await this.nat.getIceServers(); if (Array.isArray(s) && s.length) return s; } catch (_) { /* fall through */ }
+            }
+            return DEFAULT_ICE_SERVERS;
+        }
+
+        async _createPeerConnection(call) {
+            if (!this._PC) {
+                this._fail('webrtc', 'RTCPeerConnection is unavailable in this environment');
+                return null;
+            }
+            let iceServers;
+            try {
+                iceServers = await this._iceServers();
+            } catch (e) {
+                // FAIL CLOSED: no TURN/ICE config ⇒ abort rather than risk a call
+                // that can't traverse NAT (or runs with no relay fallback).
+                this._fail('ice', `could not obtain TURN/ICE servers — call aborted: ${e.message}`);
+                return null;
+            }
+            let pc;
+            try {
+                pc = new this._PC({ iceServers, iceTransportPolicy: 'all' });
+            } catch (e) {
+                this._fail('webrtc', `failed to create RTCPeerConnection: ${e.message}`);
+                return null;
+            }
+            call.pc = pc;
+
+            pc.onicecandidate = (ev) => {
+                if (!ev.candidate || !this._call || this._call.id !== call.id) return;
+                this._send(Signaling.buildIce({
+                    callId: call.id, from: this.identity.id, to: call.peerId,
+                    candidate: ev.candidate.toJSON ? ev.candidate.toJSON() : ev.candidate,
+                }));
+            };
+            pc.ontrack = (ev) => {
+                call.remoteStream = ev.streams && ev.streams[0] ? ev.streams[0] : null;
+            };
+            pc.oniceconnectionstatechange = () => {
+                const s = pc.iceConnectionState;
+                if ((s === 'connected' || s === 'completed') && call.state !== STATES.ACTIVE) {
+                    this._setState(call, STATES.ACTIVE);
+                    this._emit('connected', { callId: call.id, remoteStream: call.remoteStream });
+                } else if (s === 'failed' || s === 'closed' || s === 'disconnected') {
+                    if (this._call && this._call.id === call.id) this._teardown('error');
+                }
+            };
+            return pc;
+        }
+
+        async _acquireMic(call) {
+            if (!this._getUserMedia) {
+                this._fail('mic-permission', 'microphone access is unavailable in this environment');
+                return null;
+            }
+            try {
+                const stream = await this._getUserMedia({ audio: true, video: false });
+                call.localStream = stream;
+                return stream;
+            } catch (e) {
+                // In the Expo WebView, getUserMedia needs native permission plumbing
+                // (Android onPermissionRequest + RECORD_AUDIO; iOS Info.plist mic key).
+                // Surface a clear, actionable error rather than failing opaquely.
+                const name = e && e.name ? e.name : 'Error';
+                this._fail('mic-permission',
+                    `microphone access denied or unavailable (${name}). ` +
+                    'In the Expo WebView this requires native mic permission plumbing — see VOICE_CALLS.md.');
+                this._teardown('error');
+                return null;
+            }
+        }
+
+        _applySenderBitrate(pc) {
+            try {
+                const sender = pc.getSenders && pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+                if (!sender || !sender.getParameters) return;
+                const params = sender.getParameters();
+                params.encodings = params.encodings && params.encodings.length ? params.encodings : [{}];
+                params.encodings[0].maxBitrate = this.maxAverageBitrate;
+                params.encodings[0].dtx = 'enabled';
+                if (sender.setParameters) sender.setParameters(params).catch(() => {});
+            } catch (_) { /* setParameters is best-effort */ }
+        }
+
+        _drainRemoteCandidates(call) {
+            if (!call.pc || !call.remoteCandidates.length) return;
+            const pending = call.remoteCandidates.splice(0);
+            for (const c of pending) {
+                try { call.pc.addIceCandidate(c); } catch (_) { /* ignore */ }
+            }
+        }
+
+        // ── state / lifecycle ───────────────────────────
+
+        _newCall(fields) {
+            this._call = Object.assign({
+                pc: null,
+                state: STATES.IDLE,
+                localStream: null,
+                remoteStream: null,
+                remoteCandidates: [],
+                pendingOffer: null,
+                ringTimer: null,
+                startedAt: _now(),
+            }, fields);
+            return this._call;
+        }
+
+        _setState(call, state) {
+            if (!call) return;
+            call.state = state;
+        }
+
+        _armRingTimeout(call) {
+            this._clearRingTimeout(call);
+            call.ringTimer = setTimeout(() => {
+                if (!this._call || this._call.id !== call.id) return;
+                if (call.state === STATES.RINGING) {
+                    try {
+                        this._send(Signaling.buildHangup({
+                            callId: call.id, from: this.identity.id, to: call.peerId, reason: 'timeout',
+                        }));
+                    } catch (_) { /* best effort */ }
+                    this._teardown('timeout');
+                }
+            }, this.ringTimeoutMs);
+        }
+
+        _clearRingTimeout(call) {
+            if (call && call.ringTimer) { clearTimeout(call.ringTimer); call.ringTimer = null; }
+        }
+
+        _teardown(reason) {
+            const call = this._call;
+            if (!call) return;
+            this._clearRingTimeout(call);
+            if (call.localStream) {
+                try { call.localStream.getTracks().forEach(t => t.stop()); } catch (_) { /* */ }
+            }
+            if (call.pc) {
+                try {
+                    call.pc.onicecandidate = null;
+                    call.pc.ontrack = null;
+                    call.pc.oniceconnectionstatechange = null;
+                    call.pc.close();
+                } catch (_) { /* */ }
+            }
+            this._setState(call, STATES.ENDED);
+            this._call = null;
+            this._emit('ended', { callId: call.id, reason });
+        }
+
+        _send(envelope) {
+            // The mesh message is delivered E2EE + identity-authenticated by the
+            // existing channel; we simply hand it the routing id + payload.
+            try {
+                this.mesh.sendToPeer(envelope.to, envelope);
+            } catch (e) {
+                this._emit('error', { code: 'transport', message: `mesh send failed: ${e.message}` });
+            }
+        }
+
+        _emit(event, payload) { this._emitter.emit(event, payload); }
+
+        _fail(code, message) {
+            this._emit('error', { code, message });
+            if (this._call) this._teardown('error');
+        }
+    }
+
+    // ─── default resolvers (browser/WebView) ────────────
+
+    /** Resolve a GhostTag via the app's GhostTag module → { routeId, publicKey }. */
+    async function _defaultResolveGhostTag(tag) {
+        if (typeof window === 'undefined' || !window.GhostTag || !window.GhostTag.resolveTag) {
+            throw new Error('GhostTag module unavailable');
+        }
+        const r = await window.GhostTag.resolveTag(tag);
+        if (!r || r.error) throw new Error(r && r.error ? r.error : 'resolve failed');
+        return { routeId: r.nodeId || r.id || tag, publicKey: r.publicKey };
+    }
+
+    /**
+     * Resolve the identity key for an INCOMING peer id. Defaults to GhostTag
+     * resolution; integrators with a node registry can inject a stronger lookup.
+     * Returns null ⇒ the call is rejected (fail closed) — we never trust the
+     * key embedded in the proof.
+     */
+    async function _defaultResolveIdentityKey(peerId /*, msg */) {
+        try {
+            const r = await _defaultResolveGhostTag(peerId);
+            return r.publicKey || null;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    GhostCall.STATES = STATES;
+    GhostCall.shapeOpusSdp = shapeOpusSdp;
+    return GhostCall;
+}));
+
+</script>
+    <script>
+/**
+ * GhostNet Call UI
+ * ================
+ *
+ * Thin UI controller that wires the GhostCall SDK into the running web app:
+ *   - constructs a GhostCall from the live app (mesh + secp256k1 identity +
+ *     Cloudflare TURN provider + GhostTag resolvers),
+ *   - adds a "Call" button to the chat header,
+ *   - shows an incoming-call prompt, an in-call bar, and plays remote audio.
+ *
+ * Calls are addressed by @GhostTag (Option A): the callee's identity key is
+ * resolved from their GhostTag so the DTLS fingerprint can be verified. It does
+ * NOT change call signaling, the state machine, or fingerprint verification —
+ * it only drives the existing GhostCall API + events.
+ */
+
+(function () {
+    'use strict';
+    if (typeof window === 'undefined') return;
+
+    var _call = null;          // GhostCall instance (constructed once, when unlocked)
+    var _building = null;      // in-flight construction promise
+    var _timer = null;         // in-call elapsed timer
+    var _startedAt = 0;
+
+    // ─── identity / construction ────────────────────────
+
+    function _stored() {
+        try { return window.GhostIdentity && GhostIdentity.getStoredIdentity ? GhostIdentity.getStoredIdentity() : null; }
+        catch (_) { return null; }
+    }
+
+    function _ready() {
+        return !!(window.GhostCall && window.GhostCallIce && window.app && window.app.mesh);
+    }
+
+    // The PIN-derived secp256k1 signing key, or null if the identity is locked.
+    function _getKey() {
+        return (window.GhostIdentity && GhostIdentity.getSessionPrivateKey)
+            ? GhostIdentity.getSessionPrivateKey().catch(function () { return null; })
+            : Promise.resolve(null);
+    }
+
+    // Build the GhostCall once. Requires an UNLOCKED identity (private key) so it
+    // can sign DTLS fingerprints. Constructed early so incoming offers are caught.
+    async function _ensureCall() {
+        if (_call) return _call;
+        if (_building) return _building;
+        if (!_ready()) throw new Error('Call modules or mesh not ready yet.');
+        const stored = _stored();
+        if (!stored || !stored.nodeId || !stored.publicKey) throw new Error('No identity — sign in first.');
+
+        _building = (async function () {
+            const call = new window.GhostCall({
+                mesh: window.app.mesh,
+                // Lazy key: GhostCall is built (and wired to the mesh to RING incoming
+                // calls) without the PIN-derived key; it's only fetched to place/answer.
+                identity: { id: stored.nodeId, publicKey: stored.publicKey, getPrivateKey: _getKey },
+                getIceServers: window.GhostCallIce.createCloudflareIceProvider({}),
+                // Resolve the call target. Contacts are addressed by node id / public
+                // key / address — usable directly as BOTH the mesh routing id (the same
+                // id messages already deliver to) and the verifiable identity. A bare
+                // @GhostTag is resolved via the GhostTag registry as a fallback.
+                resolveGhostTag: async function (arg) {
+                    var s = String(arg || '').trim();
+                    // Address or full public key: use directly (route + verify).
+                    if (/^0x[0-9a-fA-F]{40}$/.test(s) || _PUBKEY_RE.test(s)) {
+                        return { routeId: s, publicKey: s };
+                    }
+                    // nodeId (0x + 64 hex keccak): look its public key up server-side.
+                    if (/^0x[0-9a-fA-F]{64}$/i.test(s) || /^(gn_|node_)/.test(s)) {
+                        var pk = await _lookupNodePublicKey(s);
+                        if (pk) return { routeId: s, publicKey: pk };
+                        throw new Error('Peer has no key on file — they must sign in once so you can verify them');
+                    }
+                    // Bare @GhostTag.
+                    var gt = _ghostTag();
+                    if (!gt) throw new Error('Unrecognized contact id; enter a @GhostTag');
+                    const r = await gt.resolveTag(_normTag(s));
+                    if (!r || r.error || !r.publicKey) throw new Error((r && r.error) || 'GhostTag not found');
+                    return { routeId: r.nodeId || r.id || s, publicKey: r.publicKey };
+                },
+                // Verify an INCOMING caller's key. Prefer independent resolution
+                // (server registry, then GhostTag); fall back to the key in the
+                // (mesh-authenticated) signed offer so calls still work.
+                resolveIdentityKey: async function (peerId, msg) {
+                    var pk = await _lookupNodePublicKey(peerId);
+                    if (pk) return pk;
+                    try {
+                        var gt = _ghostTag();
+                        if (gt) { const r = await gt.resolveTag(_normTag(peerId)); if (r && r.publicKey) return r.publicKey; }
+                    } catch (_) { /* fall through */ }
+                    return (msg && msg.fp && msg.fp.pub) ? msg.fp.pub : null;
+                },
+            });
+            _wireEvents(call);
+            _call = call;
+            _building = null;
+            return call;
+        })();
+        return _building;
+    }
+
+    function _normTag(t) {
+        t = String(t || '').trim();
+        return t.charAt(0) === '@' ? t.slice(1) : t;
+    }
+
+    // GhostTag is defined as a bare top-level `const` in ghosttag.js; depending on
+    // load context it may be reachable via window.GhostTag or the global binding.
+    function _ghostTag() {
+        if (typeof window !== 'undefined' && window.GhostTag) return window.GhostTag;
+        try { return (typeof GhostTag !== 'undefined') ? GhostTag : null; } catch (_) { return null; }
+    }
+
+    function _backend() {
+        return (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http
+            : 'https://ghostnet-ji-production.up.railway.app';
+    }
+
+    function _authHeaders() {
+        var token = '';
+        try {
+            var raw = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token');
+            if (raw) { try { var p = JSON.parse(raw); token = (p && p.token) ? p.token : raw; } catch (_) { token = raw; } }
+        } catch (_) {}
+        var h = { 'Content-Type': 'application/json' };
+        if (token) h.Authorization = 'Bearer ' + token;
+        return h;
+    }
+
+    var _PUBKEY_RE = /^0x0[234][0-9a-fA-F]{64,128}$/i;
+
+    // Resolve a nodeId (0x+64hex keccak) to its secp256k1 public key via the
+    // existing /validate-node endpoint (the server's registry binds them). Returns
+    // null if the node has no usable key on file (e.g. it never authenticated).
+    async function _lookupNodePublicKey(nodeId) {
+        try {
+            if (!_authHeaders().Authorization && typeof window.ghostnetEnsureAuth === 'function') {
+                await window.ghostnetEnsureAuth();
+            }
+            var res = await fetch(_backend() + '/validate-node/' + encodeURIComponent(nodeId), { headers: _authHeaders() });
+            if (!res.ok) return null;
+            var data = await res.json();
+            var pk = data && data.publicKey;
+            // Accept only a real pubkey — /validate-node echoes the id back for
+            // unknown 0x ids, which is NOT a usable signing key.
+            return (typeof pk === 'string' && _PUBKEY_RE.test(pk)) ? pk : null;
+        } catch (_) { return null; }
+    }
+
+    // ─── event wiring → UI ──────────────────────────────
+
+    function _wireEvents(call) {
+        call.on('incoming', function (e) { _showIncoming(e); });
+        call.on('ringing', function (e) { _showBar('Calling ' + _peerLabel(e && e.peer) + '…', true); });
+        call.on('connected', function (e) {
+            if (e && e.remoteStream) _attachAudio(e.remoteStream);
+            _startedAt = Date.now();
+            _showBar('Connected', true);
+            _startTimer();
+        });
+        call.on('ended', function (e) {
+            _stopTimer();
+            _detachAudio();
+            _hideIncoming();
+            _toast('Call ended' + (e && e.reason && e.reason !== 'normal' ? ' (' + e.reason + ')' : ''));
+            _hideBar();
+        });
+        call.on('error', function (e) {
+            var code = e && e.code;
+            // 'locked' uses the single debounced unlock prompt (no loop / no nav spam),
+            // and keeps any incoming prompt up so the user can unlock and accept again.
+            if (code === 'locked') { _promptUnlock('continue the call'); return; }
+            _stopTimer(); _hideIncoming(); _hideBar();
+            var msg = (e && e.message) ? e.message : 'Call error';
+            if (code === 'mic-permission') msg = 'Microphone blocked. Grant mic access and try again.';
+            else if (code === 'ice') msg = 'Could not get a relay (TURN) — call not started.';
+            _toast(msg, 5000);
+        });
+    }
+
+    // ─── public actions ─────────────────────────────────
+
+    async function startCall(targetArg) {
+        // Default to the OPEN chat's peer id (what messages already route to), not
+        // the display name. Fall back to a prompt for a node id / @GhostTag.
+        var target = targetArg || _currentTarget();
+        if (!target) {
+            target = window.prompt('Call which contact? Enter their node id / public key or @GhostTag:', '');
+            if (!target) return;
+        }
+        try {
+            var call = await _ensureCall();
+            var pk = await _getKey();
+            if (!pk) { _promptUnlock('start a call'); return; }
+            await call.startCall(String(target).trim());
+            // The in-call bar is shown by the 'ringing' event once the offer is sent,
+            // so a failed resolve doesn't leave a stuck "Calling…" bar.
+        } catch (err) {
+            _hideBar();
+            _toast(err && err.message ? err.message : 'Could not start call', 5000);
+        }
+    }
+
+    // Calls need the PIN-derived signing key. If it's not loaded, show the unlock
+    // screen ONCE so the user can unlock, then they press Call again.
+    //
+    // IMPORTANT: do NOT auto-retry on 'identity:updated'. A previous version did,
+    // and when getSessionPrivateKey() stayed null it re-showed the PIN screen on
+    // every identity event — stacking listeners and trapping the user in an
+    // inescapable PIN loop that looked like a forced logout.
+    var _unlockPromptAt = 0;
+    function _promptUnlock(action) {
+        _toast('Unlock with your PIN to ' + (action || 'continue') + ', then press Call again.', 4500);
+        if (Date.now() - _unlockPromptAt < 3000) return; // debounce — never spam the screen
+        _unlockPromptAt = Date.now();
+        try {
+            var stored = window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored();
+            if (stored && window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
+                window.IdentityUI.showScreen('pin');
+            }
+        } catch (_) { /* */ }
+    }
+
+    async function acceptCall() {
+        var pk = await _getKey();
+        if (!pk) { _promptUnlock('answer the call'); return; }
+        try { var call = await _ensureCall(); await call.acceptCall(); _hideIncoming(); _showBar('Connecting…', true); }
+        catch (err) { _toast(err && err.message ? err.message : 'Could not accept', 4000); }
+    }
+
+    function rejectCall() { try { if (_call) _call.rejectCall(); } catch (_) {} _hideIncoming(); }
+    function endCall() { try { if (_call) _call.endCall(); } catch (_) {} _hideBar(); }
+
+    // The open chat's peer id — the same id messages route to (node id / key / address).
+    function _currentTarget() {
+        return (window.app && window.app.chatTarget) ? String(window.app.chatTarget) : null;
+    }
+
+    // Friendly label for the in-call bar: contact name, else a shortened id.
+    function _peerLabel(p) {
+        var name = window.app && window.app.chatContactName;
+        if (name) return String(name);
+        p = String(p || '');
+        return p.length > 16 ? p.slice(0, 8) + '…' + p.slice(-4) : p;
+    }
+
+    // ─── chat-header call button ────────────────────────
+
+    function _mountCallButton() {
+        if (document.getElementById('ghost-call-btn')) return;
+        // The chat header's action group holds the Scan + delete buttons; drop the
+        // Call button right before Scan so it sits with the other header actions.
+        var scan = document.getElementById('btn-ble-scan');
+        if (!scan || !scan.parentNode) return;
+        var btn = document.createElement('button');
+        btn.id = 'ghost-call-btn';
+        btn.className = 'btn-tiny';
+        btn.type = 'button';
+        btn.title = 'Start voice call';
+        btn.style.cssText = 'display:flex;align-items:center;gap:5px;border-radius:20px;';
+        btn.innerHTML = '<i data-lucide="phone" style="width:12px;"></i><span>Call</span>';
+        btn.addEventListener('click', function () { startCall(); });
+        scan.parentNode.insertBefore(btn, scan);
+        if (window.lucide && window.lucide.createIcons) { try { window.lucide.createIcons(); } catch (_) {} }
+    }
+
+    // ─── overlays (built dynamically, no markup edits) ──
+
+    function _bar() {
+        var bar = document.getElementById('ghost-call-bar');
+        if (bar) return bar;
+        bar = document.createElement('div');
+        bar.id = 'ghost-call-bar';
+        bar.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:1000000;'
+            + 'display:none;align-items:center;gap:14px;padding:10px 18px;border-radius:28px;'
+            + 'background:#0b1020;color:#e6edf6;box-shadow:0 6px 24px rgba(0,0,0,.4);font-size:0.9rem;';
+        var label = document.createElement('span');
+        label.id = 'ghost-call-bar-label';
+        var end = document.createElement('button');
+        end.textContent = 'End';
+        end.style.cssText = 'padding:6px 14px;border:none;border-radius:16px;background:#ef4444;color:#fff;'
+            + 'font-weight:600;cursor:pointer;';
+        end.addEventListener('click', endCall);
+        bar.appendChild(label);
+        bar.appendChild(end);
+        document.body.appendChild(bar);
+        return bar;
+    }
+    function _showBar(text, show) {
+        var bar = _bar();
+        document.getElementById('ghost-call-bar-label').textContent = text;
+        bar.style.display = show ? 'flex' : 'none';
+    }
+    function _hideBar() { var bar = document.getElementById('ghost-call-bar'); if (bar) bar.style.display = 'none'; }
+
+    function _startTimer() {
+        _stopTimer();
+        _timer = setInterval(function () {
+            var s = Math.floor((Date.now() - _startedAt) / 1000);
+            var mm = String(Math.floor(s / 60)).padStart(2, '0');
+            var ss = String(s % 60).padStart(2, '0');
+            var l = document.getElementById('ghost-call-bar-label');
+            if (l) l.textContent = 'Connected  ' + mm + ':' + ss;
+        }, 1000);
+    }
+    function _stopTimer() { if (_timer) { clearInterval(_timer); _timer = null; } }
+
+    function _showIncoming(e) {
+        _hideIncoming();
+        var ov = document.createElement('div');
+        ov.id = 'ghost-call-incoming';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:1000001;display:flex;align-items:center;'
+            + 'justify-content:center;background:rgba(2,4,20,.6);';
+        var card = document.createElement('div');
+        card.style.cssText = 'background:#0b1020;color:#e6edf6;padding:24px 28px;border-radius:16px;'
+            + 'text-align:center;min-width:260px;box-shadow:0 10px 40px rgba(0,0,0,.5);';
+        var title = document.createElement('div');
+        title.textContent = 'Incoming call';
+        title.style.cssText = 'font-size:1.05rem;font-weight:700;margin-bottom:6px;';
+        var who = document.createElement('div');
+        who.textContent = 'from ' + ((e && e.from) ? String(e.from).slice(0, 16) : 'unknown');
+        who.style.cssText = 'opacity:.7;font-size:0.82rem;margin-bottom:18px;word-break:break-all;';
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+        var acc = document.createElement('button');
+        acc.textContent = 'Accept';
+        acc.style.cssText = 'padding:8px 18px;border:none;border-radius:18px;background:#22c55e;color:#fff;font-weight:600;cursor:pointer;';
+        acc.addEventListener('click', acceptCall);
+        var rej = document.createElement('button');
+        rej.textContent = 'Decline';
+        rej.style.cssText = 'padding:8px 18px;border:none;border-radius:18px;background:#ef4444;color:#fff;font-weight:600;cursor:pointer;';
+        rej.addEventListener('click', rejectCall);
+        row.appendChild(acc); row.appendChild(rej);
+        card.appendChild(title); card.appendChild(who); card.appendChild(row);
+        ov.appendChild(card);
+        document.body.appendChild(ov);
+    }
+    function _hideIncoming() { var ov = document.getElementById('ghost-call-incoming'); if (ov) ov.remove(); }
+
+    function _attachAudio(stream) {
+        var a = document.getElementById('ghost-call-audio');
+        if (!a) {
+            a = document.createElement('audio');
+            a.id = 'ghost-call-audio';
+            a.autoplay = true;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+        }
+        a.srcObject = stream;
+        var p = a.play(); if (p && p.catch) p.catch(function () {});
+    }
+    function _detachAudio() {
+        var a = document.getElementById('ghost-call-audio');
+        if (a) { try { a.srcObject = null; } catch (_) {} }
+    }
+
+    function _toast(msg, ms) {
+        if (typeof window.showToast === 'function') { window.showToast(msg, ms || 3000); return; }
+        var t = document.createElement('div');
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:1000002;'
+            + 'background:#0b1020;color:#e6edf6;padding:10px 16px;border-radius:12px;font-size:0.85rem;'
+            + 'box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:80vw;text-align:center;';
+        document.body.appendChild(t);
+        setTimeout(function () { t.remove(); }, ms || 3000);
+    }
+
+    // ─── bootstrap ──────────────────────────────────────
+
+    function _boot() {
+        _mountCallButton();
+        // Re-mount the button whenever the chat view re-renders.
+        var mo = new MutationObserver(function () { _mountCallButton(); });
+        try { mo.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
+        // Construct the call engine once the identity is unlocked so incoming
+        // offers are caught even before the user places a call.
+        function tryBuild() { if (_ready() && _stored()) _ensureCall().catch(function () {}); }
+        window.addEventListener('identity:updated', tryBuild);
+        window.addEventListener('ghostnet:auth-ready', tryBuild);
+        setTimeout(tryBuild, 1500);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _boot);
+    } else {
+        _boot();
+    }
+
+    window.GhostCallUI = { startCall: startCall, acceptCall: acceptCall, rejectCall: rejectCall, endCall: endCall };
+})();
+
+</script>
     <script>
 /**
  * GhostNet Application Logic — FULLY HARDENED VERSION
@@ -29211,9 +30581,9 @@ const MsgRateLimit = (() => {
 })();
 
 var BACKEND = {
-    http: (window.__GHOSTNET_BACKEND__ || 'https://ghostnet-offline.local'),
-    ws: 'wss://ghostnet-offline.local/ws',
-    url: (path) => `${window.__GHOSTNET_BACKEND__ || 'https://ghostnet-offline.local'}${path}`
+    http: 'https://ghostnet-ji-production.up.railway.app',
+    ws: 'wss://ghostnet-ji-production.up.railway.app/ws',
+    url: (path) => `https://ghostnet-ji-production.up.railway.app${path}`
 };
 
 const MAX_MSG_LENGTH = 2000;
@@ -29876,8 +31246,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.dispatchEvent(new Event('app:ready'));
     window.dispatchEvent(new Event('app:state'));
 
-    if (window.__GHOSTNET_OFFLINE__) {
-        console.log('[GhostNet] Offline standalone mode active.');
+    if (window.location.protocol === 'file:') {
+        _showDevWarning(
+            ' Running from file:// — run node ghostnet-server.js and visit http://localhost:8080'
+        );
     }
 
     const isNativeCheck = window.Capacitor?.isNativePlatform?.() ?? false;
@@ -47804,7 +49176,7 @@ window.AppState = {
 };
 
 // --- CONSTANTS ---
-const BACKEND_URL = window.__GHOSTNET_BACKEND__ || 'https://ghostnet-offline.local';
+const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
 
 // ── PRIVACY-RESPECTING ANALYTICS ─────────────────────────────────────────
 const GhostAnalytics = (() => {
@@ -47907,6 +49279,21 @@ function _readToken() {
  */
 function hasAuthToken() {
     return !!_readToken();
+}
+
+/**
+ * Detect a GhostCall signaling envelope (call.offer/answer/ice/hangup) so it is
+ * NEVER rendered as a chat message. The server persists MESH_DIRECT payloads as
+ * chat history, so these can resurface on reload even though live signaling is
+ * intercepted by GhostCall — filter them at every render point.
+ */
+function _isCallSignal(text) {
+    if (text && typeof text === 'object') {
+        return typeof text.t === 'string' && text.t.indexOf('call.') === 0;
+    }
+    if (typeof text !== 'string' || text.charAt(0) !== '{' || text.indexOf('"t":"call.') === -1) return false;
+    try { const o = JSON.parse(text); return !!(o && typeof o.t === 'string' && o.t.indexOf('call.') === 0); }
+    catch (_) { return false; }
 }
 
 /**
@@ -49580,6 +50967,7 @@ const UI = {
 
             const username = c.otherUser ? (c.otherUser.username || c.otherUser.address || c.otherUser.id) : 'Unknown';
             let preview = c.lastMessage || 'Message...';
+            if (_isCallSignal(preview)) preview = 'Voice call';
             if (typeof preview === 'object' && preview.body) preview = preview.body;
             if (typeof preview === 'string' && preview.includes('body":"')) {
                 try { preview = JSON.parse(preview).body; } catch (e) { }
@@ -50407,6 +51795,10 @@ const UI = {
     addMessage: (text, type, msgId = null) => {
         const feed = document.getElementById('chat-feed');
         if (!feed) return;
+
+        // Never render voice-call signaling as a chat bubble (it can arrive from
+        // persisted history even though live signaling is handled by GhostCall).
+        if (_isCallSignal(text)) return;
 
         // [FIX #7] Skip messages already rendered (live message + history reload,
         // or a re-delivered packet) so threads don't show duplicates.
