@@ -376,12 +376,19 @@
             }
         }
 
+        // Lightweight call-flow logging. Silence with `window.GHOSTCALL_DEBUG = false`.
+        _log() {
+            if (typeof window !== 'undefined' && window.GHOSTCALL_DEBUG === false) return;
+            try { console.log.apply(console, ['[GhostCall]'].concat([].slice.call(arguments))); } catch (_) { /* */ }
+        }
+
         _onMeshMessage(data, fromId) {
             // Only handle our call.* envelopes; everything else flows to the app.
             if (!data || typeof data !== 'object' || typeof data.t !== 'string' || data.t.indexOf('call.') !== 0) {
                 return;
             }
             const v = Signaling.validateMessage(data);
+            this._log('recv', data.t, 'from', fromId, 'callId', data.callId, 'valid=' + v.ok, v.ok ? '' : ('REJECTED: ' + v.error));
             if (!v.ok) return; // drop malformed signaling silently
 
             switch (data.t) {
@@ -438,12 +445,16 @@
 
         async _onAnswer(msg) {
             const call = this._call;
-            if (!call || call.role !== 'caller' || call.id !== msg.callId) return;
+            if (!call || call.role !== 'caller' || call.id !== msg.callId) {
+                this._log('answer IGNORED — have call', call && call.id, 'role', call && call.role, '/ msg.callId', msg.callId);
+                return;
+            }
 
             // Verify the answer's fingerprint against the GhostTag we dialed.
             const check = Fingerprint.verifyProof(msg.fp, {
                 kind: 'answer', callId: msg.callId, from: msg.from, to: this.identity.id, sdp: msg.sdp,
             }, call.peerKey, this.verifier);
+            this._log('answer verify:', check.ok ? 'OK' : ('FAIL — ' + check.error));
             if (!check.ok) {
                 this._emit('error', { code: 'fingerprint', message: `answer fingerprint rejected: ${check.error}` });
                 this.endCall();
@@ -454,6 +465,7 @@
             this._setState(call, STATES.CONNECTING);
             try {
                 await call.pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp.sdp });
+                this._log('answer applied — setRemoteDescription OK, connecting');
                 this._drainRemoteCandidates(call);
             } catch (e) {
                 this._fail('answer', `failed to apply answer: ${e.message}`);
@@ -462,19 +474,22 @@
 
         async _onIce(msg) {
             const call = this._call;
-            if (!call || call.id !== msg.callId) return;
+            if (!call || call.id !== msg.callId) { this._log('ice IGNORED — no matching call'); return; }
             const cand = msg.candidate;
             // Buffer until remoteDescription exists, else addIceCandidate throws.
             if (!call.pc || !call.pc.remoteDescription) {
                 call.remoteCandidates.push(cand);
+                this._log('ice buffered (no remoteDescription yet)');
                 return;
             }
-            try { await call.pc.addIceCandidate(cand); } catch (_) { /* ignore bad candidate */ }
+            try { await call.pc.addIceCandidate(cand); this._log('ice applied'); }
+            catch (e) { this._log('ice add FAILED', e && e.message); }
         }
 
         _onHangup(msg) {
             const call = this._call;
-            if (!call || call.id !== msg.callId) return;
+            if (!call || call.id !== msg.callId) { this._log('hangup IGNORED — no matching call'); return; }
+            this._log('hangup recv reason=' + (msg.reason || 'normal'));
             this._teardown(msg.reason || 'normal');
         }
 
@@ -519,6 +534,10 @@
                 return null;
             }
             call.pc = pc;
+            try {
+                const hasTurn = JSON.stringify(iceServers || []).indexOf('turn') !== -1;
+                this._log('pc created — iceServers:', (iceServers || []).length, 'TURN present:', hasTurn);
+            } catch (_) { /* */ }
 
             pc.onicecandidate = (ev) => {
                 if (!ev.candidate || !this._call || this._call.id !== call.id) return;
@@ -528,10 +547,12 @@
                 }));
             };
             pc.ontrack = (ev) => {
+                this._log('ontrack — remote media received');
                 call.remoteStream = ev.streams && ev.streams[0] ? ev.streams[0] : null;
             };
             pc.oniceconnectionstatechange = () => {
                 const s = pc.iceConnectionState;
+                this._log('iceConnectionState ->', s);
                 if ((s === 'connected' || s === 'completed') && call.state !== STATES.ACTIVE) {
                     this._setState(call, STATES.ACTIVE);
                     this._emit('connected', { callId: call.id, remoteStream: call.remoteStream });
@@ -647,9 +668,11 @@
         _send(envelope) {
             // The mesh message is delivered E2EE + identity-authenticated by the
             // existing channel; we simply hand it the routing id + payload.
+            this._log('send', envelope.t, 'to', envelope.to, 'callId', envelope.callId);
             try {
                 this.mesh.sendToPeer(envelope.to, envelope);
             } catch (e) {
+                this._log('send FAILED', e && e.message);
                 this._emit('error', { code: 'transport', message: `mesh send failed: ${e.message}` });
             }
         }
