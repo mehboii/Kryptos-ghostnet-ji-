@@ -7,13 +7,14 @@
     "icon": "./assets/ghostnet-logo.png",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.ghostnet.app"
-    },
     "android": {
       "package": "com.ghostnet.app",
-      "permissions": ["android.permission.CAMERA"],
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.BLUETOOTH_CONNECT"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/ghostnet-logo.png",
         "backgroundColor": "#0b0e14"
@@ -23,6 +24,14 @@
     },
     "web": {
       "favicon": "./assets/ghostnet-logo.png"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ghostnet.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "GhostNet uses Bluetooth to discover and securely connect to nearby devices in the offline mesh.",
+        "UIBackgroundModes": ["bluetooth-central", "bluetooth-peripheral"]
+      }
     },
     "plugins": [
       [
@@ -38,7 +47,8 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/withGhostnetBle"
     ]
   }
 }

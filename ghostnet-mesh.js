@@ -397,6 +397,46 @@ class GhostMesh {
         return result;
     }
 
+    /**
+     * Register a peer that completed the Proximity Connect (BLE) mutual identity
+     * handshake. Unlike the Web-Bluetooth path (connectBLEDevice), the transport
+     * here is the native bridge, so the peer carries a `send()` closure instead of
+     * a Web Bluetooth `writeChar`. Added for proximity-connect.js — the only
+     * GhostMesh API the bridge needs that did not previously exist.
+     *
+     * @param {{id:string, deviceId?:string, name?:string, publicKey?:string,
+     *          transport?:string, send?:(payload:any)=>Promise<any>}} info
+     * @returns {boolean} true if registered
+     */
+    registerProximityPeer(info) {
+        if (!info) return false;
+        const peerId = this.validatePeerId(info.id) || this.validatePeerId(info.deviceId);
+        if (!peerId || peerId === this.identity.id) return false;
+
+        const peer = {
+            id: peerId,
+            transport: info.transport || 'ble',
+            connected: true,
+            lastSeen: Date.now(),
+            name: info.name || ('Proximity-' + peerId.slice(-4)),
+            publicKey: info.publicKey || '',
+            authenticated: true,          // passed mutual identity challenge–response
+            proximity: true,
+            deviceId: info.deviceId || null,
+            // Encrypted-send closure provided by ProximityConnect (session AES-GCM).
+            proximitySend: typeof info.send === 'function' ? info.send : null,
+            device: null,
+            server: null,
+            writeChar: null
+        };
+        this.peers.set(peerId, peer);
+        this.onPeerJoin(peer);
+        this.onMeshUpdate(this.getPeers());
+        this.onStatusChange({ state: 'connected', transport: 'ble', peerId });
+        console.log(` Proximity: registered authenticated peer ${peer.name}`);
+        return true;
+    }
+
     getStatus() {
         const blePeers = [...this.peers.values()].filter(p => p.transport === 'ble' && p.connected).length;
         const wsPeers = [...this.peers.values()].filter(p => p.transport === 'ws').length;

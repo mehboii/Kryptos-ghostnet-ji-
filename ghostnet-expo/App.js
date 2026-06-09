@@ -3,6 +3,8 @@ import { StyleSheet, View, BackHandler, StatusBar, Image, Text, Platform, Keyboa
 import { WebView } from 'react-native-webview';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import ProximityBLE from './src/ble/ProximityBLE';
+import { BLE_BRIDGE_SHIM } from './src/ble/bridgeShim';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -12,8 +14,84 @@ const OFFLINE_SOURCE = Platform.OS === 'android'
 
 export default function App() {
   const webViewRef = useRef(null);
+  const bleRef = useRef(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [webViewReady, setWebViewReady] = useState(false);
+
+  // ── Native BLE transport bridge ──────────────────────────────────────────
+  // proximity-connect.js (in the WebView) calls window.GhostNetBLE.* which RPCs
+  // here; this routes to the native ProximityBLE radio and pushes events back.
+  const injectToWeb = useCallback((js) => {
+    if (webViewRef.current) webViewRef.current.injectJavaScript(js + '\ntrue;');
+  }, []);
+
+  const emitToWeb = useCallback((event, data) => {
+    injectToWeb(
+      `window.GhostNetBLE && window.GhostNetBLE._event(${JSON.stringify(event)}, ${JSON.stringify(data || {})});`
+    );
+  }, [injectToWeb]);
+
+  const ackToWeb = useCallback((id, ok, payload) => {
+    injectToWeb(
+      `window.GhostNetBLE && window.GhostNetBLE._ack(${JSON.stringify(id)}, ${ok ? 'true' : 'false'}, ${JSON.stringify(payload ?? null)});`
+    );
+  }, [injectToWeb]);
+
+  // Lazily construct the radio + forward all transport events to the web layer.
+  const getBle = useCallback(async () => {
+    if (!bleRef.current) {
+      const ble = new ProximityBLE();
+      await ble.init();
+      const forward = [
+        'deviceFound', 'deviceUpdated', 'centralWrite', 'centralConnected',
+        'centralDisconnected', 'notification', 'disconnected', 'peripheralState', 'error',
+      ];
+      forward.forEach((evt) => ble.on(evt, (data) => emitToWeb(evt, data)));
+      bleRef.current = ble;
+    }
+    return bleRef.current;
+  }, [emitToWeb]);
+
+  const handleBleCommand = useCallback(async (id, cmd, args) => {
+    try {
+      const ble = await getBle();
+      let result = null;
+      switch (cmd) {
+        case 'isSupported': {
+          const state = await ble.adapterState();
+          result = { adapterState: state, peripheral: await ble.isPeripheralSupported() };
+          break;
+        }
+        case 'isPeripheralSupported': result = await ble.isPeripheralSupported(); break;
+        case 'requestPermissions': result = await ble.requestPermissions(); break;
+        case 'adapterState': result = await ble.adapterState(); break;
+        case 'startAdvertising': result = await ble.startAdvertising(args); break;
+        case 'updatePseudonym': await ble.updatePseudonym(args.pseudonymHex); result = true; break;
+        case 'stopAdvertising': await ble.stopAdvertising(); result = true; break;
+        case 'startScan': ble.startScan(); result = true; break;
+        case 'stopScan': ble.stopScan(); result = true; break;
+        case 'connect': result = await ble.connect(args.deviceId); break;
+        case 'disconnect': await ble.disconnect(args.deviceId); result = true; break;
+        case 'read': result = await ble.read(args.deviceId, args.charUuid); break;
+        case 'write': result = await ble.write(args.deviceId, args.charUuid, args.base64); break;
+        case 'startNotifications': ble.startNotifications(args.deviceId, args.charUuid); result = true; break;
+        case 'notifyData': await ble.notifyData(args.base64); result = true; break;
+        default: throw new Error('Unknown BLE command: ' + cmd);
+      }
+      ackToWeb(id, true, result);
+    } catch (e) {
+      ackToWeb(id, false, { message: e.message || String(e) });
+    }
+  }, [getBle, ackToWeb]);
+
+  const onWebViewMessage = useCallback((event) => {
+    let msg;
+    try { msg = JSON.parse(event.nativeEvent.data); } catch (_) { return; }
+    if (!msg || msg.ns !== 'ble') return; // ignore non-BLE messages
+    handleBleCommand(msg.id, msg.cmd, msg.args || {});
+  }, [handleBleCommand]);
+
+  useEffect(() => () => { if (bleRef.current) bleRef.current.destroy(); }, []);
 
   // Request camera permission up-front so the in-WebView QR scanner (getUserMedia)
   // can access the camera. Without the native grant Android silently denies it.
@@ -61,6 +139,8 @@ export default function App() {
             ref={webViewRef}
             source={OFFLINE_SOURCE}
             style={[styles.webview, !webViewReady && styles.hidden]}
+            injectedJavaScriptBeforeContentLoaded={BLE_BRIDGE_SHIM}
+            onMessage={onWebViewMessage}
             onNavigationStateChange={(navState) => {
               setCanGoBack(navState.canGoBack);
             }}
