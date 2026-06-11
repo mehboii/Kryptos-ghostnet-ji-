@@ -346,6 +346,13 @@ document.addEventListener('DOMContentLoaded', () => {
         },
 
         confirmPairing() {
+            // Trust is granted HERE, not at handshake completion: mesh
+            // registration only happens once the user confirms the code.
+            const confirmed = window.ProximityConnect?.confirmSession();
+            if (!confirmed) {
+                this.log('No session awaiting confirmation', 'error');
+                return;
+            }
             document.getElementById('prox-verify-section').style.display = 'none';
             document.getElementById('prox-connected-section').style.display = 'block';
             document.getElementById('prox-device-section').style.display = 'none';

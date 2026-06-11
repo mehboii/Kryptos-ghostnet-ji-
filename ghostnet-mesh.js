@@ -437,6 +437,26 @@ class GhostMesh {
         return true;
     }
 
+    /**
+     * Remove a peer added via registerProximityPeer — called when the user
+     * cancels pairing, the session drops, or the BLE link disconnects, so a
+     * cancelled/dead pairing never leaves a trusted mesh neighbor behind.
+     *
+     * @param {string} id peerId (or deviceId) used at registration
+     * @returns {boolean} true if a proximity peer was removed
+     */
+    unregisterProximityPeer(id) {
+        const peerId = this.validatePeerId(id);
+        if (!peerId) return false;
+        const peer = this.peers.get(peerId);
+        if (!peer || !peer.proximity) return false;
+        this.peers.delete(peerId);
+        this.onPeerLeave(peer);
+        this.onMeshUpdate(this.getPeers());
+        console.log(` Proximity: unregistered peer ${peer.name}`);
+        return true;
+    }
+
     getStatus() {
         const blePeers = [...this.peers.values()].filter(p => p.transport === 'ble' && p.connected).length;
         const wsPeers = [...this.peers.values()].filter(p => p.transport === 'ws').length;

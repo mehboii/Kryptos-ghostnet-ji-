@@ -68,7 +68,9 @@ class ProximityConnect {
         this._scanReportTimer = null;
         this._bridgeWired = false;
         // Per-connection responder state (peripheral side).
-        this._responder = null; // { deviceId, sharedBits, peerIdentityPub, peerNodeId, ephA, ephB, nonceB }
+        this._responder = null; // { deviceId, sharedBits, peerIdentityPub, peerNodeId, peerDisplayName, ephA, ephB, nonceB }
+        this._pendingSession = null;   // authed session awaiting user confirmation
+        this._registeredPeerId = null; // mesh peer created by confirmSession()
     }
 
     // ── Events ──────────────────────────────────────────────────
@@ -96,6 +98,7 @@ class ProximityConnect {
 
         this.localIdentity = {
             nodeId: identity.nodeId,
+            displayName: this._resolveDisplayName(identity),
             publicKeyHex: await this._resolveIdentityPublicKey(identity)
         };
         if (!this._isRealPublicKey(this.localIdentity.publicKeyHex)) {
@@ -202,9 +205,13 @@ class ProximityConnect {
                 return;
             }
             const pseudonymHex = await this._currentPseudonymHex();
+            // peerId/publicKeyHex are deliberately BLANK: CHAR_PEER_ID/CHAR_PUB_KEY
+            // were readable by ANY connecting central before authentication, leaking
+            // a stable nodeId + identity key and defeating the rotating pseudonym.
+            // Identity is now exchanged only inside the handshake frames.
             const ok = await ble.startAdvertising({
-                peerId: this.localIdentity.nodeId,
-                publicKeyHex: this.localIdentity.publicKeyHex,
+                peerId: '',
+                publicKeyHex: '',
                 pseudonymHex
             });
             this._advertising = !!ok;
@@ -294,6 +301,9 @@ class ProximityConnect {
 
         this._ble.on('disconnected', (e) => {
             if (this.remotePeer && this.remotePeer.deviceId === (e && e.deviceId)) {
+                // Link dropped — revoke any mesh trust granted for this session.
+                this._unregisterMeshPeer();
+                this._pendingSession = null;
                 this._emit('disconnected', { deviceId: e.deviceId });
                 if (this.state !== 'session_ready' && this.state !== 'mesh_registered') {
                     this._setState('advertising_scanning');
@@ -315,11 +325,8 @@ class ProximityConnect {
             await ble.startNotifications(deviceId, PROX_CHAR_DATA);
             this._log('Connected to ' + deviceId.slice(0, 12));
 
-            // Read peer identity (nodeId + identity public key) from the GATT server.
-            const peerNodeId = this._b64ToStr(await ble.read(deviceId, PROX_CHAR_PEER_ID)).trim();
-            const peerIdentityPub = this._normalizePub(this._b64ToHex(await ble.read(deviceId, PROX_CHAR_PUB_KEY)));
-            this._log('Peer ' + peerNodeId.slice(0, 12) + ' id-key ' + (peerIdentityPub ? peerIdentityPub.slice(0, 16) + '…' : 'MISSING'));
-
+            // No GATT identity reads: CHAR_PEER_ID/CHAR_PUB_KEY are blank by design
+            // (pre-auth identity leak). Identity arrives in HANDSHAKE_ACCEPT instead.
             this._setState('authenticating');
 
             // 1. HANDSHAKE_INIT → peer (our identity + ephemeral pub). Central
@@ -327,6 +334,7 @@ class ProximityConnect {
             await this._sendData(deviceId, {
                 type: 'HANDSHAKE_INIT',
                 nodeId: this.localIdentity.nodeId,
+                displayName: this.localIdentity.displayName,
                 identityPub: this.localIdentity.publicKeyHex,
                 ephemeralPub: this._ephemeralPubHex,
                 ts: Date.now()
@@ -339,7 +347,12 @@ class ProximityConnect {
             }
             const ephA = this._ephemeralPubHex;        // initiator ephemeral (us)
             const ephB = accept.ephemeralPub;          // responder ephemeral (peer)
-            const acceptIdentityPub = this._normalizePub(accept.identityPub || peerIdentityPub);
+            const peerNodeId = String(accept.nodeId || '').trim();
+            const acceptIdentityPub = this._normalizePub(accept.identityPub || '');
+            if (!peerNodeId || !acceptIdentityPub) {
+                throw new Error('Peer did not present an identity in the handshake');
+            }
+            this._log('Peer ' + peerNodeId.slice(0, 12) + ' id-key ' + acceptIdentityPub.slice(0, 16) + '…');
 
             // 3. Derive ECDH shared secret + session keys + visual code.
             const sharedBits = await this._deriveShared(ephB);
@@ -365,6 +378,10 @@ class ProximityConnect {
                 acceptIdentityPub, nonceA, ephA, ephB, chalResp.signature
             );
             if (!okPeer) throw new Error('Peer identity signature INVALID — possible MITM/impersonation');
+
+            // The signature proves the peer owns acceptIdentityPub; this proves the
+            // claimed nodeId actually DERIVES from that key (anti-GhostTag-spoofing).
+            this._assertNodeIdBinding(peerNodeId, acceptIdentityPub, accept.displayName);
 
             // 6. AUTH_FINAL: prove OUR identity by signing peer's nonceB.
             const sigA = await this._signIdentity(chalResp.nonce, ephA, ephB);
@@ -400,7 +417,8 @@ class ProximityConnect {
                     sharedBits,
                     ephA, ephB,
                     peerIdentityPub: this._normalizePub(frame.identityPub || ''),
-                    peerNodeId: frame.nodeId
+                    peerNodeId: frame.nodeId,
+                    peerDisplayName: frame.displayName
                 };
                 this._setState('authenticating');
                 this._emit('pairingRequest', { peerId: frame.nodeId, verificationCode: this.verificationCode });
@@ -408,6 +426,7 @@ class ProximityConnect {
                 await this._sendData(deviceId, {
                     type: 'HANDSHAKE_ACCEPT',
                     nodeId: this.localIdentity.nodeId,
+                    displayName: this.localIdentity.displayName,
                     identityPub: this.localIdentity.publicKeyHex,
                     ephemeralPub: this._ephemeralPubHex,
                     ts: Date.now()
@@ -436,6 +455,9 @@ class ProximityConnect {
                 );
                 if (!okPeer) throw new Error('Initiator identity signature INVALID — possible MITM/impersonation');
 
+                // Bind the claimed nodeId to the key that just signed (anti-spoofing).
+                this._assertNodeIdBinding(r.peerNodeId, r.peerIdentityPub, r.peerDisplayName);
+
                 this.remotePeer = {
                     deviceId,
                     peerId: r.peerNodeId,
@@ -462,6 +484,36 @@ class ProximityConnect {
         }
     }
 
+    // ── nodeId ↔ identity-key binding ───────────────────────────
+    /**
+     * nodeId is deterministically derived as
+     * ethers.id("<len>:<uncompressed 0x pubkey>|<len>:<displayName>")
+     * (crypto-identity.js generateNodeId). A valid signature only proves the peer
+     * owns SOME key — without this check it could pair that key with a victim's
+     * nodeId/GhostTag. Recompute the derivation and fail closed on mismatch.
+     */
+    _assertNodeIdBinding(claimedNodeId, identityPubHex, displayName) {
+        const gi = (typeof window !== 'undefined') ? window.GhostIdentity : null;
+        if (!gi || typeof gi.generateNodeId !== 'function') {
+            throw new Error('Identity module unavailable — cannot verify peer nodeId binding');
+        }
+        let canonicalPub;
+        try {
+            // Creation always uses the uncompressed lowercase 0x04… form
+            // (wallet.signingKey.publicKey); expand whatever the peer sent to match.
+            canonicalPub = ethers.SigningKey.computePublicKey(
+                '0x' + String(identityPubHex || '').replace(/^0x/, ''), false
+            );
+        } catch (_) {
+            throw new Error('Peer identity key is not a valid secp256k1 key');
+        }
+        const derived = gi.generateNodeId(canonicalPub, displayName);
+        if (!claimedNodeId || !derived ||
+            String(derived).toLowerCase() !== String(claimedNodeId).toLowerCase()) {
+            throw new Error('Peer nodeId does not derive from its identity key — impersonation blocked');
+        }
+    }
+
     // ── Identity public-key resolution ─────────────────────────
     /** A real secp256k1 pubkey: 33-byte compressed (02/03) or 65-byte uncompressed (04). */
     _isRealPublicKey(hex) {
@@ -469,6 +521,24 @@ class ProximityConnect {
         const h = hex.replace(/^0x/, '').toLowerCase();
         return (h.length === 66 && (h.startsWith('02') || h.startsWith('03'))) ||
                (h.length === 130 && h.startsWith('04'));
+    }
+
+    /**
+     * Our displayName as used at nodeId creation time. It is part of the
+     * canonical nodeId derivation, so the peer needs it to verify our binding.
+     */
+    _resolveDisplayName(identity) {
+        if (identity && identity.displayName !== undefined && identity.displayName !== null) {
+            return String(identity.displayName);
+        }
+        try {
+            const stored = window.GhostIdentity && window.GhostIdentity.getStoredIdentity
+                ? window.GhostIdentity.getStoredIdentity() : null;
+            if (stored && stored.displayName !== undefined && stored.displayName !== null) {
+                return String(stored.displayName);
+            }
+        } catch (_) {}
+        return '';
     }
 
     /**
@@ -523,11 +593,26 @@ class ProximityConnect {
     }
 
     // ── Session ready + mesh registration ───────────────────────
+    /**
+     * Cryptographic auth is complete, but the peer is NOT trusted yet: mesh
+     * registration is deferred until the user compares the 6-digit verification
+     * code and calls confirmSession(). This applies to BOTH roles.
+     */
     async _onSessionReady(deviceId, transport) {
+        this._pendingSession = { deviceId };
         this._setState('session_ready');
         this._emit('connected', { peer: this.remotePeer, verificationCode: this.verificationCode });
-        this._log('SESSION_READY with ' + (this.remotePeer.peerId || deviceId).slice(0, 12) + ' code ' + this.verificationCode);
+        this._log('SESSION_READY with ' + (this.remotePeer.peerId || deviceId).slice(0, 12) + ' code ' + this.verificationCode + ' — awaiting user confirmation');
+    }
 
+    /** User confirmed the verification code matches — NOW grant mesh trust. */
+    confirmSession() {
+        const pending = this._pendingSession;
+        if (!pending || !this.remotePeer || this.state !== 'session_ready') {
+            this._log('confirmSession ignored — no session awaiting confirmation');
+            return false;
+        }
+        const deviceId = pending.deviceId;
         try {
             if (window.app && window.app.mesh && typeof window.app.mesh.registerProximityPeer === 'function') {
                 window.app.mesh.registerProximityPeer({
@@ -538,12 +623,29 @@ class ProximityConnect {
                     transport: 'ble',
                     send: (payload) => this.sendEncryptedTo(deviceId, payload)
                 });
+                this._registeredPeerId = this.remotePeer.peerId || deviceId;
                 this._setState('mesh_registered');
-                this._log('Registered authenticated peer in mesh neighbor registry');
+                this._log('User confirmed pairing — registered authenticated peer in mesh');
             }
+            this._pendingSession = null;
+            return true;
         } catch (e) {
             this._emit('error', { phase: 'mesh', message: e.message });
+            return false;
         }
+    }
+
+    /** Remove the mesh peer created by confirmSession(), if any. */
+    _unregisterMeshPeer() {
+        const peerId = this._registeredPeerId;
+        this._registeredPeerId = null;
+        if (!peerId) return;
+        try {
+            if (window.app && window.app.mesh && typeof window.app.mesh.unregisterProximityPeer === 'function') {
+                window.app.mesh.unregisterProximityPeer(peerId);
+                this._log('Unregistered proximity peer ' + String(peerId).slice(0, 12) + ' from mesh');
+            }
+        } catch (_) {}
     }
 
     // ── Encrypted messaging over the session ────────────────────
@@ -686,6 +788,8 @@ class ProximityConnect {
     _log(msg) { console.log('[ProximityConnect] ' + msg); }
 
     async disconnect() {
+        this._unregisterMeshPeer();
+        this._pendingSession = null;
         const deviceId = this.remotePeer && this.remotePeer.deviceId;
         if (deviceId && this._ble) { try { await this._ble.disconnect(deviceId); } catch (_) {} }
         this.sessionKeys = null;
