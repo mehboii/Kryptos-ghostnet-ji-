@@ -305,6 +305,64 @@ document.addEventListener('DOMContentLoaded', () => {
             background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.5px;
         }
 
+        /* Device meta row: vendor / category / proximity */
+        .radar-device-item .dev-proximity {
+            font-size: 0.65rem; padding: 1px 6px; border-radius: 4px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .dev-proximity.very.close, .dev-proximity.very-close { background: rgba(16,185,129,0.15); color: #10b981; }
+        .dev-proximity.nearby { background: rgba(245,158,11,0.12); color: #f59e0b; }
+        .dev-proximity.far { background: rgba(107,114,128,0.15); color: #9ca3af; }
+        .dev-proximity.unknown { background: rgba(107,114,128,0.12); color: #6b7280; }
+
+        /* "Notable" chip — rare, always paired with a plain-language reason */
+        .radar-device-item.notable {
+            border-left-color: #f59e0b;
+            background: rgba(245,158,11,0.05);
+        }
+        .dev-notable {
+            margin-top: 6px; font-size: 0.7rem; color: #f59e0b;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .dev-unknown-name { color: var(--text-muted); font-style: italic; }
+
+        /* WiFi (nearby networks) board */
+        .radar-wifi-board {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+        .radar-wifi-board h3 { margin: 0 0 4px; font-size: 1rem; }
+        .radar-wifi-sub { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 14px; }
+        .radar-wifi-note {
+            font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;
+            padding: 12px; border: 1px dashed var(--border); border-radius: 8px;
+            background: rgba(0,0,0,0.2);
+        }
+        .radar-wifi-item {
+            background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px 12px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-left: 4px solid rgba(34,211,238,0.4); margin-bottom: 8px;
+        }
+        .radar-wifi-item.notable { border-left-color: #f59e0b; }
+        .radar-wifi-item .wifi-name { font-size: 0.85rem; color: var(--text-primary); font-weight: 600; }
+        .radar-wifi-item .wifi-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+        .radar-wifi-item .wifi-rssi {
+            font-family: monospace; font-size: 0.72rem; color: var(--text-muted);
+            background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;
+        }
+
+        /* Unsupported-environment (web / Expo Go) state */
+        .radar-unsupported {
+            text-align: center; padding: 36px 20px;
+            border: 1px solid rgba(139,92,246,0.3); border-radius: 12px;
+            background: linear-gradient(180deg, rgba(34,211,238,0.04) 0%, rgba(139,92,246,0.06) 100%);
+        }
+        .radar-unsupported .ru-title { font-size: 1rem; font-weight: 700; color: #a78bfa; margin-bottom: 8px; }
+        .radar-unsupported .ru-desc { font-size: 0.82rem; color: var(--text-muted); max-width: 360px; margin: 0 auto; line-height: 1.5; }
+
         @media (max-width: 600px) {
             .ghost-radar-visual { width: 200px; height: 200px; }
             .radar-status-bar { flex-direction: column; gap: 8px; text-align: center; }
@@ -380,10 +438,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
 
+            <!-- UNSUPPORTED ENVIRONMENT (web / Expo Go) -->
+            <div id="radar-unsupported" style="display:none;"></div>
+
             <!-- DEVICE LIST -->
-            <div class="radar-device-board">
+            <div class="radar-device-board" id="radar-device-board">
                 <div class="radar-device-header">
-                    <h3>Nearby Devices</h3>
+                    <h3>Nearby Devices (BLE)</h3>
                     <button style="background:none; border:1px solid var(--border); color:var(--text-muted); padding:4px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; font-weight:600; letter-spacing:0.5px;" onclick="GhostRadarUI.manualScan()">RESCAN</button>
                 </div>
                 <div class="radar-device-list" id="radar-device-list">
@@ -397,9 +458,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             </svg>
                         </div>
                         <div class="empty-title">No devices found</div>
-                        <div class="empty-desc">Scanning for BLE and WiFi signals nearby. Make sure Bluetooth is enabled.</div>
+                        <div class="empty-desc">Scanning for BLE signals nearby. Make sure Bluetooth is enabled.</div>
                     </div>
                 </div>
+            </div>
+
+            <!-- WIFI (NEARBY NETWORKS — Android only) -->
+            <div class="radar-wifi-board" id="radar-wifi-board">
+                <h3>Nearby Networks (WiFi)</h3>
+                <p class="radar-wifi-sub">Routers and hotspots in range — not phones or people.</p>
+                <div id="radar-wifi-body"></div>
             </div>
 
         </div>
@@ -427,25 +495,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!radar) return;
 
             const ps = radar.permissionState;
-            const allGranted = ps.ble === 'granted';
-            const anyDenied = ps.ble === 'denied';
+            const denied = ps.ble === 'denied';
 
             const banner = document.getElementById('radar-perm-banner');
-            if (allGranted) {
-                banner.classList.remove('visible');
-            } else if (anyDenied) {
-                banner.classList.add('visible');
+            // Only nag when BLE is actually denied AND the radio could otherwise work.
+            if (banner) {
+                if (denied && radar.env === 'native') banner.classList.add('visible');
+                else banner.classList.remove('visible');
             }
 
-            // Update dots
             this._setPermDot('perm-ble-dot', ps.ble);
             this._setPermDot('perm-wifi-dot', ps.wifi);
 
-            // If denied permanently, user must go to system settings
             const btn = document.getElementById('btn-grant-perms');
-            if (anyDenied && ps.ble !== 'unknown') {
-                btn.textContent = 'Open Settings to Grant';
-            }
+            if (btn && denied && ps.ble !== 'unknown') btn.textContent = 'Open Settings to Grant';
         },
 
         _setPermDot(id, state) {
@@ -455,11 +518,45 @@ document.addEventListener('DOMContentLoaded', () => {
             el.textContent = state === 'granted' ? '\u2713' : state === 'denied' ? '\u2717' : '?';
         },
 
+        _wifi: { supported: false, available: false, reason: 'unknown', networks: [] },
+
         async manualScan() {
             const radar = window.GhostRadar;
-            if (!radar || radar.scanning) return;
+            if (!radar) return;
             if (typeof GhostAnalytics !== 'undefined') GhostAnalytics.trackFeature('radar:scan');
-            await radar.startScan();
+            await radar.start();
+        },
+
+        // ── Unsupported-environment gate (browser / Expo Go) ────────
+        _showUnsupported(env) {
+            const box = document.getElementById('radar-unsupported');
+            const board = document.getElementById('radar-device-board');
+            const wifiBoard = document.getElementById('radar-wifi-board');
+            const banner = document.getElementById('radar-perm-banner');
+            const visual = document.getElementById('radar-visual');
+            if (!box) return;
+            const where = env === 'web' ? 'a web browser' : 'Expo Go';
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div class="radar-unsupported">
+                    <div class="ru-title">Open in the GhostNet App</div>
+                    <div class="ru-desc">Ghost Radar scans the Bluetooth radio directly, which only works in the installed GhostNet app — not in ${where}. Bluetooth and WiFi scanning need the native app to reach your phone's hardware.</div>
+                </div>`;
+            if (board) board.style.display = 'none';
+            if (wifiBoard) wifiBoard.style.display = 'none';
+            if (banner) banner.classList.remove('visible');
+            if (visual) visual.classList.add('paused');
+            const label = document.getElementById('radar-scan-label');
+            if (label) label.textContent = 'Unavailable in this environment';
+            const dot = document.getElementById('radar-scan-dot');
+            if (dot) dot.classList.add('idle');
+        },
+
+        _hideUnsupported() {
+            const box = document.getElementById('radar-unsupported');
+            const board = document.getElementById('radar-device-board');
+            if (box) box.style.display = 'none';
+            if (board) board.style.display = 'block';
         },
 
         /**
@@ -477,17 +574,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const size = visual.offsetWidth || 220;
             const cx = size / 2, cy = size / 2, maxR = (size / 2) - 10;
 
-            const cfg = window.ShieldConfig;
-            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
-            const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
-
             for (let i = 0; i < results.length; i++) {
                 const d = results[i];
-                // Map RSSI (-30 close to -100 far) to distance from center
+                // Map RSSI (-20 close to -100 far) to distance from center.
                 const rssi = Math.max(-100, Math.min(-20, d.rssi || -80));
                 const dist = ((Math.abs(rssi) - 20) / 80) * maxR;
 
-                // Spread devices around the circle using a deterministic angle from ID
+                // Deterministic angle from the id so a device keeps its position.
                 let hash = 0;
                 const idStr = String(d.id || i);
                 for (let c = 0; c < idStr.length; c++) hash = ((hash << 5) - hash) + idStr.charCodeAt(c);
@@ -498,27 +591,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const blip = document.createElement('div');
                 blip.className = 'radar-blip';
-                if (d.isGhostNode) {
-                    blip.classList.add('ghost-node');
-                } else if (d.threatScore > blockedAt) {
-                    blip.classList.add('threat');
-                } else if (d.threatScore >= warningAt) {
-                    blip.classList.add('monitor');
-                } else {
-                    blip.classList.add('safe');
-                }
+                // Restrained colour: ghost node (purple), notable (amber), else safe (green).
+                if (d.isGhostNode) blip.classList.add('ghost-node');
+                else if (d.notable) blip.classList.add('monitor');
+                else blip.classList.add('safe');
                 blip.style.left = x + 'px';
                 blip.style.top = y + 'px';
-                // Stagger entrance — each blip appears 80ms after the previous
-                blip.style.animationDelay = (i * 0.08) + 's';
-                if (d.isGhostNode || d.threatScore <= blockedAt) {
-                    // Safe/monitor/ghost: entrance + breathe (breathe starts after entrance)
-                    blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
-                } else {
-                    // Threat: entrance + glow (glow starts after entrance)
-                    blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
-                }
-                blip.title = this._esc(d.name || d.id || 'Unknown');
+                blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
+                blip.title = this._esc(d.name || d.category || d.id || 'Unknown');
                 visual.appendChild(blip);
             }
         },
@@ -551,61 +631,113 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (countEl) countEl.textContent = results.length;
 
-            // Sort: GhostNodes first, then by RSSI descending
-            const sorted = [...results].sort((a, b) => {
-                if (a.isGhostNode && !b.isGhostNode) return -1;
-                if (!a.isGhostNode && b.isGhostNode) return 1;
-                return (b.rssi || -100) - (a.rssi || -100);
-            });
-
-            const cfg = window.ShieldConfig;
-            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
-            const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
-
+            // Engine already sorts (ghost node, then notable, then RSSI).
             let html = '';
-            for (const d of sorted) {
-                const score = Number(d.threatScore) || 0;
+            for (const d of results) {
                 let cls = 'safe';
-                let badgeLabel = 'ALLOWED';
-                if (d.isGhostNode) { cls = 'ghost-node'; badgeLabel = 'NODE'; }
-                else if (score > blockedAt) { cls = 'threat'; badgeLabel = 'BLOCKED'; }
-                else if (score >= warningAt) { cls = 'monitor'; badgeLabel = 'WARNING'; }
+                if (d.isGhostNode) cls = 'ghost-node';
+                else if (d.notable) cls = 'notable';
 
-                const name = this._esc(d.name || 'Unknown Device');
+                // Never invent a name: fall back to the inferred category in muted text.
+                const nameHtml = d.name
+                    ? this._esc(d.name)
+                    : '<span class="dev-unknown-name">' + this._esc(d.category || 'Unknown device') + '</span>';
                 const rssiLabel = d.rssi != null ? d.rssi + ' dBm' : '--';
-                const typeLabel = this._esc(d.type || 'unknown');
+                const proxClass = (d.proximity || 'unknown').replace(/\s+/g, '-');
 
-                const extras = [];
-                if (d.channel) extras.push('CH ' + d.channel);
-                if (d.security) extras.push(this._esc(d.security));
-                if (d.connectionType) extras.push(this._esc(d.connectionType));
-                if (d.isGhostNode) extras.push('GhostNet Node');
+                const meta = [];
+                if (d.vendor) meta.push(this._esc(d.vendor));
+                if (d.category && (d.name || d.vendor)) meta.push(this._esc(d.category));
+                if (d.isGhostNode) meta.push('GhostNet node');
 
                 html += `
                     <div class="radar-device-item ${cls}">
                         <div class="dev-top">
-                            <span class="dev-name">${name} <span style="font-size:0.7rem; font-family:monospace; opacity:0.7;">[${score}]</span></span>
+                            <span class="dev-name">${nameHtml}</span>
                             <span class="dev-rssi">${rssiLabel}</span>
                         </div>
                         <div class="dev-bottom">
-                            <span class="dev-badge">${typeLabel}</span>
-                            <span class="dev-badge" style="${score > blockedAt ? 'color:#ef4444;' : score >= warningAt ? 'color:#f59e0b;' : 'color:#10b981;'}">${badgeLabel}</span>
-                            <span>ID: ${this._esc((d.id || 'N/A').substring(0, 20))}</span>
-                            ${extras.length ? '<span>\u00B7</span><span>' + extras.join(' \u00B7 ') + '</span>' : ''}
+                            <span class="dev-proximity ${proxClass}">${this._esc(d.proximity || 'unknown')}</span>
+                            ${meta.length ? '<span>' + meta.join(' \u00B7 ') + '</span>' : ''}
+                            <span>ID: ${this._esc((d.id || 'N/A').substring(0, 17))}</span>
                         </div>
+                        ${d.notable ? '<div class="dev-notable">' +
+                            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+                            ' Notable: ' + this._esc(d.notableReason || 'strong, persistent signal') + '</div>' : ''}
                     </div>`;
             }
             container.innerHTML = html;
         },
 
+        /** Render the WiFi "nearby networks" board \u2014 Android only, else honest note. */
+        renderWifi(wifi) {
+            const board = document.getElementById('radar-wifi-board');
+            const body = document.getElementById('radar-wifi-body');
+            if (!board || !body) return;
+            const radar = window.GhostRadar;
+
+            // iOS: hide behind a one-line note (the OS forbids AP scanning).
+            if (wifi && wifi.reason === 'ios-unsupported') {
+                board.style.display = 'block';
+                body.innerHTML = '<div class="radar-wifi-note">iOS does not permit apps to scan nearby WiFi networks, so this is unavailable on iPhone/iPad. (Android only.)</div>';
+                return;
+            }
+            // Native module not in this build: honest, not faked.
+            if (!wifi || (!wifi.available && (wifi.reason === 'module-not-installed' || wifi.reason === 'unsupported'))) {
+                board.style.display = 'block';
+                body.innerHTML = '<div class="radar-wifi-note">Nearby-network scanning needs the native WiFi module, which is not included in this build.</div>';
+                return;
+            }
+            if (!wifi.available) {
+                board.style.display = 'block';
+                const why = wifi.reason === 'permission-denied' ? 'Location/WiFi permission is required to list nearby networks.'
+                    : wifi.reason === 'wifi-disabled' ? 'Turn on WiFi to list nearby networks.'
+                    : 'Nearby networks are currently unavailable (' + this._esc(wifi.reason || 'unknown') + ').';
+                body.innerHTML = '<div class="radar-wifi-note">' + why + '</div>';
+                return;
+            }
+
+            board.style.display = 'block';
+            if (!wifi.networks || wifi.networks.length === 0) {
+                body.innerHTML = '<div class="radar-wifi-note">No access points in range.</div>';
+                return;
+            }
+            let html = '';
+            for (const n of wifi.networks) {
+                const name = n.hidden ? '<span class="dev-unknown-name">Hidden network</span>' : this._esc(n.ssid);
+                const rssiLabel = n.rssi != null ? n.rssi + ' dBm' : '--';
+                const meta = [];
+                if (n.security) meta.push(this._esc(n.security));
+                if (n.channel) meta.push('CH ' + n.channel);
+                if (n.bssid) meta.push(this._esc(n.bssid));
+                html += `
+                    <div class="radar-wifi-item ${n.notable ? 'notable' : ''}">
+                        <div>
+                            <div class="wifi-name">${name}</div>
+                            <div class="wifi-meta">${meta.join(' \u00B7 ')}${n.notable ? ' \u00B7 \u26A0 ' + this._esc(n.notableReason || 'notable') : ''}</div>
+                        </div>
+                        <span class="wifi-rssi">${rssiLabel}</span>
+                    </div>`;
+            }
+            body.innerHTML = html;
+        },
+
         /**
          * Full UI refresh from current GhostRadar state.
          */
-        refresh() {
+        refresh(detail) {
             const radar = window.GhostRadar;
             if (!radar) return;
 
+            // Environment gate first: browser / Expo Go get the honest disabled UI.
+            const env = (radar.env && radar.env !== 'unknown') ? radar.env : radar.detectEnvironment();
+            if (env !== 'native') { this._showUnsupported(env); return; }
+            this._hideUnsupported();
+
             const results = radar.results || [];
+            const wifi = (detail && detail.wifi) || radar.wifi || this._wifi;
+            this._wifi = wifi;
+
             const scanDot = document.getElementById('radar-scan-dot');
             const scanLabel = document.getElementById('radar-scan-label');
             const radarVisual = document.getElementById('radar-visual');
@@ -616,38 +748,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (radarVisual) radarVisual.classList.remove('paused');
             } else {
                 if (scanDot) scanDot.classList.add('idle');
-                if (scanLabel) scanLabel.textContent = results.length > 0
-                    ? 'Scan complete \u2014 next in 15s'
-                    : 'Idle \u2014 waiting for signals';
-                if (radarVisual && results.length === 0) radarVisual.classList.add('paused');
-                else if (radarVisual) radarVisual.classList.remove('paused');
+                if (scanLabel) scanLabel.textContent = results.length > 0 ? 'Paused' : 'Idle \u2014 waiting for signals';
+                if (radarVisual) radarVisual.classList.add('paused');
             }
 
             this.renderBlips(results);
             this.renderDeviceList(results);
+            this.renderWifi(wifi);
             this.updatePermissionBanner();
         },
 
+        // Start scanning when the radar view is shown; stop when it is hidden
+        // (battery + privacy \u2014 the radio must not run on other screens).
+        _bindVisibility() {
+            const section = document.getElementById('view-radar');
+            if (!section) return;
+            const sync = () => {
+                const active = section.classList.contains('active');
+                const radar = window.GhostRadar;
+                if (!radar) return;
+                if (active && !this._active) {
+                    this._active = true;
+                    Promise.resolve(radar.start()).then(() => this.refresh()).catch(() => this.refresh());
+                } else if (!active && this._active) {
+                    this._active = false;
+                    Promise.resolve(radar.stop()).catch(() => {});
+                }
+            };
+            new MutationObserver(sync).observe(section, { attributes: true, attributeFilter: ['class'] });
+            sync(); // handle radar already being the active view at load
+        },
+
         init() {
-            // Listen for scan completions from GhostRadar
-            window.addEventListener('ghostRadar:scanComplete', (e) => {
-                this.refresh();
+            window.addEventListener('ghostRadar:scanComplete', (e) => this.refresh(e.detail));
+            window.addEventListener('ghostRadar:permissionUpdate', () => this.updatePermissionBanner());
+            window.addEventListener('ghostRadar:error', (e) => {
+                const label = document.getElementById('radar-scan-label');
+                if (label && e.detail && e.detail.message) label.textContent = e.detail.message;
             });
 
-            // Listen for permission updates
-            window.addEventListener('ghostRadar:permissionUpdate', () => {
-                this.updatePermissionBanner();
-            });
-
-            // Also listen for signalIntel completions (enriched data)
-            window.addEventListener('signalIntel:scanComplete', () => {
-                this.refresh();
-            });
-
-            // Periodic refresh fallback
-            setInterval(() => this.refresh(), 5000);
-
-            // Initial render
+            this._bindVisibility();
             this.refresh();
         }
     };

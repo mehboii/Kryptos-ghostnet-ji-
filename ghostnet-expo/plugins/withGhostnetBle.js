@@ -48,16 +48,22 @@ const withGhostnetAndroidBle = (config) =>
     ensureUsesPermission(manifest, 'android.permission.BLUETOOTH_ADVERTISE');
     ensureUsesPermission(manifest, 'android.permission.BLUETOOTH_CONNECT');
 
-    // Pre-31 legacy permissions (ignored on 31+ via maxSdkVersion).
+    // Pre-31 legacy BLE permissions (ignored on 31+ via maxSdkVersion).
     ensureUsesPermission(manifest, 'android.permission.BLUETOOTH', {
       'android:maxSdkVersion': '30',
     });
     ensureUsesPermission(manifest, 'android.permission.BLUETOOTH_ADMIN', {
       'android:maxSdkVersion': '30',
     });
-    ensureUsesPermission(manifest, 'android.permission.ACCESS_FINE_LOCATION', {
-      'android:maxSdkVersion': '30',
-    });
+
+    // Ghost Radar WiFi access-point scan. Android gates nearby-AP results behind
+    // location, so ACCESS_FINE_LOCATION is declared uncapped (all versions) — it
+    // is needed by the WiFi scan, NOT by BLE (BLE keeps neverForLocation above).
+    // NEARBY_WIFI_DEVICES (API 33+) is the modern companion permission.
+    ensureUsesPermission(manifest, 'android.permission.ACCESS_FINE_LOCATION');
+    ensureUsesPermission(manifest, 'android.permission.ACCESS_WIFI_STATE');
+    ensureUsesPermission(manifest, 'android.permission.CHANGE_WIFI_STATE');
+    ensureUsesPermission(manifest, 'android.permission.NEARBY_WIFI_DEVICES');
 
     return cfg;
   });

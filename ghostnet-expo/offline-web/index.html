@@ -32178,270 +32178,445 @@ if (window.app && !window.app.signalIntelligence) {
 </script>
     <script>
 /**
- * Ghost Radar - Android Native Hardware Scanner via Capacitor
- * strictly real signals only.
+ * Ghost Radar — real passive signal scanner.
+ *
+ * BLE is the real core: it drives the native radio through window.GhostNetBLE
+ * (the same bridge Proximity Connect uses, backed by react-native-ble-plx). It
+ * scans UNFILTERED for every nearby BLE device, tracks them live, and derives
+ * vendor / category / proximity from the advertisement — NOTHING is invented or
+ * simulated. If the native bridge is absent (browser / Expo Go) the radar shows
+ * the honest "needs the installed app" state instead of pretending to scan.
+ *
+ * WiFi access-point scanning is ANDROID ONLY (the OS gates it; iOS has no public
+ * API). It lists routers/hotspots — "nearby networks", never "devices". On iOS
+ * or where the native module is absent, the WiFi section is reported unavailable
+ * with a reason, never faked.
+ *
+ * Classification is deliberately restrained. In any public place dozens of
+ * unknown BLE devices are normal (earbuds, watches, TVs); flagging them all is
+ * useless and, for at-risk users, harmful. A device is "notable" ONLY on a
+ * meaningful signal — a strong RSSI that has PERSISTED for many minutes
+ * (possible following) — and the reason is always shown so the user judges.
  */
+'use strict';
 
-// Polyfill: Promise.allSettled (Safari <13)
-if (typeof Promise.allSettled !== 'function') {
-  Promise.allSettled = function(promises) {
-    return Promise.all(promises.map(p => Promise.resolve(p).then(
-      value => ({ status: 'fulfilled', value }),
-      reason => ({ status: 'rejected', reason })
-    )));
-  };
-}
+// How long a device may go unseen before it drops off the radar.
+const RADAR_STALE_MS = 30 * 1000;
+// "Notable" requires a strong signal that has persisted at least this long.
+const NOTABLE_PERSIST_MS = 8 * 60 * 1000; // 8 minutes
+const NOTABLE_RSSI_DBM = -55;             // "very close" band
+const WIFI_NOTABLE_RSSI_DBM = -60;
+// Cadence.
+const UI_REFRESH_MS = 2000;
+const WIFI_POLL_MS = 12 * 1000; // Android throttles WiFi scans hard; poll gently.
+
+// BLE company identifiers (Bluetooth SIG, decimal) → vendor. Only confident
+// mappings; an unknown id yields null (we never guess a brand).
+const BLE_VENDORS = {
+  76: 'Apple',
+  6: 'Microsoft',
+  117: 'Samsung',
+  224: 'Google',
+  89: 'Nordic Semiconductor',
+  13: 'Texas Instruments',
+  15: 'Broadcom',
+  158: 'Bose',
+  135: 'Garmin',
+  171: 'Amazon',
+  72: 'Logitech',
+};
 
 class GhostRadarEngine {
   constructor() {
     this.results = [];
     this.scanning = false;
-    this.onUpdate = null;
+    this.env = 'unknown'; // 'web' | 'expoGo' | 'native'
     this.permissionState = { ble: 'unknown', wifi: 'unknown' };
-    this._startRepeatingScan();
+    this.wifi = { supported: false, available: false, reason: 'unknown', networks: [] };
+
+    this._devices = new Map();   // deviceId -> live record
+    this._bridgeWired = false;
+    this._refreshTimer = null;
+    this._wifiTimer = null;
+    this._backgrounded = false;
   }
 
-  /**
-   * Check and request required permissions (BLE + WiFi only).
-   * No location, no personal data — privacy first.
-   */
+  get _ble() {
+    return (typeof window !== 'undefined') ? window.GhostNetBLE : null;
+  }
+
+  // ── Environment ─────────────────────────────────────────────
+  // Synchronous, side-effect-free: reads the tag App.js set on the bridge.
+  detectEnvironment() {
+    const ble = this._ble;
+    if (!ble || !ble.available) return 'web';
+    return ble.env === 'expoGo' ? 'expoGo' : 'native';
+  }
+
+  isSupported() {
+    this.env = this.detectEnvironment();
+    return this.env === 'native';
+  }
+
+  // ── Permissions ─────────────────────────────────────────────
   async checkPermissions() {
-    const result = { ble: false, wifi: false };
-
-    // BLE permissions via Capacitor BLE plugin
-    try {
-      const { BleClient } = await import('@capacitor-community/bluetooth-le');
-      await BleClient.initialize();
-      result.ble = true;
-      this.permissionState.ble = 'granted';
-    } catch (e) {
-      console.warn('[GhostRadar] BLE permission/init failed:', e.message);
+    const ble = this._ble;
+    if (!this.isSupported() || !ble) {
       this.permissionState.ble = 'denied';
+      this._emitPermUpdate();
+      return { ble: false, wifi: false };
+    }
+    let bleOk = false;
+    try { bleOk = (await ble.requestPermissions()) !== false; } catch (_) { bleOk = false; }
+    this.permissionState.ble = bleOk ? 'granted' : 'denied';
+
+    // WiFi perms are Android-only and requested lazily by scanWifi(); reflect a
+    // neutral state here so the UI doesn't imply WiFi works before the platform
+    // check runs.
+    this._emitPermUpdate();
+    return { ble: bleOk, wifi: this.permissionState.wifi === 'granted' };
+  }
+
+  _emitPermUpdate() {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
+    }
+  }
+
+  // ── Lifecycle ───────────────────────────────────────────────
+  async start() {
+    if (!this.isSupported()) {
+      // Browser / Expo Go: no radio. Surface honestly; never fake a scan.
+      this.scanning = false;
+      this._emitResults();
+      return false;
+    }
+    const ble = this._ble;
+    this._wireBridge();
+
+    const granted = await this.checkPermissions();
+    if (!granted.ble) {
+      this.scanning = false;
+      this._emitResults();
+      return false;
     }
 
-    // WiFi — typically granted via manifest, just test the import
+    const state = await ble.adapterState().catch(() => 'Unknown');
+    if (state && state !== 'PoweredOn') {
+      this.scanning = false;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ghostRadar:error', {
+          detail: { phase: 'adapter', message: 'Bluetooth is off or unavailable (' + state + ')' }
+        }));
+      }
+      this._emitResults();
+      return false;
+    }
+
     try {
-      await import('@capacitor-community/wifi-wizard2');
-      result.wifi = true;
-      this.permissionState.wifi = 'granted';
+      await ble.startRadarScan();
+      this.scanning = true;
     } catch (e) {
-      this.permissionState.wifi = 'denied';
+      this.scanning = false;
+      return false;
     }
 
-    window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
-    return result;
+    // Live UI refresh + stale pruning.
+    clearInterval(this._refreshTimer);
+    this._refreshTimer = setInterval(() => {
+      this._prune();
+      this._emitResults();
+    }, UI_REFRESH_MS);
+
+    // WiFi (Android only) — poll gently; degrade honestly elsewhere.
+    this._startWifi();
+
+    this._emitResults();
+    return true;
   }
 
-  // 1. WiFi Networks — real scan
-  async scanWifi() {
-    try {
-      const { WifiWizard2 } = await import('@capacitor-community/wifi-wizard2');
-      const results = await WifiWizard2.scan();
-      this.permissionState.wifi = 'granted';
-      return results.map(n => ({
-        id: n.BSSID,
-        name: n.SSID || 'Hidden Network',
-        type: 'wifi',
-        rssi: n.level,
-        frequency: n.frequency,
-        security: n.capabilities,
-        channel: this._freqToChannel(n.frequency),
-        source: 'real'
-      }));
-    } catch(e) {
-      console.error('[GhostRadar] WiFi scan failed:', e);
-      if (e.message && e.message.toLowerCase().includes('permission')) {
-        this.permissionState.wifi = 'denied';
-        window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
-      }
-      return [];
-    }
-  }
-
-  // 2. Bluetooth + BLE — real scan
-  async scanBluetooth() {
-    try {
-      const { BleClient } = await import('@capacitor-community/bluetooth-le');
-      await BleClient.initialize();
-      this.permissionState.ble = 'granted';
-      const devices = [];
-      // scanMode 1 = LOW_LATENCY — continuous scan for best device discovery at range
-      await BleClient.requestLEScan(
-        { allowDuplicates: false, scanMode: 1 },
-        (result) => {
-          devices.push({
-            id: result.device.deviceId,
-            name: result.device.name || 'Unknown Device',
-            type: this._guessDeviceType(result),
-            rssi: result.rssi,
-            manufacturerData: result.manufacturerData,
-            source: 'real'
-          });
-        }
-      );
-      // Scan for 8 seconds then stop
-      await new Promise(r => setTimeout(r, 8000));
-      await BleClient.stopLEScan();
-      return devices;
-    } catch(e) {
-      console.error('[GhostRadar] BLE scan failed:', e);
-      if (e.message && e.message.toLowerCase().includes('permission')) {
-        this.permissionState.ble = 'denied';
-        window.dispatchEvent(new CustomEvent('ghostRadar:permissionUpdate', { detail: this.permissionState }));
-      }
-      return [];
-    }
-  }
-
-  // 3. Network info — real connection data
-  async getNetworkInfo() {
-    try {
-      const { Network } = await import('@capacitor/network');
-      const status = await Network.getStatus();
-      const conn = navigator.connection;
-      return {
-        id: 'network_info',
-        name: 'Current Connection',
-        type: 'network',
-        connectionType: status.connectionType,
-        connected: status.connected,
-        downlink: conn?.downlink,
-        rtt: conn?.rtt,
-        effectiveType: conn?.effectiveType,
-        source: 'real'
-      };
-    } catch(e) {
-      return null;
-    }
-  }
-
-  // 4. Device type guesser from BLE manufacturer data
-  _guessDeviceType(result) {
-    const mfr = result.manufacturerData;
-    if (!mfr) return 'unknown';
-    // Apple devices — manufacturer ID 0x004C
-    if (mfr['76']) return 'apple_device';
-    // Microsoft — 0x0006
-    if (mfr['6']) return 'windows_device';
-    // Samsung — 0x0075
-    if (mfr['117']) return 'samsung_device';
-    // Fitness trackers common range
-    if (result.rssi > -50 && !result.device.name) return 'wearable';
-    return 'bluetooth_device';
-  }
-
-  _freqToChannel(freq) {
-    // Convert MHz frequency to WiFi channel number
-    if (freq >= 2412 && freq <= 2484) return Math.floor((freq - 2412) / 5) + 1;
-    if (freq >= 5170 && freq <= 5825) return Math.floor((freq - 5170) / 5) + 34;
-    return 0;
-  }
-
-  // 5. GhostNet node detection
-  _isGhostNetNode(device) {
-    return device.name?.startsWith('GhostNode') ||
-           (device.name?.startsWith('0x') && device.name?.length === 42);
-  }
-
-  _calculateThreatScore(d) {
-    return 0; // Baseline real score, logic handled upstream to avoid false mocks
-  }
-
-  // 6. Master scan function
+  // Back-compat for SignalIntelService (Ghost Shield): returns the CURRENT real
+  // BLE devices. It does NOT force a background scan — the radar only runs while
+  // its screen is visible (battery/privacy), so this reflects live data then and
+  // the last-seen set otherwise. Never fabricates devices.
   async startScan() {
-    console.log('[GhostRadar] Starting real hardware scan...');
-    this.scanning = true;
-    this.results = [];
-
-    const [wifi, ble, network] = await Promise.allSettled([
-      this.scanWifi(),
-      this.scanBluetooth(),
-      this.getNetworkInfo()
-    ]);
-
-    if (wifi.status === 'fulfilled') this.results.push(...wifi.value);
-    if (ble.status === 'fulfilled') this.results.push(...ble.value);
-    if (network.status === 'fulfilled' && network.value) this.results.push(network.value);
-
-    // Tag GhostNet nodes separately
-    this.results = this.results.map(d => ({
-      ...d,
-      isGhostNode: this._isGhostNetNode(d),
-      threatScore: this._calculateThreatScore(d)
-    }));
-
-    console.log(`[GhostRadar] Scan complete — ${this.results.length} real signals found`);
-    this.scanning = false;
-    this.onUpdate?.(this.results);
-
-    window.dispatchEvent(new CustomEvent('ghostRadar:scanComplete', {
-      detail: { count: this.results.length, results: this.results }
-    }));
-
     return this.results;
   }
 
-  _startRepeatingScan() {
-    // Rescan automatically every 15 seconds
-    setInterval(() => {
-      if (!this.scanning) {
-        this.startScan();
-      }
-    }, 15000);
-    this.startScan();
+  async stop() {
+    this.scanning = false;
+    clearInterval(this._refreshTimer); this._refreshTimer = null;
+    clearInterval(this._wifiTimer); this._wifiTimer = null;
+    const ble = this._ble;
+    if (ble) { try { await ble.stopRadarScan(); } catch (_) {} }
+    this._emitResults();
   }
 
-  _renderUI() {
-    const renderContainer = document.getElementById('threat-list-container');
-    if (!renderContainer) return;
+  // ── Bridge wiring ───────────────────────────────────────────
+  _wireBridge() {
+    const ble = this._ble;
+    if (this._bridgeWired || !ble) return;
+    this._bridgeWired = true;
 
-    if (this.results.length === 0) {
-      renderContainer.innerHTML = `<div style="text-align:center; padding: 20px; color:var(--text-muted); font-size: 0.85rem;">No signals detected nearby</div>`;
+    ble.on('radarDevice', (d) => this._onRadarDevice(d));
+    ble.on('error', (e) => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('ghostRadar:error', { detail: e }));
+      }
+    });
+    // Native tells us when the app backgrounds — the radio is already stopped
+    // there for battery/privacy; pause our timers and reflect it in the UI.
+    ble.on('appBackground', () => {
+      this._backgrounded = true;
+      this.scanning = false;
+      clearInterval(this._refreshTimer); this._refreshTimer = null;
+      clearInterval(this._wifiTimer); this._wifiTimer = null;
+      this._emitResults();
+    });
+    ble.on('appForeground', () => {
+      if (this._backgrounded) {
+        this._backgrounded = false;
+        // Resume only if the radar screen is active; the UI calls start() again.
+      }
+    });
+  }
+
+  // ── BLE device intake ───────────────────────────────────────
+  _onRadarDevice(d) {
+    if (!d || !d.deviceId) return;
+    const now = d.timestamp || Date.now();
+    const prev = this._devices.get(d.deviceId);
+
+    const companyId = this._companyIdFromMfr(d.manufacturerData);
+    const vendor = (companyId != null && BLE_VENDORS[companyId]) ? BLE_VENDORS[companyId] : null;
+
+    const rec = prev || {
+      id: d.deviceId,
+      kind: 'ble',
+      firstSeen: now,
+      bestRssi: -999,
+    };
+    rec.lastSeen = now;
+    rec.rssi = (typeof d.rssi === 'number') ? d.rssi : (rec.rssi ?? null);
+    if (typeof rec.rssi === 'number' && rec.rssi > rec.bestRssi) rec.bestRssi = rec.rssi;
+    // Keep the first real name we ever see; never overwrite a real name with null.
+    if (d.name && !rec.name) rec.name = d.name;
+    rec.serviceUUIDs = d.serviceUUIDs || rec.serviceUUIDs || null;
+    if (companyId != null) rec.companyId = companyId;
+    if (vendor) rec.vendor = vendor;
+
+    rec.isGhostNode = this._isGhostNetNode(rec);
+    rec.category = this._categorize(rec);
+    rec.proximity = this._proximity(rec.rssi);
+
+    this._devices.set(d.deviceId, rec);
+  }
+
+  _companyIdFromMfr(b64) {
+    if (!b64) return null;
+    try {
+      const bin = atob(b64);
+      if (bin.length < 2) return null;
+      // Little-endian 16-bit company identifier (first two bytes of mfr data).
+      return (bin.charCodeAt(0) | (bin.charCodeAt(1) << 8));
+    } catch (_) { return null; }
+  }
+
+  _isGhostNetNode(rec) {
+    const n = rec.name;
+    if (!n) return false;
+    return n.startsWith('GhostNode') || (n.startsWith('0x') && n.length === 42);
+  }
+
+  // Category inferred ONLY from advertised 16-bit service UUIDs / vendor — no
+  // guessing beyond what the device actually broadcast.
+  _categorize(rec) {
+    const uuids = (rec.serviceUUIDs || []).map((u) => this._short16(u)).filter(Boolean);
+    const has = (x) => uuids.includes(x);
+    if (rec.isGhostNode) return 'GhostNet node';
+    if (has('180d')) return 'Wearable / fitness';
+    if (has('1812')) return 'Input device';
+    if (has('fd5a') || has('fe2c') || has('fdcf')) return 'Audio / earbuds';
+    if (has('feed') || has('fd44')) return 'Tracker tag';
+    if (has('fd6f')) return 'Exposure beacon';
+    if (rec.vendor === 'Apple') return 'Apple device';
+    if (rec.vendor) return rec.vendor + ' device';
+    return 'BLE device';
+  }
+
+  _short16(uuid) {
+    if (!uuid) return null;
+    const s = String(uuid).toLowerCase();
+    // Full 128-bit base UUID → extract the 16-bit assigned-number segment.
+    const m = s.match(/^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/);
+    if (m) return m[1];
+    if (/^[0-9a-f]{4}$/.test(s)) return s;
+    return null;
+  }
+
+  // Legacy device-type string consumed by SignalIntelService for its BLE/vendor
+  // checks. Mapped from REAL vendor / node data — no guessing beyond that.
+  _legacyType(rec) {
+    if (rec.isGhostNode) return 'ghostnode';
+    switch (rec.vendor) {
+      case 'Apple': return 'apple_device';
+      case 'Samsung': return 'samsung_device';
+      case 'Microsoft': return 'windows_device';
+      default: return 'bluetooth_device';
+    }
+  }
+
+  _proximity(rssi) {
+    if (typeof rssi !== 'number') return 'unknown';
+    if (rssi >= -55) return 'very close';
+    if (rssi >= -75) return 'nearby';
+    return 'far';
+  }
+
+  // Restrained "notable": strong signal that has persisted for many minutes.
+  _notable(rec, now) {
+    const persisted = now - rec.firstSeen;
+    const strong = (typeof rec.rssi === 'number') && rec.rssi >= NOTABLE_RSSI_DBM;
+    if (strong && persisted >= NOTABLE_PERSIST_MS) {
+      const mins = Math.floor(persisted / 60000);
+      return { notable: true, reason: 'strong signal, seen for ' + mins + '+ minutes' };
+    }
+    return { notable: false, reason: null };
+  }
+
+  _prune() {
+    const now = Date.now();
+    for (const [id, rec] of this._devices) {
+      if (now - rec.lastSeen > RADAR_STALE_MS) this._devices.delete(id);
+    }
+  }
+
+  // ── WiFi (Android only) ─────────────────────────────────────
+  _startWifi() {
+    this._scanWifiOnce();
+    clearInterval(this._wifiTimer);
+    this._wifiTimer = setInterval(() => this._scanWifiOnce(), WIFI_POLL_MS);
+  }
+
+  async _scanWifiOnce() {
+    const ble = this._ble;
+    if (!ble || typeof ble.scanWifi !== 'function') {
+      this.wifi = { supported: false, available: false, reason: 'unsupported', networks: [] };
       return;
     }
+    try {
+      // Lazily request WiFi/location perms on Android, once (no-op on iOS).
+      if (!this._wifiPermAsked && typeof ble.requestWifiPermissions === 'function') {
+        this._wifiPermAsked = true;
+        try { await ble.requestWifiPermissions(); } catch (_) {}
+      }
+      const res = await ble.scanWifi();
+      this.permissionState.wifi = (res && res.reason === 'permission-denied') ? 'denied'
+        : (res && res.available) ? 'granted' : this.permissionState.wifi;
 
-    // Bridge data dynamically over to the real UI format safely, without fake data loops
-    let html = '';
-    for (const d of this.results) {
-      const isBlocked = window.GhostShield && window.GhostShield.blockedMacs && window.GhostShield.blockedMacs.has(d.id);
-      
-      let cls = 'safe';
-      if (d.threatScore > 60) cls = 'danger';
-      else if (d.threatScore > 30) cls = 'monitor';
-      if (isBlocked) cls = 'blocked';
+      if (!res || !res.available) {
+        this.wifi = {
+          supported: res ? res.reason !== 'ios-unsupported' && res.reason !== 'module-not-installed' : false,
+          available: false,
+          reason: (res && res.reason) || 'unavailable',
+          networks: [],
+        };
+        this._emitPermUpdate();
+        return;
+      }
+      const now = Date.now();
+      const networks = (res.accessPoints || []).map((ap) => {
+        const hidden = !ap.ssid;
+        const rssi = (typeof ap.rssi === 'number') ? ap.rssi : null;
+        const persistedStrong = hidden && rssi != null && rssi >= WIFI_NOTABLE_RSSI_DBM;
+        return {
+          id: ap.bssid || ap.ssid,
+          kind: 'wifi',
+          ssid: ap.ssid || '',
+          bssid: ap.bssid || '',
+          hidden,
+          rssi,
+          channel: this._freqToChannel(ap.frequency),
+          security: this._securityOf(ap.capabilities),
+          proximity: this._proximity(rssi),
+          // Hidden SSID with a strong signal is the only WiFi "notable" trigger.
+          notable: persistedStrong,
+          notableReason: persistedStrong ? 'hidden network, strong signal' : null,
+          lastSeen: now,
+        };
+      }).sort((a, b) => (b.rssi || -999) - (a.rssi || -999));
 
-      const flags = [];
-      if (d.security) flags.push(`Security: ${d.security}`);
-      if (d.channel) flags.push(`CH: ${d.channel}`);
-      if (d.effectiveType) flags.push(`Link: ${d.effectiveType}`);
-      const flagStr = flags.length > 0 ? flags.join(', ') : 'Clean';
-      const scoreClass = d.threatScore > 60 ? 'high' : '';
-
-      html += `
-          <div class="threat-item ${cls}" style="margin-bottom:8px; cursor:pointer;" onclick="if(window.GhostShieldUI) window.GhostShieldUI.toggleBlockView(this)">
-              <div class="threat-item-top">
-                  <strong style="font-size:0.9rem; color:var(--text-primary);"><span class="threat-score ${scoreClass}">[${String(d.threatScore || 0).padStart(2,' ')}]</span> ${d.name}</strong>
-              </div>
-              <div class="threat-item-bot">
-                  <span>ID: ${d.id || 'N/A'}</span>
-                  <span>·</span>
-                  <span>${flagStr}</span>
-                  <span>·</span>
-                  <span style="border-radius:4px; padding:1px 4px; background:rgba(0,0,0,0.5);">${d.type}</span>
-              </div>
-              ${!isBlocked && cls === 'danger' ? `<button class="btn-block-device" onclick="if(window.GhostShieldUI) window.GhostShieldUI.blockMac('${d.id}', event)">Block This Device</button>` : ''}
-              ${isBlocked ? `<div class="blocked-label">BLOCKED — APP INVISIBLE TO THIS DEVICE <br><a href="#" style="color:var(--text-muted); font-weight:normal; text-decoration:underline; font-size:10px;" onclick="if(window.GhostShieldUI) window.GhostShieldUI.unblockMac('${d.id}', event)">Unblock</a></div>` : ''}
-          </div>
-      `;
+      this.wifi = { supported: true, available: true, reason: 'ok', networks };
+      this._emitPermUpdate();
+    } catch (e) {
+      this.wifi = { supported: false, available: false, reason: e.message || 'scan-failed', networks: [] };
     }
-    renderContainer.innerHTML = html;
+  }
+
+  _securityOf(caps) {
+    const c = String(caps || '');
+    if (/WPA3/i.test(c)) return 'WPA3';
+    if (/WPA2/i.test(c)) return 'WPA2';
+    if (/WPA/i.test(c)) return 'WPA';
+    if (/WEP/i.test(c)) return 'WEP';
+    if (/ESS/i.test(c) && !/WPA|WEP/i.test(c)) return 'Open';
+    return c ? 'Secured' : 'Unknown';
+  }
+
+  _freqToChannel(freq) {
+    if (!freq) return 0;
+    if (freq === 2484) return 14;
+    if (freq >= 2412 && freq <= 2472) return Math.floor((freq - 2412) / 5) + 1;
+    if (freq >= 5170 && freq <= 5825) return Math.floor((freq - 5000) / 5);
+    if (freq >= 5955 && freq <= 7115) return Math.floor((freq - 5950) / 5); // 6 GHz
+    return 0;
+  }
+
+  // ── Output ──────────────────────────────────────────────────
+  _emitResults() {
+    const now = Date.now();
+    const ble = [...this._devices.values()].map((rec) => {
+      const n = this._notable(rec, now);
+      return {
+        id: rec.id,
+        kind: 'ble',
+        name: rec.name || null,        // null = unknown; UI must not invent
+        vendor: rec.vendor || null,
+        category: rec.category || 'BLE device',
+        rssi: (typeof rec.rssi === 'number') ? rec.rssi : null,
+        proximity: rec.proximity || 'unknown',
+        isGhostNode: !!rec.isGhostNode,
+        notable: n.notable,
+        notableReason: n.reason,
+        seenForMs: now - rec.firstSeen,
+        // Back-compat fields for SignalIntelService (Ghost Shield) — all derived
+        // from real advertisement data, never invented.
+        type: this._legacyType(rec),
+        source: 'real',
+      };
+    }).sort((a, b) => {
+      if (a.isGhostNode !== b.isGhostNode) return a.isGhostNode ? -1 : 1;
+      if (a.notable !== b.notable) return a.notable ? -1 : 1;
+      return (b.rssi || -999) - (a.rssi || -999);
+    });
+
+    this.results = ble;
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('ghostRadar:scanComplete', {
+        detail: {
+          count: ble.length,
+          results: ble,
+          wifi: this.wifi,
+          env: this.env,
+          scanning: this.scanning,
+        }
+      }));
+    }
   }
 }
 
-window.GhostRadar = new GhostRadarEngine();
-
-// GhostRadar results are now fed through SignalIntelService → SignalIntelligence
-// and rendered by ghost-shield-ui.js via the signalIntel:scanComplete event.
+if (typeof window !== 'undefined') window.GhostRadar = new GhostRadarEngine();
 
 </script>
     <script>
@@ -34239,6 +34414,64 @@ document.addEventListener('DOMContentLoaded', () => {
             background: rgba(255,255,255,0.06); text-transform: uppercase; letter-spacing: 0.5px;
         }
 
+        /* Device meta row: vendor / category / proximity */
+        .radar-device-item .dev-proximity {
+            font-size: 0.65rem; padding: 1px 6px; border-radius: 4px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .dev-proximity.very.close, .dev-proximity.very-close { background: rgba(16,185,129,0.15); color: #10b981; }
+        .dev-proximity.nearby { background: rgba(245,158,11,0.12); color: #f59e0b; }
+        .dev-proximity.far { background: rgba(107,114,128,0.15); color: #9ca3af; }
+        .dev-proximity.unknown { background: rgba(107,114,128,0.12); color: #6b7280; }
+
+        /* "Notable" chip — rare, always paired with a plain-language reason */
+        .radar-device-item.notable {
+            border-left-color: #f59e0b;
+            background: rgba(245,158,11,0.05);
+        }
+        .dev-notable {
+            margin-top: 6px; font-size: 0.7rem; color: #f59e0b;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .dev-unknown-name { color: var(--text-muted); font-style: italic; }
+
+        /* WiFi (nearby networks) board */
+        .radar-wifi-board {
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+        .radar-wifi-board h3 { margin: 0 0 4px; font-size: 1rem; }
+        .radar-wifi-sub { font-size: 0.72rem; color: var(--text-muted); margin: 0 0 14px; }
+        .radar-wifi-note {
+            font-size: 0.78rem; color: var(--text-muted); line-height: 1.5;
+            padding: 12px; border: 1px dashed var(--border); border-radius: 8px;
+            background: rgba(0,0,0,0.2);
+        }
+        .radar-wifi-item {
+            background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px 12px;
+            display: flex; justify-content: space-between; align-items: center;
+            border-left: 4px solid rgba(34,211,238,0.4); margin-bottom: 8px;
+        }
+        .radar-wifi-item.notable { border-left-color: #f59e0b; }
+        .radar-wifi-item .wifi-name { font-size: 0.85rem; color: var(--text-primary); font-weight: 600; }
+        .radar-wifi-item .wifi-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+        .radar-wifi-item .wifi-rssi {
+            font-family: monospace; font-size: 0.72rem; color: var(--text-muted);
+            background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 4px;
+        }
+
+        /* Unsupported-environment (web / Expo Go) state */
+        .radar-unsupported {
+            text-align: center; padding: 36px 20px;
+            border: 1px solid rgba(139,92,246,0.3); border-radius: 12px;
+            background: linear-gradient(180deg, rgba(34,211,238,0.04) 0%, rgba(139,92,246,0.06) 100%);
+        }
+        .radar-unsupported .ru-title { font-size: 1rem; font-weight: 700; color: #a78bfa; margin-bottom: 8px; }
+        .radar-unsupported .ru-desc { font-size: 0.82rem; color: var(--text-muted); max-width: 360px; margin: 0 auto; line-height: 1.5; }
+
         @media (max-width: 600px) {
             .ghost-radar-visual { width: 200px; height: 200px; }
             .radar-status-bar { flex-direction: column; gap: 8px; text-align: center; }
@@ -34314,10 +34547,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
 
+            <!-- UNSUPPORTED ENVIRONMENT (web / Expo Go) -->
+            <div id="radar-unsupported" style="display:none;"></div>
+
             <!-- DEVICE LIST -->
-            <div class="radar-device-board">
+            <div class="radar-device-board" id="radar-device-board">
                 <div class="radar-device-header">
-                    <h3>Nearby Devices</h3>
+                    <h3>Nearby Devices (BLE)</h3>
                     <button style="background:none; border:1px solid var(--border); color:var(--text-muted); padding:4px 10px; border-radius:6px; font-size:0.7rem; cursor:pointer; font-weight:600; letter-spacing:0.5px;" onclick="GhostRadarUI.manualScan()">RESCAN</button>
                 </div>
                 <div class="radar-device-list" id="radar-device-list">
@@ -34331,9 +34567,16 @@ document.addEventListener('DOMContentLoaded', () => {
                             </svg>
                         </div>
                         <div class="empty-title">No devices found</div>
-                        <div class="empty-desc">Scanning for BLE and WiFi signals nearby. Make sure Bluetooth is enabled.</div>
+                        <div class="empty-desc">Scanning for BLE signals nearby. Make sure Bluetooth is enabled.</div>
                     </div>
                 </div>
+            </div>
+
+            <!-- WIFI (NEARBY NETWORKS — Android only) -->
+            <div class="radar-wifi-board" id="radar-wifi-board">
+                <h3>Nearby Networks (WiFi)</h3>
+                <p class="radar-wifi-sub">Routers and hotspots in range — not phones or people.</p>
+                <div id="radar-wifi-body"></div>
             </div>
 
         </div>
@@ -34361,25 +34604,20 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!radar) return;
 
             const ps = radar.permissionState;
-            const allGranted = ps.ble === 'granted';
-            const anyDenied = ps.ble === 'denied';
+            const denied = ps.ble === 'denied';
 
             const banner = document.getElementById('radar-perm-banner');
-            if (allGranted) {
-                banner.classList.remove('visible');
-            } else if (anyDenied) {
-                banner.classList.add('visible');
+            // Only nag when BLE is actually denied AND the radio could otherwise work.
+            if (banner) {
+                if (denied && radar.env === 'native') banner.classList.add('visible');
+                else banner.classList.remove('visible');
             }
 
-            // Update dots
             this._setPermDot('perm-ble-dot', ps.ble);
             this._setPermDot('perm-wifi-dot', ps.wifi);
 
-            // If denied permanently, user must go to system settings
             const btn = document.getElementById('btn-grant-perms');
-            if (anyDenied && ps.ble !== 'unknown') {
-                btn.textContent = 'Open Settings to Grant';
-            }
+            if (btn && denied && ps.ble !== 'unknown') btn.textContent = 'Open Settings to Grant';
         },
 
         _setPermDot(id, state) {
@@ -34389,11 +34627,45 @@ document.addEventListener('DOMContentLoaded', () => {
             el.textContent = state === 'granted' ? '\u2713' : state === 'denied' ? '\u2717' : '?';
         },
 
+        _wifi: { supported: false, available: false, reason: 'unknown', networks: [] },
+
         async manualScan() {
             const radar = window.GhostRadar;
-            if (!radar || radar.scanning) return;
+            if (!radar) return;
             if (typeof GhostAnalytics !== 'undefined') GhostAnalytics.trackFeature('radar:scan');
-            await radar.startScan();
+            await radar.start();
+        },
+
+        // ── Unsupported-environment gate (browser / Expo Go) ────────
+        _showUnsupported(env) {
+            const box = document.getElementById('radar-unsupported');
+            const board = document.getElementById('radar-device-board');
+            const wifiBoard = document.getElementById('radar-wifi-board');
+            const banner = document.getElementById('radar-perm-banner');
+            const visual = document.getElementById('radar-visual');
+            if (!box) return;
+            const where = env === 'web' ? 'a web browser' : 'Expo Go';
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div class="radar-unsupported">
+                    <div class="ru-title">Open in the GhostNet App</div>
+                    <div class="ru-desc">Ghost Radar scans the Bluetooth radio directly, which only works in the installed GhostNet app — not in ${where}. Bluetooth and WiFi scanning need the native app to reach your phone's hardware.</div>
+                </div>`;
+            if (board) board.style.display = 'none';
+            if (wifiBoard) wifiBoard.style.display = 'none';
+            if (banner) banner.classList.remove('visible');
+            if (visual) visual.classList.add('paused');
+            const label = document.getElementById('radar-scan-label');
+            if (label) label.textContent = 'Unavailable in this environment';
+            const dot = document.getElementById('radar-scan-dot');
+            if (dot) dot.classList.add('idle');
+        },
+
+        _hideUnsupported() {
+            const box = document.getElementById('radar-unsupported');
+            const board = document.getElementById('radar-device-board');
+            if (box) box.style.display = 'none';
+            if (board) board.style.display = 'block';
         },
 
         /**
@@ -34411,17 +34683,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const size = visual.offsetWidth || 220;
             const cx = size / 2, cy = size / 2, maxR = (size / 2) - 10;
 
-            const cfg = window.ShieldConfig;
-            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
-            const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
-
             for (let i = 0; i < results.length; i++) {
                 const d = results[i];
-                // Map RSSI (-30 close to -100 far) to distance from center
+                // Map RSSI (-20 close to -100 far) to distance from center.
                 const rssi = Math.max(-100, Math.min(-20, d.rssi || -80));
                 const dist = ((Math.abs(rssi) - 20) / 80) * maxR;
 
-                // Spread devices around the circle using a deterministic angle from ID
+                // Deterministic angle from the id so a device keeps its position.
                 let hash = 0;
                 const idStr = String(d.id || i);
                 for (let c = 0; c < idStr.length; c++) hash = ((hash << 5) - hash) + idStr.charCodeAt(c);
@@ -34432,27 +34700,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const blip = document.createElement('div');
                 blip.className = 'radar-blip';
-                if (d.isGhostNode) {
-                    blip.classList.add('ghost-node');
-                } else if (d.threatScore > blockedAt) {
-                    blip.classList.add('threat');
-                } else if (d.threatScore >= warningAt) {
-                    blip.classList.add('monitor');
-                } else {
-                    blip.classList.add('safe');
-                }
+                // Restrained colour: ghost node (purple), notable (amber), else safe (green).
+                if (d.isGhostNode) blip.classList.add('ghost-node');
+                else if (d.notable) blip.classList.add('monitor');
+                else blip.classList.add('safe');
                 blip.style.left = x + 'px';
                 blip.style.top = y + 'px';
-                // Stagger entrance — each blip appears 80ms after the previous
-                blip.style.animationDelay = (i * 0.08) + 's';
-                if (d.isGhostNode || d.threatScore <= blockedAt) {
-                    // Safe/monitor/ghost: entrance + breathe (breathe starts after entrance)
-                    blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
-                } else {
-                    // Threat: entrance + glow (glow starts after entrance)
-                    blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
-                }
-                blip.title = this._esc(d.name || d.id || 'Unknown');
+                blip.style.animationDelay = (i * 0.08) + 's, ' + (0.5 + i * 0.08) + 's';
+                blip.title = this._esc(d.name || d.category || d.id || 'Unknown');
                 visual.appendChild(blip);
             }
         },
@@ -34485,61 +34740,113 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (countEl) countEl.textContent = results.length;
 
-            // Sort: GhostNodes first, then by RSSI descending
-            const sorted = [...results].sort((a, b) => {
-                if (a.isGhostNode && !b.isGhostNode) return -1;
-                if (!a.isGhostNode && b.isGhostNode) return 1;
-                return (b.rssi || -100) - (a.rssi || -100);
-            });
-
-            const cfg = window.ShieldConfig;
-            const blockedAt = cfg ? cfg.signalIntel.thresholdBlocked : 75;
-            const warningAt = cfg ? cfg.signalIntel.thresholdWarning : 50;
-
+            // Engine already sorts (ghost node, then notable, then RSSI).
             let html = '';
-            for (const d of sorted) {
-                const score = Number(d.threatScore) || 0;
+            for (const d of results) {
                 let cls = 'safe';
-                let badgeLabel = 'ALLOWED';
-                if (d.isGhostNode) { cls = 'ghost-node'; badgeLabel = 'NODE'; }
-                else if (score > blockedAt) { cls = 'threat'; badgeLabel = 'BLOCKED'; }
-                else if (score >= warningAt) { cls = 'monitor'; badgeLabel = 'WARNING'; }
+                if (d.isGhostNode) cls = 'ghost-node';
+                else if (d.notable) cls = 'notable';
 
-                const name = this._esc(d.name || 'Unknown Device');
+                // Never invent a name: fall back to the inferred category in muted text.
+                const nameHtml = d.name
+                    ? this._esc(d.name)
+                    : '<span class="dev-unknown-name">' + this._esc(d.category || 'Unknown device') + '</span>';
                 const rssiLabel = d.rssi != null ? d.rssi + ' dBm' : '--';
-                const typeLabel = this._esc(d.type || 'unknown');
+                const proxClass = (d.proximity || 'unknown').replace(/\s+/g, '-');
 
-                const extras = [];
-                if (d.channel) extras.push('CH ' + d.channel);
-                if (d.security) extras.push(this._esc(d.security));
-                if (d.connectionType) extras.push(this._esc(d.connectionType));
-                if (d.isGhostNode) extras.push('GhostNet Node');
+                const meta = [];
+                if (d.vendor) meta.push(this._esc(d.vendor));
+                if (d.category && (d.name || d.vendor)) meta.push(this._esc(d.category));
+                if (d.isGhostNode) meta.push('GhostNet node');
 
                 html += `
                     <div class="radar-device-item ${cls}">
                         <div class="dev-top">
-                            <span class="dev-name">${name} <span style="font-size:0.7rem; font-family:monospace; opacity:0.7;">[${score}]</span></span>
+                            <span class="dev-name">${nameHtml}</span>
                             <span class="dev-rssi">${rssiLabel}</span>
                         </div>
                         <div class="dev-bottom">
-                            <span class="dev-badge">${typeLabel}</span>
-                            <span class="dev-badge" style="${score > blockedAt ? 'color:#ef4444;' : score >= warningAt ? 'color:#f59e0b;' : 'color:#10b981;'}">${badgeLabel}</span>
-                            <span>ID: ${this._esc((d.id || 'N/A').substring(0, 20))}</span>
-                            ${extras.length ? '<span>\u00B7</span><span>' + extras.join(' \u00B7 ') + '</span>' : ''}
+                            <span class="dev-proximity ${proxClass}">${this._esc(d.proximity || 'unknown')}</span>
+                            ${meta.length ? '<span>' + meta.join(' \u00B7 ') + '</span>' : ''}
+                            <span>ID: ${this._esc((d.id || 'N/A').substring(0, 17))}</span>
                         </div>
+                        ${d.notable ? '<div class="dev-notable">' +
+                            '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+                            ' Notable: ' + this._esc(d.notableReason || 'strong, persistent signal') + '</div>' : ''}
                     </div>`;
             }
             container.innerHTML = html;
         },
 
+        /** Render the WiFi "nearby networks" board \u2014 Android only, else honest note. */
+        renderWifi(wifi) {
+            const board = document.getElementById('radar-wifi-board');
+            const body = document.getElementById('radar-wifi-body');
+            if (!board || !body) return;
+            const radar = window.GhostRadar;
+
+            // iOS: hide behind a one-line note (the OS forbids AP scanning).
+            if (wifi && wifi.reason === 'ios-unsupported') {
+                board.style.display = 'block';
+                body.innerHTML = '<div class="radar-wifi-note">iOS does not permit apps to scan nearby WiFi networks, so this is unavailable on iPhone/iPad. (Android only.)</div>';
+                return;
+            }
+            // Native module not in this build: honest, not faked.
+            if (!wifi || (!wifi.available && (wifi.reason === 'module-not-installed' || wifi.reason === 'unsupported'))) {
+                board.style.display = 'block';
+                body.innerHTML = '<div class="radar-wifi-note">Nearby-network scanning needs the native WiFi module, which is not included in this build.</div>';
+                return;
+            }
+            if (!wifi.available) {
+                board.style.display = 'block';
+                const why = wifi.reason === 'permission-denied' ? 'Location/WiFi permission is required to list nearby networks.'
+                    : wifi.reason === 'wifi-disabled' ? 'Turn on WiFi to list nearby networks.'
+                    : 'Nearby networks are currently unavailable (' + this._esc(wifi.reason || 'unknown') + ').';
+                body.innerHTML = '<div class="radar-wifi-note">' + why + '</div>';
+                return;
+            }
+
+            board.style.display = 'block';
+            if (!wifi.networks || wifi.networks.length === 0) {
+                body.innerHTML = '<div class="radar-wifi-note">No access points in range.</div>';
+                return;
+            }
+            let html = '';
+            for (const n of wifi.networks) {
+                const name = n.hidden ? '<span class="dev-unknown-name">Hidden network</span>' : this._esc(n.ssid);
+                const rssiLabel = n.rssi != null ? n.rssi + ' dBm' : '--';
+                const meta = [];
+                if (n.security) meta.push(this._esc(n.security));
+                if (n.channel) meta.push('CH ' + n.channel);
+                if (n.bssid) meta.push(this._esc(n.bssid));
+                html += `
+                    <div class="radar-wifi-item ${n.notable ? 'notable' : ''}">
+                        <div>
+                            <div class="wifi-name">${name}</div>
+                            <div class="wifi-meta">${meta.join(' \u00B7 ')}${n.notable ? ' \u00B7 \u26A0 ' + this._esc(n.notableReason || 'notable') : ''}</div>
+                        </div>
+                        <span class="wifi-rssi">${rssiLabel}</span>
+                    </div>`;
+            }
+            body.innerHTML = html;
+        },
+
         /**
          * Full UI refresh from current GhostRadar state.
          */
-        refresh() {
+        refresh(detail) {
             const radar = window.GhostRadar;
             if (!radar) return;
 
+            // Environment gate first: browser / Expo Go get the honest disabled UI.
+            const env = (radar.env && radar.env !== 'unknown') ? radar.env : radar.detectEnvironment();
+            if (env !== 'native') { this._showUnsupported(env); return; }
+            this._hideUnsupported();
+
             const results = radar.results || [];
+            const wifi = (detail && detail.wifi) || radar.wifi || this._wifi;
+            this._wifi = wifi;
+
             const scanDot = document.getElementById('radar-scan-dot');
             const scanLabel = document.getElementById('radar-scan-label');
             const radarVisual = document.getElementById('radar-visual');
@@ -34550,38 +34857,46 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (radarVisual) radarVisual.classList.remove('paused');
             } else {
                 if (scanDot) scanDot.classList.add('idle');
-                if (scanLabel) scanLabel.textContent = results.length > 0
-                    ? 'Scan complete \u2014 next in 15s'
-                    : 'Idle \u2014 waiting for signals';
-                if (radarVisual && results.length === 0) radarVisual.classList.add('paused');
-                else if (radarVisual) radarVisual.classList.remove('paused');
+                if (scanLabel) scanLabel.textContent = results.length > 0 ? 'Paused' : 'Idle \u2014 waiting for signals';
+                if (radarVisual) radarVisual.classList.add('paused');
             }
 
             this.renderBlips(results);
             this.renderDeviceList(results);
+            this.renderWifi(wifi);
             this.updatePermissionBanner();
         },
 
+        // Start scanning when the radar view is shown; stop when it is hidden
+        // (battery + privacy \u2014 the radio must not run on other screens).
+        _bindVisibility() {
+            const section = document.getElementById('view-radar');
+            if (!section) return;
+            const sync = () => {
+                const active = section.classList.contains('active');
+                const radar = window.GhostRadar;
+                if (!radar) return;
+                if (active && !this._active) {
+                    this._active = true;
+                    Promise.resolve(radar.start()).then(() => this.refresh()).catch(() => this.refresh());
+                } else if (!active && this._active) {
+                    this._active = false;
+                    Promise.resolve(radar.stop()).catch(() => {});
+                }
+            };
+            new MutationObserver(sync).observe(section, { attributes: true, attributeFilter: ['class'] });
+            sync(); // handle radar already being the active view at load
+        },
+
         init() {
-            // Listen for scan completions from GhostRadar
-            window.addEventListener('ghostRadar:scanComplete', (e) => {
-                this.refresh();
+            window.addEventListener('ghostRadar:scanComplete', (e) => this.refresh(e.detail));
+            window.addEventListener('ghostRadar:permissionUpdate', () => this.updatePermissionBanner());
+            window.addEventListener('ghostRadar:error', (e) => {
+                const label = document.getElementById('radar-scan-label');
+                if (label && e.detail && e.detail.message) label.textContent = e.detail.message;
             });
 
-            // Listen for permission updates
-            window.addEventListener('ghostRadar:permissionUpdate', () => {
-                this.updatePermissionBanner();
-            });
-
-            // Also listen for signalIntel completions (enriched data)
-            window.addEventListener('signalIntel:scanComplete', () => {
-                this.refresh();
-            });
-
-            // Periodic refresh fallback
-            setInterval(() => this.refresh(), 5000);
-
-            // Initial render
+            this._bindVisibility();
             this.refresh();
         }
     };
