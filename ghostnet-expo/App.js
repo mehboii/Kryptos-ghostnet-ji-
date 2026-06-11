@@ -3,6 +3,7 @@ import { StyleSheet, View, BackHandler, StatusBar, Image, Text, Platform, Keyboa
 import { WebView } from 'react-native-webview';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
+import Constants from 'expo-constants';
 import ProximityBLE from './src/ble/ProximityBLE';
 import { BLE_BRIDGE_SHIM } from './src/ble/bridgeShim';
 
@@ -11,6 +12,17 @@ SplashScreen.preventAutoHideAsync();
 const OFFLINE_SOURCE = Platform.OS === 'android'
   ? { uri: 'file:///android_asset/offline-web/index.html' }
   : require('./offline-web/index.html');
+
+// Runtime tag handed to the WebView so the Proximity UI can render a correct
+// state WITHOUT poking the radio: 'expoGo' = Expo Go (the native BLE modules are
+// not present, so discovery cannot work) vs 'native' = dev client / EAS build
+// (BLE works). Computed once; this does NOT touch the scan/permission flow.
+const BLE_ENV = Constants.executionEnvironment === 'storeClient' ? 'expoGo' : 'native';
+
+// Injected before page scripts load: the bridge shim, then the env tag on it.
+const BLE_BOOTSTRAP = `${BLE_BRIDGE_SHIM}
+try { window.GhostNetBLE && (window.GhostNetBLE.env = ${JSON.stringify(BLE_ENV)}); } catch (e) {}
+true;`;
 
 export default function App() {
   const webViewRef = useRef(null);
@@ -139,7 +151,7 @@ export default function App() {
             ref={webViewRef}
             source={OFFLINE_SOURCE}
             style={[styles.webview, !webViewReady && styles.hidden]}
-            injectedJavaScriptBeforeContentLoaded={BLE_BRIDGE_SHIM}
+            injectedJavaScriptBeforeContentLoaded={BLE_BOOTSTRAP}
             onMessage={onWebViewMessage}
             onNavigationStateChange={(navState) => {
               setCanGoBack(navState.canGoBack);

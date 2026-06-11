@@ -31,6 +31,9 @@ export const BLE_BRIDGE_SHIM = `(function(){
   window.GhostNetBLE = {
     __ready: true,
     available: true,
+    // Set by App.js right after this shim: 'native' (dev client / EAS build) or
+    // 'expoGo' (native BLE modules absent). Stays null if the host never sets it.
+    env: null,
     on: function(evt, cb){ (_listeners[evt] = _listeners[evt] || []).push(cb); },
     off: function(evt, cb){
       var a = _listeners[evt]; if (!a) return;
