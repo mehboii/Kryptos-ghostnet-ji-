@@ -45,6 +45,7 @@ export default class ProximityBLE {
   constructor() {
     this.manager = null;
     this.scanning = false;
+    this.radarScanning = false;
     this.advertising = false;
     this._seen = new Map(); // deviceId -> last RSSI/name (dedupe + freshen)
     this._monitors = new Map(); // deviceId -> Subscription
@@ -104,6 +105,26 @@ export default class ProximityBLE {
       return res === PermissionsAndroid.RESULTS.GRANTED;
     } catch (e) {
       this._emit('error', { phase: 'permission', message: e.message });
+      return false;
+    }
+  }
+
+  /**
+   * Ghost Radar WiFi scan permissions (Android only). Android gates nearby-AP
+   * results behind location, plus NEARBY_WIFI_DEVICES on API 33+. iOS can't scan
+   * access points at all, so this is a no-op there.
+   */
+  async requestWifiPermissions() {
+    if (Platform.OS !== 'android') return false;
+    try {
+      const perms = [PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION];
+      if (Platform.Version >= 33 && PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES) {
+        perms.push(PermissionsAndroid.PERMISSIONS.NEARBY_WIFI_DEVICES);
+      }
+      const res = await PermissionsAndroid.requestMultiple(perms);
+      return Object.values(res).every((v) => v === PermissionsAndroid.RESULTS.GRANTED);
+    } catch (e) {
+      this._emit('error', { phase: 'wifiPermission', message: e.message });
       return false;
     }
   }
@@ -190,6 +211,45 @@ export default class ProximityBLE {
     this.scanning = false;
   }
 
+  // ── Radar role (UNFILTERED passive scan) ───────────────────────
+  // Ghost Radar wants EVERY nearby BLE device, not just GhostNet peers, so it
+  // scans with a null UUID filter and reports the richer advertisement payload
+  // (manufacturer data + service UUIDs) the radar uses for vendor/category hints.
+  // ble-plx allows a single active scan per manager, so this and startScan() are
+  // mutually exclusive — callers use one screen at a time.
+  startRadarScan() {
+    if (!this.manager) throw new Error('init() first');
+    if (this.radarScanning) return;
+    this.radarScanning = true;
+
+    this.manager.startDeviceScan(null, SCAN_OPTIONS, (error, device) => {
+      if (error) {
+        this.radarScanning = false;
+        this._emit('error', { phase: 'radarScan', message: error.message });
+        return;
+      }
+      if (!device) return;
+      // Report only what the radio actually gave us — never invent a name.
+      this._emit('radarDevice', {
+        deviceId: device.id,
+        name: device.localName || device.name || null,
+        rssi: typeof device.rssi === 'number' ? device.rssi : null,
+        // base64 (ble-plx native encoding) or null; the web layer decodes the
+        // 2-byte little-endian company id for vendor mapping.
+        manufacturerData: device.manufacturerData || null,
+        serviceUUIDs: device.serviceUUIDs || null,
+        txPowerLevel: typeof device.txPowerLevel === 'number' ? device.txPowerLevel : null,
+        isConnectable: device.isConnectable === true,
+        timestamp: Date.now(),
+      });
+    });
+  }
+
+  stopRadarScan() {
+    if (this.manager && this.radarScanning) this.manager.stopDeviceScan();
+    this.radarScanning = false;
+  }
+
   async connect(deviceId) {
     if (!this.manager) throw new Error('init() first');
     const device = await this.manager.connectToDevice(deviceId, { requestMTU: this._mtuTarget() });
@@ -269,6 +329,7 @@ export default class ProximityBLE {
   async destroy() {
     this._destroyed = true;
     this.stopScan();
+    this.stopRadarScan();
     try { await this.stopAdvertising(); } catch (_) {}
     for (const sub of this._peripheralSubs) { try { sub.remove(); } catch (_) {} }
     this._peripheralSubs = [];

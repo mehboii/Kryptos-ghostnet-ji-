@@ -1,11 +1,12 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { StyleSheet, View, BackHandler, StatusBar, Image, Text, Platform, KeyboardAvoidingView, PermissionsAndroid } from 'react-native';
+import { StyleSheet, View, BackHandler, StatusBar, Image, Text, Platform, KeyboardAvoidingView, PermissionsAndroid, AppState } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
 import Constants from 'expo-constants';
 import ProximityBLE from './src/ble/ProximityBLE';
 import { BLE_BRIDGE_SHIM } from './src/ble/bridgeShim';
+import * as WifiScan from './modules/ghostnet-wifi-scan';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -55,7 +56,7 @@ export default function App() {
       const ble = new ProximityBLE();
       await ble.init();
       const forward = [
-        'deviceFound', 'deviceUpdated', 'centralWrite', 'centralConnected',
+        'deviceFound', 'deviceUpdated', 'radarDevice', 'centralWrite', 'centralConnected',
         'centralDisconnected', 'notification', 'disconnected', 'peripheralState', 'error',
       ];
       forward.forEach((evt) => ble.on(evt, (data) => emitToWeb(evt, data)));
@@ -76,12 +77,23 @@ export default function App() {
         }
         case 'isPeripheralSupported': result = await ble.isPeripheralSupported(); break;
         case 'requestPermissions': result = await ble.requestPermissions(); break;
+        case 'requestWifiPermissions': result = await ble.requestWifiPermissions(); break;
         case 'adapterState': result = await ble.adapterState(); break;
         case 'startAdvertising': result = await ble.startAdvertising(args); break;
         case 'updatePseudonym': await ble.updatePseudonym(args.pseudonymHex); result = true; break;
         case 'stopAdvertising': await ble.stopAdvertising(); result = true; break;
         case 'startScan': ble.startScan(); result = true; break;
         case 'stopScan': ble.stopScan(); result = true; break;
+        case 'startRadarScan': ble.startRadarScan(); result = true; break;
+        case 'stopRadarScan': ble.stopRadarScan(); result = true; break;
+        case 'scanWifi':
+          // Android-only nearby AP scan; iOS / unlinked module report unavailable
+          // honestly (never faked). expo-modules requireOptionalNativeModule
+          // already guards a missing native module.
+          result = (Platform.OS === 'android')
+            ? await WifiScan.scan()
+            : { available: false, reason: 'ios-unsupported', accessPoints: [] };
+          break;
         case 'connect': result = await ble.connect(args.deviceId); break;
         case 'disconnect': await ble.disconnect(args.deviceId); result = true; break;
         case 'read': result = await ble.read(args.deviceId, args.charUuid); break;
@@ -104,6 +116,25 @@ export default function App() {
   }, [handleBleCommand]);
 
   useEffect(() => () => { if (bleRef.current) bleRef.current.destroy(); }, []);
+
+  // Halt the radio when the app leaves the foreground — battery + privacy. The
+  // native scans are stopped directly (the surest guarantee) and the WebView is
+  // told so its UIs (radar / proximity) can reflect the paused state.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        const ble = bleRef.current;
+        if (ble) {
+          try { ble.stopRadarScan(); } catch (_) {}
+          try { ble.stopScan(); } catch (_) {}
+        }
+        emitToWeb('appBackground', {});
+      } else if (state === 'active') {
+        emitToWeb('appForeground', {});
+      }
+    });
+    return () => sub.remove();
+  }, [emitToWeb]);
 
   // Request camera permission up-front so the in-WebView QR scanner (getUserMedia)
   // can access the camera. Without the native grant Android silently denies it.
