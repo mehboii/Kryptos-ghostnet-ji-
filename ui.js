@@ -805,6 +805,13 @@ const UI = {
             }
         } catch (_) {}
 
+        // 3b. Stop Proximity Connect BLE — drop any session/mesh trust, then halt
+        //     advertising + scanning so the radio is silent after logout.
+        if (window.ProximityConnect) {
+            try { window.ProximityConnect.disconnect(); } catch (_) {}
+            try { window.ProximityConnect.stop(); } catch (_) {}
+        }
+
         // 4. Destroy mesh connection — send PEER_LEAVE + close WebSocket
         if (window.app && window.app.mesh) {
             const mesh = window.app.mesh;
