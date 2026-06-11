@@ -112,6 +112,24 @@ document.addEventListener('DOMContentLoaded', () => {
         .prox-log .log-line.success { color: #10b981; opacity: 1; }
         .prox-log .log-line.error { color: #ef4444; opacity: 1; }
 
+        /* Unsupported-environment (web / Expo Go) state */
+        .prox-env-card {
+            border-color: rgba(139,92,246,0.35);
+            background: linear-gradient(180deg, rgba(34,211,238,0.04) 0%, rgba(139,92,246,0.06) 100%);
+        }
+        .prox-env-pill {
+            display: inline-flex; align-items: center; gap: 6px;
+            margin-bottom: 14px; padding: 4px 12px; border-radius: 999px;
+            font-size: 0.68rem; font-weight: 700; letter-spacing: 0.5px;
+            text-transform: uppercase;
+            color: #22d3ee; border: 1px solid rgba(34,211,238,0.35);
+            background: rgba(34,211,238,0.08);
+        }
+        .prox-env-note {
+            display: block; margin-top: 10px;
+            font-size: 0.72rem; color: var(--text-muted);
+        }
+
         @media (max-width: 600px) {
             .prox-verify-code { font-size: 1.8rem; letter-spacing: 8px; }
         }
@@ -218,7 +236,71 @@ document.addEventListener('DOMContentLoaded', () => {
             el.scrollTop = el.scrollHeight;
         },
 
+        // ── Environment detection ───────────────────────────────────
+        // Synchronous and side-effect-free: it reads only the tag App.js set on
+        // the bridge — it never constructs the BLE manager, so it cannot trigger
+        // a permission prompt or alter the working dev/EAS scan flow.
+        _detectEnvironment() {
+            const ble = (typeof window !== 'undefined') ? window.GhostNetBLE : null;
+            // No bridge injected at all → the page is open in a plain web browser.
+            if (!ble || !ble.available) return 'web';
+            // Bridge present. App.js tags the runtime; default to 'native' if the
+            // tag is missing so a real build is never wrongly downgraded.
+            return ble.env === 'expoGo' ? 'expoGo' : 'native';
+        },
+
+        // Decide once whether BLE can actually run here. On a real dev/EAS build
+        // this is a no-op (leaves the active Scan button exactly as-is); only the
+        // unsupported environments get the disabled, explanatory state.
+        _applyEnvironmentGate() {
+            let env = 'native';
+            try { env = this._detectEnvironment(); } catch (_) { env = 'web'; }
+            this._env = env;
+            if (env === 'native') return;
+            this._renderUnsupported(env);
+        },
+
+        _renderUnsupported(env) {
+            const card = document.getElementById('prox-state-card');
+            const icon = document.getElementById('prox-state-icon');
+            const title = document.getElementById('prox-state-title');
+            const desc = document.getElementById('prox-state-desc');
+            const actions = document.getElementById('prox-actions');
+            if (!card || !title || !desc || !actions) return;
+
+            card.classList.remove('scanning');
+            card.classList.add('prox-env-card');
+            const where = env === 'web' ? 'a web browser' : 'Expo Go';
+
+            if (icon) {
+                icon.innerHTML = `
+                    <span class="prox-env-pill">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                            <path d="M7 8l10 8-5 4V4l5 4L7 16"/>
+                        </svg>
+                        Native app required
+                    </span>
+                    <div>
+                        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="7" y="2" width="10" height="20" rx="2.5"/>
+                            <path d="M11 6.5l3.2 2.4L11 11.3V6.5l3.2 2.4L11 11.3" stroke="#22d3ee"/>
+                            <line x1="12" y1="18" x2="12.01" y2="18"/>
+                        </svg>
+                    </div>`;
+            }
+            title.textContent = 'Open in the GhostNet App';
+            title.style.color = '#a78bfa';
+            desc.innerHTML = `Proximity Connect discovers nearby devices over Bluetooth, which only works in the installed GhostNet app — not in ${where}.`
+                + `<span class="prox-env-note">Bluetooth needs the native app to reach your phone’s radio; a browser can’t.</span>`;
+            actions.innerHTML = `<button class="prox-btn" id="prox-btn-scan" disabled>Bluetooth unavailable here</button>`;
+        },
+
         async startScan() {
+            // Guard: if the radio can't run in this environment, show the friendly
+            // disabled state instead of attempting (and failing) the native call.
+            if (!this._env) this._applyEnvironmentGate();
+            if (this._env && this._env !== 'native') { this._renderUnsupported(this._env); return; }
+
             const pc = window.ProximityConnect;
             if (!pc) { this.log('ProximityConnect not loaded', 'error'); return; }
 
@@ -433,4 +515,10 @@ document.addEventListener('DOMContentLoaded', () => {
             this._connectedPeer = null;
         }
     };
+
+    // Decide the environment as soon as the screen mounts so an unsupported
+    // runtime (browser / Expo Go) shows the disabled state up front, never a
+    // live "Scan Nearby" button that would fail on tap. The bridge tag is
+    // injected before content loads, so this is reliable here.
+    try { window.ProximityUI._applyEnvironmentGate(); } catch (_) {}
 });
