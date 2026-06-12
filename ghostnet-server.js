@@ -160,7 +160,15 @@ const _HARDCODED_ORIGINS = ['https://ghostnet-ji.vercel.app'];
 const _ENV_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'http://localhost:3000,http://127.0.0.1:3000')
     .split(',').map(o => o.trim()).filter(Boolean);
 const ALLOWED_ORIGINS = [...new Set([..._ENV_ORIGINS, ..._HARDCODED_ORIGINS])];
-console.log('[CORS] Allowed origins:', ALLOWED_ORIGINS);
+// Vercel assigns a unique URL per deployment (e.g. ghostnet-abc123-novtwe6-gmailcoms-projects.vercel.app);
+// accept any deployment under this account's Vercel scope in addition to the static allowlist.
+const ALLOWED_ORIGIN_PATTERNS = [
+    /^https:\/\/[a-z0-9-]+-novtwe6-gmailcoms-projects\.vercel\.app$/,
+];
+function isAllowedOrigin(origin) {
+    return ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGIN_PATTERNS.some(re => re.test(origin));
+}
+console.log('[CORS] Allowed origins:', ALLOWED_ORIGINS, '+ patterns:', ALLOWED_ORIGIN_PATTERNS.map(String));
 
 // [17][18][19] File ID allowlist — hex UUID-like strings only
 const FILE_ID_RE = /^[a-zA-Z0-9_\-]{1,128}$/;
@@ -456,7 +464,7 @@ app.use(helmet({
 app.use(cors({
     origin: (origin, cb) => {
         // Allow server-to-server (no origin) and allowlisted browsers
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, origin);
+        if (!origin || isAllowedOrigin(origin)) return cb(null, origin);
         console.warn(`[CORS] Blocked origin: ${origin}`);
         // Return false instead of Error to avoid Express error handler swallowing CORS headers
         cb(null, false);
@@ -469,7 +477,7 @@ app.use(cors({
 // Explicit OPTIONS preflight handler — belt and suspenders
 app.options('*', cors({
     origin: (origin, cb) => {
-        if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, origin);
+        if (!origin || isAllowedOrigin(origin)) return cb(null, origin);
         cb(null, false);
     },
     credentials: true,
