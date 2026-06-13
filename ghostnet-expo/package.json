@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "build:shield-web": "node scripts/build-shield-web.js",
+    "typecheck:shield": "tsc -p src/shield/tsconfig.json --noEmit",
+    "test:shield": "vitest run src/shield",
     "build:offline-web": "node scripts/build-offline-web.js",
     "sync:offline-web:android": "node scripts/sync-offline-web-to-android.js",
     "start": "expo start",

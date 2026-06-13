@@ -368,7 +368,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     </div>
                     <div class="lvl-title" style="color:#fcd34d;">PHANTOM</div>
-                    <div class="lvl-desc">Ghost + Fake device decoys, rapid MAC rotation, maximum mesh routing hops.</div>
+                    <div class="lvl-desc">Ghost + Decoy peer traffic, overlay node-ID rotation, maximum mesh routing hops.</div>
                 </div>
             </div>
             
@@ -400,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="shield-stats">
                 <span>Protected <strong id="stat-pkts">0</strong></span>
                 <span>Blocked <strong id="stat-blocked">0</strong></span>
-                <span>MAC Rotations <strong id="stat-macs">0</strong></span>
+                <span>Node-ID Rotations <strong id="stat-nodeids">0</strong></span>
                 <span>Uptime <strong id="stat-up">0s</strong></span>
             </div>
 
@@ -501,7 +501,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const status = window.GhostShield.getStatus();
             document.getElementById('stat-pkts').textContent = status.stats.packetsProtected;
             document.getElementById('stat-blocked').textContent = status.stats.devicesBlocked;
-            document.getElementById('stat-macs').textContent = status.stats.macRotations;
+            document.getElementById('stat-nodeids').textContent = status.stats.nodeIdRotations;
             document.getElementById('stat-up').textContent = this.formatUptime(status.stats.uptime);
         },
 

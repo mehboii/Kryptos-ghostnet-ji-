@@ -17,6 +17,8 @@
 import type { ShieldPorts } from './types';
 
 export interface CapabilitySet {
+  /** Is there any BLE stack at all on this build (false on a plain web build)? */
+  readonly bleAvailable: boolean;
   /** Can we programmatically stop/start GhostNet's own BLE advertising? */
   readonly bleAdvertisingControl: boolean;
   /** Can we vary the advertising interval + payload length (anti-fingerprint)? */
@@ -33,6 +35,8 @@ export interface CapabilitySet {
   readonly screenCaptureDetection: boolean;
   /** Can we observe active accessibility services? */
   readonly accessibilityDetection: boolean;
+  /** Is server-backed attestation (Play Integrity / App Attest) available? */
+  readonly attestation: boolean;
   /** Cover traffic / padding / jitter / decoys are pure-overlay behaviors that
    *  the app fully controls, so they are always achievable. Listed for symmetry. */
   readonly trafficShaping: boolean;
@@ -41,6 +45,10 @@ export interface CapabilitySet {
 
 /** Stable reason codes a module emits when a capability is missing. */
 export const REASON = {
+  /** No BLE stack at all (plain web build, or native plugin failed to resolve).
+   *  The host turns this into a platform-aware message, e.g.
+   *  "BLE unavailable — web test context (no native plugin)". */
+  BLE_UNAVAILABLE: 'ble_unavailable_no_local_stack',
   BLE_ADV_UNSUPPORTED: 'ble_advertising_control_unsupported',
   BLE_ADV_PARAMS_FIXED: 'ble_advertising_params_fixed_platform',
   DOH_UNSUPPORTED: 'doh_unsupported_on_platform',
@@ -52,6 +60,9 @@ export const REASON = {
   SCREEN_CAPTURE_ACTIVE: 'screen_capture_active',
   ACCESSIBILITY_SERVICE_ACTIVE: 'accessibility_service_active',
   ONDEVICE_DETECTION_UNSUPPORTED: 'ondevice_detection_unsupported',
+  DEVICE_COMPROMISED: 'device_compromised',
+  DEVICE_SUSPECT: 'device_suspect',
+  INTEGRITY_UNKNOWN: 'integrity_unknown',
 } as const;
 
 /**
@@ -62,6 +73,7 @@ export const REASON = {
  */
 export function probeCapabilities(ports: ShieldPorts): CapabilitySet {
   const set: CapabilitySet = {
+    bleAvailable: ports.ble.isAvailable(),
     bleAdvertisingControl: ports.ble.supportsAdvertisingControl(),
     bleAdvertisingParams: ports.ble.supportsAdvertisingParams(),
     doh: ports.dns.supportsDoh(),
@@ -70,10 +82,12 @@ export function probeCapabilities(ports: ShieldPorts): CapabilitySet {
     nodeIdRotation: ports.mesh.supportsNodeIdRotation(),
     screenCaptureDetection: ports.coResident.supportsScreenCaptureDetection(),
     accessibilityDetection: ports.coResident.supportsAccessibilityDetection(),
+    attestation: ports.integrity.provider.isSupported(),
     trafficShaping: true,
     decoys: true,
   };
   ports.log.debug('capabilities', {
+    bleStack: set.bleAvailable,
     ble: set.bleAdvertisingControl,
     advParams: set.bleAdvertisingParams,
     doh: set.doh,
@@ -82,6 +96,7 @@ export function probeCapabilities(ports: ShieldPorts): CapabilitySet {
     rotate: set.nodeIdRotation,
     screencap: set.screenCaptureDetection,
     a11y: set.accessibilityDetection,
+    attestation: set.attestation,
   });
   return set;
 }

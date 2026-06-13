@@ -27,6 +27,22 @@ export class BleCloak implements ShieldModule {
       return this.last;
     }
 
+    if (!this.ports.ble.isAvailable()) {
+      // No BLE stack at all (plain web build, or the native plugin failed to
+      // resolve). There is no radio to silence and no app-level discovery beacon
+      // to stop, so we report UNAVAILABLE (active:false) rather than pretending an
+      // achievable subset ran. Never claim BLE features active without a stack.
+      this.last = {
+        id: this.id,
+        requested: true,
+        active: false,
+        degraded: true,
+        reason: REASON.BLE_UNAVAILABLE,
+      };
+      this.ports.log.warn('ble_cloak_unavailable', { reason: REASON.BLE_UNAVAILABLE });
+      return this.last;
+    }
+
     if (!this.ports.ble.supportsAdvertisingControl()) {
       // We cannot guarantee silence. Do the achievable subset (stop the
       // discovery beacon, which is app-driven even when peripheral advertising
@@ -51,11 +67,13 @@ export class BleCloak implements ShieldModule {
   }
 
   async disable(): Promise<void> {
-    // Restore GhostNet's normal presence.
-    if (this.ports.ble.supportsAdvertisingControl()) {
-      await this.ports.ble.startAdvertising();
+    // Restore GhostNet's normal presence — only if there is a BLE stack to touch.
+    if (this.ports.ble.isAvailable()) {
+      if (this.ports.ble.supportsAdvertisingControl()) {
+        await this.ports.ble.startAdvertising();
+      }
+      await this.ports.ble.setDiscoveryBeaconEnabled(true);
     }
-    await this.ports.ble.setDiscoveryBeaconEnabled(true);
     this.last = { id: this.id, requested: false, active: false, degraded: false };
   }
 
