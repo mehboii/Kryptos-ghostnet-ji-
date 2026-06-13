@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
                     </div>
                     <div class="lvl-title" style="color:#2dd4bf;">STEALTH</div>
-                    <div class="lvl-desc">Stops BLE broadcasting, suppresses probe requests, enables secure DNS.</div>
+                    <div class="lvl-desc">Silences GhostNet's own broadcasts, enables secure DNS (DoH).</div>
                 </div>
 
                 <div class="level-card" onclick="GhostShieldUI.activateLevel(2)" id="card-lvl-2">
