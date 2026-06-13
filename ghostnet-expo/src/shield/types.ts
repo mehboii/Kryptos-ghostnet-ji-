@@ -36,7 +36,7 @@ export const TIER_RANK: Readonly<Record<ShieldTier, number>> = {
   [ShieldTier.FULL_GHOST]: 4,
 };
 
-/** Stable identifiers for the six Shield modules. */
+/** Stable identifiers for the Shield modules. */
 export enum ModuleId {
   BleCloak = 'ble-cloak',
   DnsGuard = 'dns-guard',
@@ -44,6 +44,7 @@ export enum ModuleId {
   MeshRouting = 'mesh-routing',
   DecoyEngine = 'decoy-engine',
   NodeIdRotator = 'node-id-rotator',
+  CoResidentGuard = 'co-resident-guard',
 }
 
 /** Cover-traffic policy. `adaptive` ramps in/out so toggling Shield is not a
@@ -97,6 +98,14 @@ export interface ShieldConfig {
     readonly maxIntervalMs: number;
     /** Grace window an old id stays valid after a rotation, for session handoff. */
     readonly handoffGraceMs: number;
+    /** Also re-randomize BLE advertising interval + payload length per rotation. */
+    readonly randomizeAdvertising: boolean;
+  };
+  readonly coResident: {
+    /** Monitor on-device observation risks (screen capture, a11y, clipboard). */
+    readonly enabled: boolean;
+    /** Clear the clipboard this long after a guarded sensitive copy. */
+    readonly clipboardClearMs: number;
   };
 }
 
@@ -174,6 +183,15 @@ export interface MeshFrame {
  *  actually send, in order. Must be a pure, order-preserving function. */
 export type OutboundTransform = (frame: MeshFrame) => MeshFrame;
 
+/** Tunable advertising shape, re-randomized per node-id rotation so cadence and
+ *  size don't become a stable fingerprint of "the GhostNet app". */
+export interface AdvertisingParameters {
+  /** Advertising interval in ms. Should be drawn from OS-default ranges. */
+  readonly intervalMs: number;
+  /** Advertised payload (scan-response) length in bytes, within legal bounds. */
+  readonly payloadLength: number;
+}
+
 export interface BleAdapter {
   /** Does this platform/build expose programmatic BLE advertising control? */
   supportsAdvertisingControl(): boolean;
@@ -183,6 +201,11 @@ export interface BleAdapter {
   setDiscoveryBeaconEnabled(enabled: boolean): Promise<void>;
   /** Set the overlay node id embedded in our advertisement payload. */
   setAdvertisedNodeId(nodeId: string): Promise<void>;
+  /** Can this platform vary the advertising interval + payload length? Android
+   *  exposes advertise modes; iOS CoreBluetooth fixes these (so: false). */
+  supportsAdvertisingParams(): boolean;
+  /** Apply a new advertising interval + payload length. */
+  setAdvertisingParameters(params: AdvertisingParameters): Promise<void>;
 }
 
 export interface DnsAdapter {
@@ -194,6 +217,12 @@ export interface DnsAdapter {
   probe(dohResolver: string): Promise<boolean>;
   /** Block plaintext DNS entirely (fail-closed). */
   setPlaintextBlocked(blocked: boolean): Promise<void>;
+  /**
+   * Is Encrypted Client Hello available for outbound TLS on this platform/build?
+   * DoH hides the DNS *query*, but without ECH the TLS SNI of the connections
+   * that follow still leaks the destination hostname to an on-path observer.
+   */
+  supportsEch(): boolean;
 }
 
 export interface MeshAdapter {
@@ -236,6 +265,26 @@ export interface DecoyAnnouncement {
   readonly payload: Uint8Array;
 }
 
+/**
+ * On-device observation surface. All detection here is best-effort and racy on
+ * an unprivileged app — it raises the cost of casual on-device snooping, it is
+ * NOT a defense against a rooted/compromised device (see THREAT_MODEL.md #6).
+ */
+export interface CoResidentAdapter {
+  /** Can we observe screen-capture state (iOS UIScreen.isCaptured / Android MediaProjection)? */
+  supportsScreenCaptureDetection(): boolean;
+  /** Is the screen currently being recorded/captured/mirrored? */
+  isScreenCaptured(): boolean;
+  /** Subscribe to screen-capture state changes. Returns an unsubscribe fn. */
+  subscribeScreenCapture(cb: (captured: boolean) => void): () => void;
+  /** Can we enumerate active accessibility services (Android) / assistive use (iOS)? */
+  supportsAccessibilityDetection(): boolean;
+  /** Is a third-party accessibility service currently active? */
+  isAccessibilityServiceActive(): boolean;
+  /** Overwrite/clear the system clipboard. */
+  clearClipboard(): Promise<void>;
+}
+
 /** Persistence port. Backed by expo-secure-store on device; in-memory in tests. */
 export interface SecureStorePort {
   getItem(key: string): Promise<string | null>;
@@ -267,6 +316,7 @@ export interface ShieldPorts {
   readonly ble: BleAdapter;
   readonly dns: DnsAdapter;
   readonly mesh: MeshAdapter;
+  readonly coResident: CoResidentAdapter;
   readonly store: SecureStorePort;
   readonly clock: Clock;
   readonly random: RandomSource;

@@ -61,6 +61,22 @@ export class DnsGuard implements ShieldModule {
 
     // DoH reachable: ensure plaintext stays unblocked and resolve via DoH.
     await this.ports.dns.setPlaintextBlocked(false);
+
+    // DoH hides the DNS *query*, but the TLS SNI of the connections that follow
+    // still leaks the destination hostname to an on-path observer UNLESS ECH is
+    // available. Surface that honestly rather than implying DoH hides the host.
+    if (!this.ports.dns.supportsEch()) {
+      this.last = {
+        id: this.id,
+        requested: true,
+        active: true,
+        degraded: true,
+        reason: REASON.SNI_LEAK_NO_ECH,
+      };
+      this.ports.log.warn('dns_sni_leak', { reason: REASON.SNI_LEAK_NO_ECH });
+      return this.last;
+    }
+
     this.last = { id: this.id, requested: true, active: true, degraded: false };
     this.ports.log.debug('dns_doh_on');
     return this.last;

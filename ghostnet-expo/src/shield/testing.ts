@@ -10,8 +10,10 @@
 
 import { createLogger } from './logger';
 import {
+  type AdvertisingParameters,
   type BleAdapter,
   type Clock,
+  type CoResidentAdapter,
   type DecoyAnnouncement,
   type DnsAdapter,
   type DnsMode,
@@ -150,15 +152,19 @@ export class MemoryStore implements SecureStorePort {
 
 export interface FakeBleOptions {
   readonly supportsAdvertisingControl?: boolean;
+  readonly supportsAdvertisingParams?: boolean;
 }
 
 export class FakeBleAdapter implements BleAdapter {
   advertising = true;
   discoveryBeacon = true;
   advertisedNodeId = 'node-real';
+  advertisingParams: AdvertisingParameters[] = [];
   private readonly supported: boolean;
+  private readonly paramsSupported: boolean;
   constructor(opts: FakeBleOptions = {}) {
     this.supported = opts.supportsAdvertisingControl ?? true;
+    this.paramsSupported = opts.supportsAdvertisingParams ?? true;
   }
   supportsAdvertisingControl(): boolean {
     return this.supported;
@@ -175,6 +181,12 @@ export class FakeBleAdapter implements BleAdapter {
   async setAdvertisedNodeId(nodeId: string): Promise<void> {
     this.advertisedNodeId = nodeId;
   }
+  supportsAdvertisingParams(): boolean {
+    return this.paramsSupported;
+  }
+  async setAdvertisingParameters(params: AdvertisingParameters): Promise<void> {
+    this.advertisingParams.push(params);
+  }
 }
 
 /* ── Fake DNS adapter ────────────────────────────────────────────────────── */
@@ -182,6 +194,7 @@ export class FakeBleAdapter implements BleAdapter {
 export interface FakeDnsOptions {
   readonly supportsDoh?: boolean;
   readonly reachable?: boolean;
+  readonly supportsEch?: boolean;
 }
 
 export class FakeDnsAdapter implements DnsAdapter {
@@ -189,10 +202,12 @@ export class FakeDnsAdapter implements DnsAdapter {
   resolver = '';
   plaintextBlocked = false;
   private readonly supported: boolean;
+  private readonly echSupported: boolean;
   reachable: boolean;
   constructor(opts: FakeDnsOptions = {}) {
     this.supported = opts.supportsDoh ?? true;
     this.reachable = opts.reachable ?? true;
+    this.echSupported = opts.supportsEch ?? true;
   }
   supportsDoh(): boolean {
     return this.supported;
@@ -206,6 +221,9 @@ export class FakeDnsAdapter implements DnsAdapter {
   }
   async setPlaintextBlocked(blocked: boolean): Promise<void> {
     this.plaintextBlocked = blocked;
+  }
+  supportsEch(): boolean {
+    return this.echSupported;
   }
 }
 
@@ -284,12 +302,62 @@ export class FakeMeshAdapter implements MeshAdapter {
   }
 }
 
+/* ── Fake co-resident adapter ────────────────────────────────────────────── */
+
+export interface FakeCoResidentOptions {
+  readonly supportsScreenCaptureDetection?: boolean;
+  readonly supportsAccessibilityDetection?: boolean;
+  readonly screenCaptured?: boolean;
+  readonly accessibilityActive?: boolean;
+}
+
+export class FakeCoResidentAdapter implements CoResidentAdapter {
+  screenCaptured: boolean;
+  accessibilityActive: boolean;
+  clipboardCleared = 0;
+  private readonly screenCapSupported: boolean;
+  private readonly a11ySupported: boolean;
+  private subscribers = new Set<(captured: boolean) => void>();
+
+  constructor(opts: FakeCoResidentOptions = {}) {
+    this.screenCapSupported = opts.supportsScreenCaptureDetection ?? true;
+    this.a11ySupported = opts.supportsAccessibilityDetection ?? true;
+    this.screenCaptured = opts.screenCaptured ?? false;
+    this.accessibilityActive = opts.accessibilityActive ?? false;
+  }
+  supportsScreenCaptureDetection(): boolean {
+    return this.screenCapSupported;
+  }
+  isScreenCaptured(): boolean {
+    return this.screenCaptured;
+  }
+  subscribeScreenCapture(cb: (captured: boolean) => void): () => void {
+    this.subscribers.add(cb);
+    return () => this.subscribers.delete(cb);
+  }
+  supportsAccessibilityDetection(): boolean {
+    return this.a11ySupported;
+  }
+  isAccessibilityServiceActive(): boolean {
+    return this.accessibilityActive;
+  }
+  async clearClipboard(): Promise<void> {
+    this.clipboardCleared++;
+  }
+  /** Test helper: simulate the OS reporting a screen-capture state change. */
+  emitScreenCapture(captured: boolean): void {
+    this.screenCaptured = captured;
+    for (const cb of this.subscribers) cb(captured);
+  }
+}
+
 /* ── Bundle ──────────────────────────────────────────────────────────────── */
 
 export interface FakePortsOverrides {
   readonly ble?: FakeBleOptions;
   readonly dns?: FakeDnsOptions;
   readonly mesh?: FakeMeshOptions;
+  readonly coResident?: FakeCoResidentOptions;
   readonly seed?: number;
   readonly logger?: ShieldLogger;
 }
@@ -298,6 +366,7 @@ export interface FakePorts extends ShieldPorts {
   readonly ble: FakeBleAdapter;
   readonly dns: FakeDnsAdapter;
   readonly mesh: FakeMeshAdapter;
+  readonly coResident: FakeCoResidentAdapter;
   readonly store: MemoryStore;
   readonly clock: FakeClock;
   readonly random: SeededRandom;
@@ -309,8 +378,9 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
   const ble = new FakeBleAdapter(overrides.ble);
   const dns = new FakeDnsAdapter(overrides.dns);
   const mesh = new FakeMeshAdapter(overrides.mesh, clock);
+  const coResident = new FakeCoResidentAdapter(overrides.coResident);
   const store = new MemoryStore();
   const random = new SeededRandom(overrides.seed);
   const log = overrides.logger ?? createLogger({ enabled: false });
-  return { ble, dns, mesh, store, clock, random, log };
+  return { ble, dns, mesh, coResident, store, clock, random, log };
 }

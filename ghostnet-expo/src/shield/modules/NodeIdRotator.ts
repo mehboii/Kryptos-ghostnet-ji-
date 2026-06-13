@@ -17,11 +17,19 @@
  *     4. keep the old id alive for `handoffGraceMs`, then retire it.
  *   The grace window guarantees in-flight traffic addressed to the old id still
  *   lands while peers update.
+ *
+ * ANTI-FINGERPRINT (hardening): a stable advertising *cadence* or *payload size*
+ * would re-identify "the GhostNet app" even as the id rotates. So each rotation
+ * also re-randomizes the BLE advertising interval (drawn from OS-default ranges,
+ * so we blend in rather than standing out) and the advertised payload length.
+ * NOTE: this is overlay only. A co-located physical-layer sniffer correlating on
+ * the hardware MAC still defeats it — see THREAT_MODEL.md #3.
  */
 
 import { REASON } from '../capabilities';
 import {
   ModuleId,
+  type AdvertisingParameters,
   type CapabilityReport,
   type ShieldConfig,
   type ShieldModule,
@@ -30,6 +38,17 @@ import {
 } from '../types';
 
 const ROTATED_ID_BYTES = 16;
+
+/**
+ * Advertising intervals (ms) that match common OS defaults so our cadence is not
+ * a distinctive value. These mirror Android's advertise modes
+ * (LOW_LATENCY ~100, BALANCED ~250, LOW_POWER ~1000); picking among them keeps us
+ * inside the population of ordinary BLE advertisers.
+ */
+const OS_DEFAULT_ADV_INTERVALS_MS: readonly number[] = [100, 250, 1000];
+/** Legal advertised payload (scan-response) length window, in bytes. */
+const ADV_PAYLOAD_MIN = 8;
+const ADV_PAYLOAD_MAX = 31;
 
 export class NodeIdRotator implements ShieldModule {
   readonly id = ModuleId.NodeIdRotator;
@@ -60,7 +79,14 @@ export class NodeIdRotator implements ShieldModule {
 
     this.cfg = cfg;
     this.scheduleNextRotation();
-    this.last = { id: this.id, requested: true, active: true, degraded: false };
+
+    // Id rotation works; advertising-shape randomization is a bonus hardening
+    // that is platform-gated. If we can't vary interval/length (e.g. iOS fixes
+    // them), stay active but report degraded so the limitation is visible.
+    const advParamsOk = !cfg.nodeIdRotation.randomizeAdvertising || this.ports.ble.supportsAdvertisingParams();
+    this.last = advParamsOk
+      ? { id: this.id, requested: true, active: true, degraded: false }
+      : { id: this.id, requested: true, active: true, degraded: true, reason: REASON.BLE_ADV_PARAMS_FIXED };
     return this.last;
   }
 
@@ -109,6 +135,11 @@ export class NodeIdRotator implements ShieldModule {
     // 2. Adopt the new id for advertising/answering.
     await this.ports.mesh.adoptNodeId(newId);
 
+    // 2b. Re-randomize advertising shape so cadence/size aren't a fingerprint.
+    if (cfg.nodeIdRotation.randomizeAdvertising && this.ports.ble.supportsAdvertisingParams()) {
+      await this.ports.ble.setAdvertisingParameters(this.randomAdvertisingParams());
+    }
+
     // 3. Keep the old id alive for the grace window, then retire it. This is what
     //    prevents dropped sessions: traffic to the old id still lands meanwhile.
     const graceTimer = this.ports.clock.setTimeout(() => {
@@ -118,6 +149,13 @@ export class NodeIdRotator implements ShieldModule {
     this.graceTimers.add(graceTimer);
 
     this.ports.log.debug('rotated', { peers: peers.length });
+  }
+
+  /** A fresh advertising interval (from OS-default values) + payload length. */
+  private randomAdvertisingParams(): AdvertisingParameters {
+    const intervalMs = OS_DEFAULT_ADV_INTERVALS_MS[this.ports.random.int(0, OS_DEFAULT_ADV_INTERVALS_MS.length - 1)];
+    const payloadLength = this.ports.random.int(ADV_PAYLOAD_MIN, ADV_PAYLOAD_MAX);
+    return { intervalMs, payloadLength };
   }
 }
 

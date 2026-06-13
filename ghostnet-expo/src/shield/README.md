@@ -41,7 +41,7 @@ See [`example.ts`](./example.ts) for a full wiring walkthrough.
 | Tier         | Adds on top of the tier below                                                                 |
 |--------------|------------------------------------------------------------------------------------------------|
 | `OFF`        | nothing                                                                                        |
-| `STEALTH`    | silence GhostNet's own BLE advertising + discovery beacon; force DoH (fail-closed)             |
+| `STEALTH`    | silence GhostNet's own BLE advertising + discovery beacon; force DoH (fail-closed); watch on-device observation (CoResidentGuard) |
 | `GHOST`      | length-pad mesh frames to `{256,512,1024,4096}`; 20–250 ms send jitter; adaptive cover traffic |
 | `PHANTOM`    | 2–4 decoy peers; rotate advertised node id every 30–90 s; force min mesh hop count             |
 | `FULL_GHOST` | cover traffic always-on; rotation aggressive (10–20 s); decoys maxed                            |
@@ -70,9 +70,15 @@ The mapping lives in exactly one place — [`config.ts`](./config.ts)
 | **TrafficShaper** — cover traffic | Indistinguishable dummy frames, ramped in/out | ✅ Real | ✅ Real | — |
 | **MeshRouting** — min hops | Forces a minimum *mesh overlay* hop count (not the IP path) | ⚠️ Mesh-only | ⚠️ Mesh-only | `mesh_hop_control_unsupported` if the mesh build lacks hop control |
 | **DecoyEngine** | Injects plausible, unlinkable fake peer announcements (no payload, never the real id) | ✅ Real | ✅ Real | — |
-| **NodeIdRotator** | Rotates the advertised **overlay** node id with session-safe handoff | ⚠️ Overlay id only — **not** the MAC | ⚠️ Overlay id only — **not** the MAC | `node_id_rotation_unsupported` if the mesh can't advertise a rotated id |
+| **NodeIdRotator** | Rotates the advertised **overlay** node id with session-safe handoff; re-randomizes advertising interval + payload length per rotation | ⚠️ Overlay id only — **not** the MAC; interval/length fixed by CoreBluetooth | ⚠️ Overlay id only — **not** the MAC; interval/length vary via advertise modes | `node_id_rotation_unsupported`; or `ble_advertising_params_fixed_platform` (iOS) |
+| **DnsGuard** — ECH/SNI | Detects ECH availability; flags that TLS SNI still leaks the destination host without it | ⚠️ Surfaced, not fixed | ⚠️ Surfaced, not fixed | `sni_leak_no_ech` when DoH works but ECH is unavailable |
+| **CoResidentGuard** | Detects screen capture / accessibility scraping; clears clipboard after sensitive copy | ⚠️ `UIScreen.isCaptured` (no a11y enumeration) | ⚠️ MediaProjection + AccessibilityManager | `screen_capture_active` / `accessibility_service_active` / `ondevice_detection_unsupported` |
 
 Legend: ✅ real · ⚠️ real but scoped/partial (and reported honestly) · ❌ impossible on the platform (never attempted).
+
+For the full threat model and red-team regression checklist see
+[`../../docs/THREAT_MODEL.md`](../../docs/THREAT_MODEL.md) and
+[`../../docs/REDTEAM_CHECKLIST.md`](../../docs/REDTEAM_CHECKLIST.md).
 
 ## Guarantees the code enforces
 
@@ -97,6 +103,14 @@ Legend: ✅ real · ⚠️ real but scoped/partial (and reported honestly) · �
   rather than toggling hard, so enabling/disabling Shield is not itself a
   distinct, observable traffic event. (`panic()` intentionally trades this
   smoothness for immediacy.)
+- **Statistically-modeled cover/decoys.** The decoy/cover algorithm is assumed
+  PUBLIC. Cover and decoy traffic draw their inter-arrival and size from a shared
+  model of the *observed real* traffic (`traffic-model.ts`) — never a fixed
+  cadence — so a single-threshold classifier on timing or size is ≈ chance.
+- **On-device honesty.** CoResidentGuard's detectors are best-effort on an
+  unprivileged app; where a platform offers no detection it reports
+  `ondevice_detection_unsupported` rather than implying safety. It defends
+  against *observation* (capture/scrape/clipboard), not a rooted device.
 
 ## Layout
 
@@ -107,7 +121,8 @@ src/shield/
   capabilities.ts   runtime platform probe + reason codes
   logger.ts         opt-in, local-only, redacting logger
   ShieldManager.ts  the state machine (transitions, rollback, panic, persist, events)
-  modules/          BleCloak · DnsGuard · TrafficShaper · MeshRouting · DecoyEngine · NodeIdRotator
+  traffic-model.ts  observed inter-arrival + size distribution (shared by shaper/decoy)
+  modules/          BleCloak · DnsGuard · TrafficShaper · MeshRouting · DecoyEngine · NodeIdRotator · CoResidentGuard
   testing.ts        in-memory fakes (fake clock, seeded RNG, fake adapters)
   example.ts        runnable wiring walkthrough
   index.ts          public barrel

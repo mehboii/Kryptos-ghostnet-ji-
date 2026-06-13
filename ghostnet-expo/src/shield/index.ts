@@ -21,6 +21,8 @@ export {
 } from './config';
 export { probeCapabilities, REASON, type CapabilitySet } from './capabilities';
 export { createLogger, NULL_LOGGER, type LoggerOptions } from './logger';
+export { TrafficModel, type TrafficModelOptions } from './traffic-model';
+export { CoResidentGuard, isRuntimeDetector, type RuntimeDetector } from './modules/CoResidentGuard';
 
 // Pure traffic-shaping helpers (handy for the mesh receive side / tests).
 export { selectBucket, padFrame, unpadFrame } from './modules/TrafficShaper';
@@ -38,8 +40,10 @@ export {
   type DegradedPayload,
   type ShieldPorts,
   type BleAdapter,
+  type AdvertisingParameters,
   type DnsAdapter,
   type MeshAdapter,
+  type CoResidentAdapter,
   type SecureStorePort,
   type Clock,
   type RandomSource,

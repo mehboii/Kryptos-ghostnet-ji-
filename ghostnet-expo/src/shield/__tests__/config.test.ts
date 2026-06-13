@@ -23,16 +23,18 @@ describe('tier → config (single source) is cumulative', () => {
 
   it('maps each tier to exactly the spec module set', () => {
     expect([...modulesForTier(ShieldTier.OFF)]).toEqual([]);
+    // CoResidentGuard monitors on-device observation from STEALTH up.
     expect(new Set(modulesForTier(ShieldTier.STEALTH))).toEqual(
-      new Set([ModuleId.BleCloak, ModuleId.DnsGuard]),
+      new Set([ModuleId.BleCloak, ModuleId.DnsGuard, ModuleId.CoResidentGuard]),
     );
     expect(new Set(modulesForTier(ShieldTier.GHOST))).toEqual(
-      new Set([ModuleId.BleCloak, ModuleId.DnsGuard, ModuleId.TrafficShaper]),
+      new Set([ModuleId.BleCloak, ModuleId.DnsGuard, ModuleId.CoResidentGuard, ModuleId.TrafficShaper]),
     );
     expect(new Set(modulesForTier(ShieldTier.PHANTOM))).toEqual(
       new Set([
         ModuleId.BleCloak,
         ModuleId.DnsGuard,
+        ModuleId.CoResidentGuard,
         ModuleId.TrafficShaper,
         ModuleId.MeshRouting,
         ModuleId.DecoyEngine,
