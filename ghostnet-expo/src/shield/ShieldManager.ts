@@ -16,14 +16,16 @@
  * persisted value is a single overwritten key, not an append-only history.
  */
 
-import { modulesForTier, resolveConfig, type ConfigOptions } from './config';
+import { PADDING_BUCKETS, modulesForTier, resolveConfig, type ConfigOptions } from './config';
 import { createLogger } from './logger';
 import { BleCloak } from './modules/BleCloak';
+import { CoResidentGuard, isRuntimeDetector } from './modules/CoResidentGuard';
 import { DecoyEngine } from './modules/DecoyEngine';
 import { DnsGuard } from './modules/DnsGuard';
 import { MeshRouting } from './modules/MeshRouting';
 import { NodeIdRotator } from './modules/NodeIdRotator';
 import { TrafficShaper } from './modules/TrafficShaper';
+import { TrafficModel } from './traffic-model';
 import {
   ModuleId,
   ShieldTier,
@@ -45,8 +47,15 @@ type Listeners = {
 };
 
 export interface ShieldManagerOptions extends ConfigOptions {
-  /** Pre-built modules (for tests). Defaults to the six real modules. */
+  /** Pre-built modules (for tests). Defaults to the real module set. */
   readonly modules?: readonly ShieldModule[];
+  /**
+   * If set, an on-device observation detection (screen capture / accessibility)
+   * auto-raises the tier to at least this level. Default: undefined (warn only —
+   * emit `degraded`, change nothing). Auto-raising is a UX/policy choice; some
+   * deployments prefer to surface the warning and let the user decide.
+   */
+  readonly autoRaiseOnCoResident?: ShieldTier;
 }
 
 export class ShieldManager {
@@ -68,17 +77,29 @@ export class ShieldManager {
     const map = new Map<ModuleId, ShieldModule>();
     for (const m of mods) map.set(m.id, m);
     this.modules = map;
+
+    // Wire any runtime detector (CoResidentGuard) to push detections out-of-band
+    // as `degraded` events, and optionally auto-raise the tier.
+    for (const m of map.values()) {
+      if (isRuntimeDetector(m)) {
+        m.setNotifier((report) => this.onRuntimeDetection(report));
+      }
+    }
   }
 
-  /** Construct the six real modules wired to the given platform ports. */
+  /** Construct the real module set wired to the given platform ports. A single
+   *  shared TrafficModel links the shaper (which observes real traffic) and the
+   *  decoy engine (which mimics that distribution). */
   static defaultModules(ports: ShieldPorts): readonly ShieldModule[] {
+    const model = new TrafficModel(ports.random, { buckets: PADDING_BUCKETS });
     return [
       new BleCloak(ports),
       new DnsGuard(ports),
-      new TrafficShaper(ports),
+      new TrafficShaper(ports, model),
       new MeshRouting(ports),
-      new DecoyEngine(ports),
+      new DecoyEngine(ports, model),
       new NodeIdRotator(ports),
+      new CoResidentGuard(ports),
     ];
   }
 
@@ -223,6 +244,20 @@ export class ShieldManager {
     } catch {
       // Persistence failure must not break cloaking; it only affects restore.
       this.ports.log.warn('persist_failed');
+    }
+  }
+
+  /**
+   * Out-of-band runtime detection from a detector module (CoResidentGuard).
+   * Re-emit as a `degraded` event, and — if configured — auto-raise the tier.
+   */
+  private onRuntimeDetection(report: CapabilityReport): void {
+    this.emitDegraded({ tier: this.currentTier, reports: [report], rolledBack: false });
+
+    const raiseTo = this.options.autoRaiseOnCoResident;
+    if (raiseTo && TIER_RANK[raiseTo] > TIER_RANK[this.currentTier]) {
+      // Schedule on the transition queue so it can't interleave with one in flight.
+      void this.enqueue(() => this.applyTier(raiseTo));
     }
   }
 

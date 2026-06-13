@@ -19,12 +19,20 @@ import type { ShieldPorts } from './types';
 export interface CapabilitySet {
   /** Can we programmatically stop/start GhostNet's own BLE advertising? */
   readonly bleAdvertisingControl: boolean;
+  /** Can we vary the advertising interval + payload length (anti-fingerprint)? */
+  readonly bleAdvertisingParams: boolean;
   /** Can we route DNS through an app-controlled DoH resolver? */
   readonly doh: boolean;
+  /** Is Encrypted Client Hello available (so TLS SNI does not leak)? */
+  readonly ech: boolean;
   /** Can the mesh enforce a minimum outbound hop count? */
   readonly meshHopControl: boolean;
   /** Can the mesh advertise a rotated overlay node id with session handoff? */
   readonly nodeIdRotation: boolean;
+  /** Can we observe screen-capture / recording state? */
+  readonly screenCaptureDetection: boolean;
+  /** Can we observe active accessibility services? */
+  readonly accessibilityDetection: boolean;
   /** Cover traffic / padding / jitter / decoys are pure-overlay behaviors that
    *  the app fully controls, so they are always achievable. Listed for symmetry. */
   readonly trafficShaping: boolean;
@@ -34,11 +42,16 @@ export interface CapabilitySet {
 /** Stable reason codes a module emits when a capability is missing. */
 export const REASON = {
   BLE_ADV_UNSUPPORTED: 'ble_advertising_control_unsupported',
+  BLE_ADV_PARAMS_FIXED: 'ble_advertising_params_fixed_platform',
   DOH_UNSUPPORTED: 'doh_unsupported_on_platform',
   DOH_UNREACHABLE_FAILCLOSED: 'doh_unreachable_failclosed',
+  SNI_LEAK_NO_ECH: 'sni_leak_no_ech',
   HOP_CONTROL_UNSUPPORTED: 'mesh_hop_control_unsupported',
   NODE_ID_ROTATION_UNSUPPORTED: 'node_id_rotation_unsupported',
   NO_ACTIVE_SESSIONS: 'no_active_sessions_to_hand_off',
+  SCREEN_CAPTURE_ACTIVE: 'screen_capture_active',
+  ACCESSIBILITY_SERVICE_ACTIVE: 'accessibility_service_active',
+  ONDEVICE_DETECTION_UNSUPPORTED: 'ondevice_detection_unsupported',
 } as const;
 
 /**
@@ -50,17 +63,25 @@ export const REASON = {
 export function probeCapabilities(ports: ShieldPorts): CapabilitySet {
   const set: CapabilitySet = {
     bleAdvertisingControl: ports.ble.supportsAdvertisingControl(),
+    bleAdvertisingParams: ports.ble.supportsAdvertisingParams(),
     doh: ports.dns.supportsDoh(),
+    ech: ports.dns.supportsEch(),
     meshHopControl: ports.mesh.supportsHopControl(),
     nodeIdRotation: ports.mesh.supportsNodeIdRotation(),
+    screenCaptureDetection: ports.coResident.supportsScreenCaptureDetection(),
+    accessibilityDetection: ports.coResident.supportsAccessibilityDetection(),
     trafficShaping: true,
     decoys: true,
   };
   ports.log.debug('capabilities', {
     ble: set.bleAdvertisingControl,
+    advParams: set.bleAdvertisingParams,
     doh: set.doh,
+    ech: set.ech,
     hops: set.meshHopControl,
     rotate: set.nodeIdRotation,
+    screencap: set.screenCaptureDetection,
+    a11y: set.accessibilityDetection,
   });
   return set;
 }

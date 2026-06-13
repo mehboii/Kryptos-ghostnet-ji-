@@ -69,11 +69,18 @@ export function resolveConfig(tier: ShieldTier, options: ConfigOptions = {}): Sh
     },
     // PHANTOM+ : rotate the advertised ephemeral node id (30–90s; aggressive
     // 10–20s at FULL_GHOST). 8s handoff grace keeps active sessions alive.
+    // Each rotation also re-randomizes BLE advertising interval + payload length.
     nodeIdRotation: {
       enabled: atLeast(ShieldTier.PHANTOM),
       minIntervalMs: atLeast(ShieldTier.PHANTOM) ? (isFull ? 10_000 : 30_000) : 0,
       maxIntervalMs: atLeast(ShieldTier.PHANTOM) ? (isFull ? 20_000 : 90_000) : 0,
       handoffGraceMs: 8_000,
+      randomizeAdvertising: atLeast(ShieldTier.PHANTOM),
+    },
+    // STEALTH+ : watch for on-device observation (screen capture, a11y, clipboard).
+    coResident: {
+      enabled: atLeast(ShieldTier.STEALTH),
+      clipboardClearMs: 30_000,
     },
   };
 }
@@ -91,5 +98,6 @@ export function modulesForTier(tier: ShieldTier): ReadonlySet<ModuleId> {
   if (cfg.mesh.enforceMinHops) ids.add(ModuleId.MeshRouting);
   if (cfg.decoy.enabled) ids.add(ModuleId.DecoyEngine);
   if (cfg.nodeIdRotation.enabled) ids.add(ModuleId.NodeIdRotator);
+  if (cfg.coResident.enabled) ids.add(ModuleId.CoResidentGuard);
   return ids;
 }

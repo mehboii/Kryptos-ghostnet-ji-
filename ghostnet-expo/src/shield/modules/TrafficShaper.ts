@@ -31,6 +31,7 @@ import {
   type ShieldPorts,
   type TimerHandle,
 } from '../types';
+import type { TrafficModel } from '../traffic-model';
 
 /** 4-byte big-endian length header prepended before padding. */
 const LEN_HEADER_BYTES = 4;
@@ -111,7 +112,15 @@ export class TrafficShaper implements ShieldModule {
   private coverRampTimer: TimerHandle | null = null;
   private coverEmitTimer: TimerHandle | null = null;
 
-  constructor(private readonly ports: ShieldPorts) {}
+  /**
+   * @param model shared statistical model of real traffic. Cover-traffic timing
+   *   is drawn from it so cover is not a fixed-rate metronome (which would itself
+   *   be a fingerprint). Real sends are fed back into it via {@link send}.
+   */
+  constructor(
+    private readonly ports: ShieldPorts,
+    private readonly model: TrafficModel,
+  ) {}
 
   private get clock(): Clock {
     return this.ports.clock;
@@ -174,6 +183,10 @@ export class TrafficShaper implements ShieldModule {
     let handle: TimerHandle;
     const fire = (): void => {
       this.pendingTimers.delete(handle);
+      // Feed the real send into the shared model (post-padding size + send time)
+      // so cover/decoy traffic can mimic the observed distribution.
+      const padded = padFrame(frame, cfg.traffic.paddingBuckets, this.ports.random);
+      this.model.observe(padded.bytes.length, this.clock.now());
       void this.ports.mesh.sendRaw(frame);
     };
     handle = this.clock.setTimeout(fire, scheduledAt - now);
@@ -228,14 +241,19 @@ export class TrafficShaper implements ShieldModule {
     if (this.coverEmitTimer !== null) return; // one emit loop at a time
     const rate = this.coverCurrentRatePerMin;
     if (rate <= 0) return;
-    const intervalMs = Math.round(60_000 / rate);
+    // The current rate sets only the MEAN inter-arrival. The actual gap is drawn
+    // from the traffic model (bootstrapped from observed real gaps, else a
+    // Poisson process at that mean) — so cover is statistically modeled, never a
+    // fixed-interval metronome that an observer could pick out as machine-made.
+    const meanMs = 60_000 / rate;
+    const gapMs = this.model.sampleGapMs(meanMs);
     const tick = (): void => {
       this.coverEmitTimer = null;
       if (this.coverCurrentRatePerMin <= 0) return;
       this.emitCoverFrame();
       this.scheduleCoverEmit();
     };
-    this.coverEmitTimer = this.clock.setTimeout(tick, intervalMs);
+    this.coverEmitTimer = this.clock.setTimeout(tick, gapMs);
   }
 
   /**
@@ -246,8 +264,12 @@ export class TrafficShaper implements ShieldModule {
    * no-op); a passive observer cannot tell real from cover.
    */
   private emitCoverFrame(): void {
-    // Random body sized like a typical small real frame; the transform pads it.
-    const body = this.ports.random.bytes(this.ports.random.int(16, 200));
+    // Size the body to land in a bucket drawn from the OBSERVED real size
+    // distribution, so cover frames match the real size profile on the wire.
+    // (Subtract the length header; the transform re-pads to the bucket.)
+    const targetBucket = this.model.sampleSizeBytes();
+    const bodyLen = Math.max(1, targetBucket - LEN_HEADER_BYTES);
+    const body = this.ports.random.bytes(bodyLen);
     void this.ports.mesh.sendRaw({ bytes: body, to: null });
   }
 }

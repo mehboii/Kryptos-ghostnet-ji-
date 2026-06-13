@@ -7,6 +7,7 @@ import { DnsGuard } from '../modules/DnsGuard';
 import { MeshRouting } from '../modules/MeshRouting';
 import { NodeIdRotator } from '../modules/NodeIdRotator';
 import { TrafficShaper, unpadFrame } from '../modules/TrafficShaper';
+import { TrafficModel } from '../traffic-model';
 import { createFakePorts, type FakePorts } from '../testing';
 import { ShieldTier, type MeshFrame } from '../types';
 
@@ -14,6 +15,11 @@ let ports: FakePorts;
 beforeEach(() => {
   ports = createFakePorts();
 });
+
+/** Fresh shared traffic model for a set of ports. */
+function mkModel(p: FakePorts): TrafficModel {
+  return new TrafficModel(p.random, { buckets: PADDING_BUCKETS });
+}
 
 describe('capability degradation reporting', () => {
   it('BleCloak: degrades (not silent) when advertising control is unsupported', async () => {
@@ -83,7 +89,7 @@ describe('capability degradation reporting', () => {
 
 describe('TrafficShaper: jitter preserves order, E2EE intact', () => {
   it('delivers jittered frames in enqueue order', async () => {
-    const shaper = new TrafficShaper(ports);
+    const shaper = new TrafficShaper(ports, mkModel(ports));
     await shaper.enable(resolveConfig(ShieldTier.GHOST));
 
     for (let i = 0; i < 6; i++) {
@@ -99,7 +105,7 @@ describe('TrafficShaper: jitter preserves order, E2EE intact', () => {
   });
 
   it('pads every sent frame to a bucket length', async () => {
-    const shaper = new TrafficShaper(ports);
+    const shaper = new TrafficShaper(ports, mkModel(ports));
     await shaper.enable(resolveConfig(ShieldTier.GHOST));
     shaper.send({ bytes: new Uint8Array(50), to: 'peer' });
     ports.clock.advance(500);
@@ -111,7 +117,7 @@ describe('TrafficShaper: jitter preserves order, E2EE intact', () => {
 
 describe('TrafficShaper: cover traffic ramps (no hard toggle)', () => {
   it('ramps the rate up in steps rather than jumping to target', async () => {
-    const shaper = new TrafficShaper(ports);
+    const shaper = new TrafficShaper(ports, mkModel(ports));
     await shaper.enable(resolveConfig(ShieldTier.FULL_GHOST)); // always-on, target 60
     // Immediately after enable it is ramping, not already at full rate.
     expect(shaper.coverRatePerMin).toBeGreaterThan(0);
@@ -121,7 +127,7 @@ describe('TrafficShaper: cover traffic ramps (no hard toggle)', () => {
   });
 
   it('emits indistinguishable, bucket-sized, payload-free cover frames', async () => {
-    const shaper = new TrafficShaper(ports);
+    const shaper = new TrafficShaper(ports, mkModel(ports));
     await shaper.enable(resolveConfig(ShieldTier.FULL_GHOST));
     ports.clock.advance(30_000);
     const cover = ports.mesh.sent.filter((f) => f.to === null);
@@ -132,7 +138,7 @@ describe('TrafficShaper: cover traffic ramps (no hard toggle)', () => {
   });
 
   it('ramps cover DOWN to zero on disable instead of cutting it', async () => {
-    const shaper = new TrafficShaper(ports);
+    const shaper = new TrafficShaper(ports, mkModel(ports));
     await shaper.enable(resolveConfig(ShieldTier.FULL_GHOST));
     ports.clock.advance(20_000);
     expect(shaper.coverRatePerMin).toBe(60);
@@ -180,28 +186,39 @@ describe('NodeIdRotator: session-safe handoff', () => {
 });
 
 describe('DecoyEngine: plausible but unlinkable, no real-id leak', () => {
-  it('announces decoys that never equal the real node id and are unique', async () => {
+  it('maintains a 2–4 id pool, none equal to the real id, all distinct', async () => {
     const p = createFakePorts({ mesh: { nodeId: 'node-real' } });
-    const engine = new DecoyEngine(p);
+    const engine = new DecoyEngine(p, mkModel(p));
     await engine.enable(resolveConfig(ShieldTier.PHANTOM));
 
-    expect(p.mesh.decoys.length).toBeGreaterThanOrEqual(2);
-    const ids = p.mesh.decoys.map((d) => d.ephemeralId);
+    const ids = engine.decoyIds;
+    expect(ids.length).toBeGreaterThanOrEqual(2);
+    expect(ids.length).toBeLessThanOrEqual(4);
     for (const id of ids) {
       expect(id).not.toBe('node-real');
       expect(id).not.toContain('node-real');
     }
-    // Unlinkable: all ephemeral ids distinct.
-    expect(new Set(ids).size).toBe(ids.length);
-    // Carries a payload blob but no real routing identity.
+    expect(new Set(ids).size).toBe(ids.length); // unlinkable: distinct
+  });
+
+  it('emits announcements over time, sized from the model, never the real id', async () => {
+    const p = createFakePorts({ mesh: { nodeId: 'node-real' } });
+    const engine = new DecoyEngine(p, mkModel(p));
+    await engine.enable(resolveConfig(ShieldTier.PHANTOM));
+    p.clock.advance(60_000);
+
+    expect(p.mesh.decoys.length).toBeGreaterThan(0);
     for (const d of p.mesh.decoys) {
-      expect(d.payload.length).toBeGreaterThan(0);
+      expect(d.ephemeralId).not.toBe('node-real');
+      expect(d.payload.length).toBeGreaterThan(0); // no real payload, but well-formed
+      expect(PADDING_BUCKETS).toContain(d.payload.length); // sized from the size model
     }
   });
 
-  it('disable stops the refresh loop', async () => {
-    const engine = new DecoyEngine(ports);
+  it('disable stops the emit + pool loops', async () => {
+    const engine = new DecoyEngine(ports, mkModel(ports));
     await engine.enable(resolveConfig(ShieldTier.PHANTOM));
+    ports.clock.advance(60_000);
     const before = ports.mesh.decoys.length;
     await engine.disable();
     ports.clock.advance(120_000);
