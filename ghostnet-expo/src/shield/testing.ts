@@ -26,6 +26,13 @@ import {
   type ShieldPorts,
   type TimerHandle,
 } from './types';
+import type {
+  AttestationBackend,
+  AttestationProvider,
+  IntegrityPort,
+  LocalSignalProbe,
+  Platform,
+} from './integrity/types';
 
 /* ── Fake clock ──────────────────────────────────────────────────────────── */
 
@@ -151,6 +158,8 @@ export class MemoryStore implements SecureStorePort {
 /* ── Fake BLE adapter ────────────────────────────────────────────────────── */
 
 export interface FakeBleOptions {
+  /** Is there any BLE stack at all (false simulates a plain web build). Default true. */
+  readonly available?: boolean;
   readonly supportsAdvertisingControl?: boolean;
   readonly supportsAdvertisingParams?: boolean;
 }
@@ -160,14 +169,20 @@ export class FakeBleAdapter implements BleAdapter {
   discoveryBeacon = true;
   advertisedNodeId = 'node-real';
   advertisingParams: AdvertisingParameters[] = [];
+  private readonly available: boolean;
   private readonly supported: boolean;
   private readonly paramsSupported: boolean;
   constructor(opts: FakeBleOptions = {}) {
+    this.available = opts.available ?? true;
     this.supported = opts.supportsAdvertisingControl ?? true;
     this.paramsSupported = opts.supportsAdvertisingParams ?? true;
   }
+  isAvailable(): boolean {
+    return this.available;
+  }
   supportsAdvertisingControl(): boolean {
-    return this.supported;
+    // No advertising control without a stack, regardless of the option.
+    return this.available && this.supported;
   }
   async stopAdvertising(): Promise<void> {
     this.advertising = false;
@@ -182,7 +197,7 @@ export class FakeBleAdapter implements BleAdapter {
     this.advertisedNodeId = nodeId;
   }
   supportsAdvertisingParams(): boolean {
-    return this.paramsSupported;
+    return this.available && this.paramsSupported;
   }
   async setAdvertisingParameters(params: AdvertisingParameters): Promise<void> {
     this.advertisingParams.push(params);
@@ -351,6 +366,110 @@ export class FakeCoResidentAdapter implements CoResidentAdapter {
   }
 }
 
+/* ── Fake integrity port (local probe + attestation provider + backend) ───── */
+
+export interface FakeProbeOptions {
+  readonly platform?: Platform;
+  /** Paths reported as existing (su binaries, Cydia.app, …). */
+  readonly files?: readonly string[];
+  /** Paths reported as writable (e.g. /system, outside-sandbox). */
+  readonly writable?: readonly string[];
+  readonly props?: Readonly<Record<string, string>>;
+  readonly packages?: readonly string[];
+  readonly openPorts?: readonly number[];
+  readonly libraries?: readonly string[];
+  readonly urlSchemes?: readonly string[];
+  readonly forkSucceeds?: boolean;
+  readonly buildFingerprint?: string;
+}
+
+export class FakeLocalSignalProbe implements LocalSignalProbe {
+  constructor(private readonly o: FakeProbeOptions = {}) {}
+  platform(): Platform {
+    return this.o.platform ?? 'android';
+  }
+  fileExists(path: string): boolean {
+    return (this.o.files ?? []).includes(path);
+  }
+  canWrite(path: string): boolean {
+    return (this.o.writable ?? []).includes(path);
+  }
+  getSystemProp(name: string): string | null {
+    return this.o.props?.[name] ?? null;
+  }
+  packageInstalled(pkg: string): boolean {
+    return (this.o.packages ?? []).includes(pkg);
+  }
+  isPortOpen(port: number): boolean {
+    return (this.o.openPorts ?? []).includes(port);
+  }
+  loadedLibraries(): readonly string[] {
+    return this.o.libraries ?? [];
+  }
+  canOpenUrlScheme(scheme: string): boolean {
+    return (this.o.urlSchemes ?? []).includes(scheme);
+  }
+  forkSucceeds(): boolean {
+    return this.o.forkSucceeds ?? false;
+  }
+  buildFingerprint(): string {
+    return this.o.buildFingerprint ?? 'release-keys/clean-device';
+  }
+}
+
+export interface FakeAttestationOptions {
+  readonly supported?: boolean;
+  readonly verdict?: 'PASS' | 'FAIL';
+  /** Simulate backend/network failure → UNAVAILABLE. */
+  readonly backendDown?: boolean;
+  /** Simulate the platform provider throwing → UNAVAILABLE. */
+  readonly providerThrows?: boolean;
+}
+
+export class FakeAttestationProvider implements AttestationProvider {
+  tokens: string[] = [];
+  constructor(private readonly o: FakeAttestationOptions = {}) {}
+  isSupported(): boolean {
+    return this.o.supported ?? true;
+  }
+  async getToken(nonce: string): Promise<string> {
+    if (this.o.providerThrows) throw new Error('provider error');
+    const token = `signed(${nonce})`;
+    this.tokens.push(token);
+    return token;
+  }
+}
+
+export class FakeAttestationBackend implements AttestationBackend {
+  verifiedTokens: string[] = [];
+  private n = 0;
+  constructor(private readonly o: FakeAttestationOptions = {}) {}
+  async requestNonce(): Promise<string> {
+    if (this.o.backendDown) throw new Error('backend down');
+    this.n += 1;
+    return `nonce-${this.n}`;
+  }
+  async verify(token: string): Promise<{ verdict: 'PASS' | 'FAIL' }> {
+    if (this.o.backendDown) throw new Error('backend down');
+    this.verifiedTokens.push(token);
+    return { verdict: this.o.verdict ?? 'PASS' };
+  }
+}
+
+export interface FakeIntegrity extends IntegrityPort {
+  readonly probe: FakeLocalSignalProbe;
+  readonly provider: FakeAttestationProvider;
+  readonly backend: FakeAttestationBackend;
+}
+
+export function createFakeIntegrity(probe?: FakeProbeOptions, attest?: FakeAttestationOptions): FakeIntegrity {
+  return {
+    probe: new FakeLocalSignalProbe(probe),
+    provider: new FakeAttestationProvider(attest),
+    backend: new FakeAttestationBackend(attest),
+  };
+}
+
 /* ── Bundle ──────────────────────────────────────────────────────────────── */
 
 export interface FakePortsOverrides {
@@ -358,6 +477,8 @@ export interface FakePortsOverrides {
   readonly dns?: FakeDnsOptions;
   readonly mesh?: FakeMeshOptions;
   readonly coResident?: FakeCoResidentOptions;
+  readonly probe?: FakeProbeOptions;
+  readonly attestation?: FakeAttestationOptions;
   readonly seed?: number;
   readonly logger?: ShieldLogger;
 }
@@ -367,6 +488,7 @@ export interface FakePorts extends ShieldPorts {
   readonly dns: FakeDnsAdapter;
   readonly mesh: FakeMeshAdapter;
   readonly coResident: FakeCoResidentAdapter;
+  readonly integrity: FakeIntegrity;
   readonly store: MemoryStore;
   readonly clock: FakeClock;
   readonly random: SeededRandom;
@@ -379,8 +501,9 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
   const dns = new FakeDnsAdapter(overrides.dns);
   const mesh = new FakeMeshAdapter(overrides.mesh, clock);
   const coResident = new FakeCoResidentAdapter(overrides.coResident);
+  const integrity = createFakeIntegrity(overrides.probe, overrides.attestation);
   const store = new MemoryStore();
   const random = new SeededRandom(overrides.seed);
   const log = overrides.logger ?? createLogger({ enabled: false });
-  return { ble, dns, mesh, coResident, store, clock, random, log };
+  return { ble, dns, mesh, coResident, integrity, store, clock, random, log };
 }

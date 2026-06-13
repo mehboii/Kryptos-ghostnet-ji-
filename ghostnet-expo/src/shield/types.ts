@@ -14,6 +14,9 @@
  *   A module must never silently no-op and report success.
  */
 
+// Type-only import (erased at compile time → no runtime cycle with integrity/types).
+import type { IntegrityPort } from './integrity/types';
+
 /**
  * Cloaking tiers, in cumulative order. String values are stable identifiers
  * used for persistence — do not renumber or reorder without a migration.
@@ -45,6 +48,7 @@ export enum ModuleId {
   DecoyEngine = 'decoy-engine',
   NodeIdRotator = 'node-id-rotator',
   CoResidentGuard = 'co-resident-guard',
+  DeviceIntegrity = 'device-integrity',
 }
 
 /** Cover-traffic policy. `adaptive` ramps in/out so toggling Shield is not a
@@ -106,6 +110,12 @@ export interface ShieldConfig {
     readonly enabled: boolean;
     /** Clear the clipboard this long after a guarded sensitive copy. */
     readonly clipboardClearMs: number;
+  };
+  readonly integrity: {
+    /** Detect rooted/jailbroken/hooked/emulated devices via local + attestation. */
+    readonly enabled: boolean;
+    /** Periodic re-attestation interval (0 disables the timer). */
+    readonly reattestIntervalMs: number;
   };
 }
 
@@ -193,6 +203,16 @@ export interface AdvertisingParameters {
 }
 
 export interface BleAdapter {
+  /**
+   * Is there ANY BLE stack this build can talk to at all? False on a plain web
+   * build (no native BLE plugin bridged into the WebView) or when the native
+   * plugin fails to resolve. Distinct from {@link supportsAdvertisingControl},
+   * which asks the narrower question "given a BLE stack, can we drive our own
+   * advertising" (false on iOS background, true on Android). When this is false a
+   * module must report `unavailable` (active:false) rather than claiming the
+   * achievable subset — there is no radio to act on.
+   */
+  isAvailable(): boolean;
   /** Does this platform/build expose programmatic BLE advertising control? */
   supportsAdvertisingControl(): boolean;
   stopAdvertising(): Promise<void>;
@@ -317,6 +337,8 @@ export interface ShieldPorts {
   readonly dns: DnsAdapter;
   readonly mesh: MeshAdapter;
   readonly coResident: CoResidentAdapter;
+  /** Device-integrity probes + server-backed attestation (see integrity/types.ts). */
+  readonly integrity: IntegrityPort;
   readonly store: SecureStorePort;
   readonly clock: Clock;
   readonly random: RandomSource;
