@@ -14,6 +14,13 @@
  * Fix: a bounded watcher that retries while auth settles, then shows "Not connected" + Retry.
  */
 
+// Debug logging gate. False in production — these logs (Wallet addresses/balances,
+// Vault fileName/fileHash) must never reach screenshots or session-replay/error
+// tools. The offline/prod bundle is ALSO run through terser drop_console, which
+// strips the calls entirely. Re-enable in a dev console with:
+//   window.__GHOSTNET_DEV__ = true
+const __DEV__ = (typeof window !== 'undefined' && window.__GHOSTNET_DEV__ === true);
+
 /** Escape user-controlled strings before inserting into HTML / attribute contexts. */
 function _escapeHTML(str) {
     if (typeof str !== 'string') return '';
@@ -603,7 +610,7 @@ const UI = {
                     // Give server a moment to settle if token was just written
                     setTimeout(() => {
                         UI.vaultLoadFiles();
-                        console.log('[UI] Vault re-loaded and fetched for user');
+                        if (__DEV__) console.log('[UI] Vault re-loaded and fetched for user');
                     }, 300);
                 } catch (err) {
                     console.warn('[UI] Vault init on login failed:', err.message);
@@ -1173,7 +1180,7 @@ const UI = {
         }
 
         if (ethAddress) {
-            console.log('[Wallet] ETH address derived:', ethAddress);
+            if (__DEV__) console.log('[Wallet] ETH address derived:', ethAddress);
         } else {
             console.warn('[Wallet] No ETH address found — wallet will show 0 balance');
         }
@@ -1227,7 +1234,7 @@ const UI = {
             });
         }
 
-        console.log('[Wallet] Live data loaded:', AppState.wallet);
+        if (__DEV__) console.log('[Wallet] Live data loaded:', AppState.wallet);
 
         // Re-render wallet
         UI.renderWallet();
@@ -1253,7 +1260,7 @@ const UI = {
             const data = await res.json();
             if (data.result) {
                 const balance = parseInt(data.result, 16) / 1e18;
-                console.log('[Wallet] ETH balance:', balance);
+                if (__DEV__) console.log('[Wallet] ETH balance:', balance);
                 return balance;
             }
         } catch (e) {
@@ -1293,7 +1300,7 @@ const UI = {
             const data = await res.json();
             if (data.result && data.result.value !== undefined) {
                 const balance = data.result.value / 1e9;
-                console.log('[Wallet] SOL balance:', balance);
+                if (__DEV__) console.log('[Wallet] SOL balance:', balance);
                 return balance;
             }
         } catch (e) {
@@ -1316,7 +1323,7 @@ const UI = {
                 solana: data.solana ? data.solana.usd : 0,
                 tether: data.tether ? data.tether.usd : 1
             };
-            console.log('[Wallet] Prices fetched:', prices);
+            if (__DEV__) console.log('[Wallet] Prices fetched:', prices);
             return prices;
         } catch (e) {
             console.warn('[Wallet] Price fetch failed:', e.message);
@@ -2887,9 +2894,28 @@ const UI = {
                 try {
                     let finalKey = null;
                     if (serverKeyData) {
+                        // Server holds a PIN-wrapped key → recover with the PIN.
                         finalKey = await window.GhostVault._recoverVaultKey(pin, serverKeyData);
+                        // [P0] PURGE SITE 1 — only reached if the await above RESOLVED
+                        // (a thrown PIN/unwrap error jumps to catch and skips this).
+                        // Server+PIN recovery is proven, so the local plaintext keyHex
+                        // is now redundant and safe to drop. Awaited, not in a finally.
+                        await window.GhostVault._purgeLocalKey();
                     } else {
-                        finalKey = await window.GhostVault._generateVaultKey(pin);
+                        // No server key. If a LOCAL master key still exists, backfill it
+                        // (preserve the user's files) instead of minting a new one.
+                        const localKeyHex = await window.GhostVault._localMasterKeyHex();
+                        if (localKeyHex) {
+                            // Wrap-push-verify. Throws (→ catch) if anything fails to confirm.
+                            finalKey = await window.GhostVault._backfillVaultKey(pin, localKeyHex);
+                            // [P0] PURGE SITE 2 — only reached if backfill RESOLVED, which
+                            // means the server copy was re-fetched, PIN-unwrapped, and the
+                            // key bytes matched. Irreversible step, gated on that success.
+                            await window.GhostVault._purgeLocalKey();
+                        } else {
+                            // No server key AND no local key → genuinely new vault.
+                            finalKey = await window.GhostVault._generateVaultKey(pin);
+                        }
                     }
                     modal.remove();
                     resolve(finalKey);
@@ -3193,7 +3219,7 @@ const UI = {
                     }
                 });
 
-                console.log(' Vault upload complete:', result);
+                if (__DEV__) console.log(' Vault upload complete:', result);  // [hygiene] result carries fileHash
                 GhostAnalytics.trackFeature('vault:upload');
             } catch (err) {
                 console.error(' Vault upload failed:', err);

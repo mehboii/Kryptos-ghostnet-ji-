@@ -1,6 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 
+// [prod hygiene] terser strips console.*/debugger from the public offline bundle.
+// Optional dependency — if absent, we warn loudly and leave logs intact rather
+// than fail the build (the in-source __DEV__ gate still prevents execution).
+let terser = null;
+try { terser = require('terser'); }
+catch { console.warn('[build] WARNING: terser not installed — console.* will NOT be stripped from the bundle. Run: npm i -D terser'); }
+
 const repoRoot = path.resolve(__dirname, '..', '..');
 const expoRoot = path.resolve(__dirname, '..');
 const srcRoot = path.join(expoRoot, 'offline-web-src');
@@ -160,13 +167,31 @@ html = html.replace(
   }
 );
 
-for (const fileName of scriptFiles) {
-  const sourcePath = path.join(repoRoot, fileName);
-  const script = transformScript(fileName, read(sourcePath));
-  const tagPattern = new RegExp(`<script src="${fileName.replace(/\./g, '\\.')}"><\\/script>`, 'g');
-  html = html.replace(tagPattern, () => inlineScriptTag(script));
-}
+(async () => {
+  for (const fileName of scriptFiles) {
+    const sourcePath = path.join(repoRoot, fileName);
+    let script = transformScript(fileName, read(sourcePath));
 
-fs.mkdirSync(outRoot, { recursive: true });
-fs.writeFileSync(outputFile, html, 'utf8');
-console.log(`${ONLINE ? 'ONLINE' : 'Offline'} bundle written to ${outputFile}`);
+    // [prod hygiene] Strip console.*/debugger from the offline (prod) bundle.
+    // mangle:false keeps the change low-risk (no identifier renaming).
+    if (terser && !ONLINE) {
+      try {
+        const min = await terser.minify(script, {
+          compress: { drop_console: true, drop_debugger: true },
+          mangle: false,
+          format: { comments: false },
+        });
+        if (min && typeof min.code === 'string') script = min.code;
+      } catch (e) {
+        console.warn(`[build] terser failed on ${fileName}; leaving console.* intact:`, e.message);
+      }
+    }
+
+    const tagPattern = new RegExp(`<script src="${fileName.replace(/\./g, '\\.')}"><\\/script>`, 'g');
+    html = html.replace(tagPattern, () => inlineScriptTag(script));
+  }
+
+  fs.mkdirSync(outRoot, { recursive: true });
+  fs.writeFileSync(outputFile, html, 'utf8');
+  console.log(`${ONLINE ? 'ONLINE' : 'Offline'} bundle written to ${outputFile}`);
+})();

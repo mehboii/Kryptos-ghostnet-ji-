@@ -2,12 +2,13 @@ import { pool } from './client.js';
 
 // ── File metadata ────────────────────────────────────────────────────────────
 async function insertFile(r) {
+  // [ZK] Persist the ciphertext name only; file_name (plaintext) is forced NULL.
   await pool.query(
     `INSERT INTO vault_files
-       (file_id, owner, file_name, file_size, original_size, file_hash, iv, auth_tag, storage_path, uploaded_at, deleted)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, to_timestamp($10 / 1000.0), FALSE)
+       (file_id, owner, file_name, encrypted_name, file_size, original_size, file_hash, iv, auth_tag, storage_path, uploaded_at, deleted)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, to_timestamp($11 / 1000.0), FALSE)
      ON CONFLICT (file_id) DO NOTHING`,
-    [r.fileId, r.owner, r.fileName, r.fileSize, r.originalSize, r.fileHash,
+    [r.fileId, r.owner, null, r.encryptedName || null, r.fileSize, r.originalSize, r.fileHash,
      r.iv || null, r.authTag || null, r.storagePath, r.uploadedAt || Date.now()]
   );
 }
@@ -15,14 +16,14 @@ async function insertFile(r) {
 // Returns the in-memory record shape the server already uses.
 async function loadAllFiles() {
   const res = await pool.query(
-    `SELECT file_id, owner, file_name, file_size, original_size, file_hash, iv, auth_tag,
+    `SELECT file_id, owner, encrypted_name, file_size, original_size, file_hash, iv, auth_tag,
             storage_path, EXTRACT(EPOCH FROM uploaded_at) * 1000 AS uploaded_at, deleted
      FROM vault_files WHERE deleted = FALSE`
   );
   return res.rows.map(row => ({
     fileId: row.file_id,
     owner: row.owner,
-    fileName: row.file_name,
+    encryptedName: row.encrypted_name || null,  // [ZK] no plaintext name read path
     fileSize: Number(row.file_size),
     originalSize: Number(row.original_size),
     fileHash: row.file_hash,
@@ -36,6 +37,31 @@ async function loadAllFiles() {
 
 async function markFileDeleted(fileId) {
   await pool.query('UPDATE vault_files SET deleted = TRUE, deleted_at = NOW() WHERE file_id = $1', [fileId]);
+}
+
+// ── One-time filename migration (plaintext file_name → encrypted_name) ────────
+// Returns this owner's active rows that still hold a plaintext name and have no
+// ciphertext yet. The plaintext is exposed ONLY to the row's own authenticated
+// owner, solely so their client can encrypt it under their key.
+async function listPendingNameMigration(owner) {
+  const res = await pool.query(
+    `SELECT file_id, file_name FROM vault_files
+      WHERE owner = $1 AND deleted = FALSE
+        AND file_name IS NOT NULL AND encrypted_name IS NULL`,
+    [owner]
+  );
+  return res.rows.map(r => ({ fileId: r.file_id, fileName: r.file_name }));
+}
+
+// Writes the client-produced ciphertext name and clears the plaintext, scoped to
+// the owner. Returns the number of rows updated (0 = not owned / already done).
+async function setEncryptedName(fileId, owner, encryptedName) {
+  const res = await pool.query(
+    `UPDATE vault_files SET encrypted_name = $3, file_name = NULL
+      WHERE file_id = $1 AND owner = $2`,
+    [fileId, owner, encryptedName]
+  );
+  return res.rowCount;
 }
 
 // ── Wrapped per-user vault keys ──────────────────────────────────────────────
@@ -55,4 +81,5 @@ async function loadAllKeys() {
   return out;
 }
 
-export { insertFile, loadAllFiles, markFileDeleted, upsertKey, loadAllKeys };
+export { insertFile, loadAllFiles, markFileDeleted, upsertKey, loadAllKeys,
+         listPendingNameMigration, setEncryptedName };

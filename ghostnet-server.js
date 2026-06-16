@@ -203,6 +203,25 @@ try {
     if (fs.existsSync(META_FILE)) fileMeta = JSON.parse(fs.readFileSync(META_FILE, 'utf-8'));
 } catch { fileMeta = []; }
 
+// [ZK] Actively scrub legacy plaintext filenames from the on-disk meta file and
+// rewrite SYNCHRONOUSLY here at module load — i.e. before app.listen() and before
+// any request can be served — so no request ever reads a stale cleartext name.
+// This is a real wipe (fs.writeFileSync), not the debounced scheduleWrite.
+(() => {
+    let scrubbed = 0;
+    for (const f of fileMeta) {
+        if (f && f.fileName != null) { f.fileName = null; scrubbed++; }
+    }
+    if (scrubbed > 0) {
+        try {
+            fs.writeFileSync(META_FILE, JSON.stringify(fileMeta, null, 2));
+            console.log(`[Vault] Scrubbed ${scrubbed} plaintext filename(s) from ${path.basename(META_FILE)} on boot.`);
+        } catch (e) {
+            console.error('[Vault] meta scrub write failed:', e.message);
+        }
+    }
+})();
+
 function saveMeta() {
     scheduleWrite(META_FILE, fileMeta);
 }
@@ -1703,7 +1722,9 @@ app.post('/vault/upload', requireAuth, requireVaultAuth, vaultUpload.single('fil
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const owner = req.user.id;
-    const { fileName, iv, authTag, originalSize } = req.body;
+    // [ZK] The filename arrives as client-side ciphertext (encryptedName). The
+    // plaintext name is never sent, so the server never sees or stores it.
+    const { encryptedName, iv, authTag, originalSize } = req.body;
 
     try {
         const fileId = crypto.randomUUID();
@@ -1732,7 +1753,10 @@ app.post('/vault/upload', requireAuth, requireVaultAuth, vaultUpload.single('fil
 
         const record = {
             fileId,
-            fileName: path.basename((fileName || req.file.originalname || 'encrypted_file').replace(/[\x00-\x1f]/g, '')).slice(0, 255),
+            // [ZK] Store ONLY the ciphertext name. file_name (plaintext) is never
+            // written; req.file.originalname is intentionally ignored (it's 'blob.enc').
+            encryptedName: (typeof encryptedName === 'string' ? encryptedName.slice(0, 4096) : null),
+            fileName: null,
             fileSize,
             originalSize: parseInt(originalSize) || fileSize,
             fileHash,
@@ -1799,7 +1823,7 @@ app.get('/vault/download/:fileId', requireAuth, requireVaultAuth, async (req, re
     }
 
     res.setHeader('X-File-Id', record.fileId);
-    res.setHeader('X-File-Name', encodeURIComponent(record.fileName));
+    res.setHeader('X-File-Name', encodeURIComponent(record.encryptedName || ''));  // [ZK] ciphertext, not plaintext
     res.setHeader('X-File-Hash', record.fileHash);
     res.setHeader('X-IV', record.iv || '');
     res.setHeader('X-Auth-Tag', record.authTag || '');
@@ -1815,7 +1839,7 @@ app.get('/vault/files/:owner', requireAuth, requireVaultAuth, async (req, res) =
     }
     const userFiles = fileMeta.filter(f => f.owner === req.user.id && !f.deleted).map(f => ({
         fileId: f.fileId,
-        fileName: f.fileName,
+        encryptedName: f.encryptedName || null,  // [ZK] ciphertext; client decrypts in-memory
         fileSize: f.fileSize,
         originalSize: f.originalSize,
         uploadedAt: f.uploadedAt,
@@ -1880,6 +1904,42 @@ app.post('/vault/keys', requireAuth, requireVaultAuth, (req, res) => {
     // Durable copy so the wrapped key survives redeploys (it's PIN-encrypted — zero-knowledge).
     vaultStore.upsertKey(ownerId, keyData).catch(err => console.error('[DB] vault upsertKey failed:', err.message));
     res.json({ success: true });
+});
+
+// ─── One-time filename migration (TEMPORARY — remove after backfill complete) ──
+// Re-encrypts legacy plaintext names client-side: the owner fetches their own
+// pending plaintext names, encrypts each under their vault key, and writes back
+// the ciphertext. Strictly owner-scoped — a caller only ever sees/writes rows
+// whose owner == req.user.id.
+app.get('/vault/migrate/pending', requireAuth, requireVaultAuth, async (req, res) => {
+    try {
+        const rows = await vaultStore.listPendingNameMigration(req.user.id);
+        res.json({ files: rows });
+    } catch (e) {
+        console.error('[Vault] migrate/pending failed:', e.message);
+        res.status(500).json({ error: 'Migration listing failed' });
+    }
+});
+
+app.post('/vault/migrate/name', requireAuth, requireVaultAuth, async (req, res) => {
+    let fileId;
+    try { fileId = validateFileId(req.body && req.body.fileId); }
+    catch (_) { return res.status(400).json({ error: 'Invalid file ID' }); }
+    const { encryptedName } = req.body || {};
+    if (typeof encryptedName !== 'string' || !encryptedName || encryptedName.length > 4096) {
+        return res.status(400).json({ error: 'Invalid encrypted name' });
+    }
+    try {
+        const n = await vaultStore.setEncryptedName(fileId, req.user.id, encryptedName);
+        if (!n) return res.status(404).json({ error: 'File not found or not owned' });
+        // Mirror into the in-memory record so the running process stops serving any stale state.
+        const rec = fileMeta.find(f => f.fileId === fileId && f.owner === req.user.id);
+        if (rec) { rec.encryptedName = encryptedName; rec.fileName = null; }
+        res.json({ success: true });
+    } catch (e) {
+        console.error('[Vault] migrate/name failed:', e.message);
+        res.status(500).json({ error: 'Migration write failed' });
+    }
 });
 
 app.delete('/vault/file/:fileId', requireAuth, requireVaultAuth, async (req, res) => { // [19]

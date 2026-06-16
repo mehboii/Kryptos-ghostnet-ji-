@@ -162,7 +162,7 @@
         try {
             const slim = index.map(f => ({
                 fileId: f.fileId,
-                fileName: f.fileName,
+                encryptedName: f.encryptedName || null,  // [ZK] ciphertext only; no plaintext name persisted
                 fileSize: f.fileSize,
                 originalSize: f.originalSize,
                 fileHash: f.fileHash || null,
@@ -319,6 +319,51 @@
             tx.oncomplete = () => { db.close(); resolve(); };
             tx.onerror = e => { db.close(); reject(e.target.error); };
         });
+    }
+
+    // [P0] Source of truth for backfill: any still-present local master key
+    // (keyHex). All files share the master key, so any entry's keyHex is it.
+    // Absence means there is no local key to preserve.
+    async function _anyStoredKeyHex() {
+        try {
+            const db = await _openDB();
+            const tx = db.transaction(DB_STORE, 'readonly');
+            const all = await new Promise((res, rej) => {
+                const r = tx.objectStore(DB_STORE).getAll();
+                r.onsuccess = () => res(r.result || []);
+                r.onerror = e => rej(e.target.error);
+            });
+            db.close();
+            const hit = (all || []).find(e => e && typeof e.keyHex === 'string' && /^[0-9a-fA-F]{64}$/.test(e.keyHex));
+            return hit ? hit.keyHex : null;
+        } catch { return null; }
+    }
+
+    // [P0] One-time cleanup: strip the plaintext master key (keyHex) from every
+    // keystore entry. IRREVERSIBLE. Called ONLY from the recover/backfill SUCCESS
+    // branch (see promptVaultKeyRecovery), after the confirming await — never in a
+    // finally, never on a thrown path. ivHex (non-secret) is retained.
+    async function _purgeLegacyKeyHex() {
+        try {
+            const db = await _openDB();
+            const tx = db.transaction(DB_STORE, 'readwrite');
+            const store = tx.objectStore(DB_STORE);
+            const all = await new Promise((res, rej) => {
+                const r = store.getAll();
+                r.onsuccess = () => res(r.result || []);
+                r.onerror = e => rej(e.target.error);
+            });
+            for (const entry of all) {
+                if (entry && 'keyHex' in entry) { delete entry.keyHex; store.put(entry); }
+            }
+            await new Promise((res, rej) => {
+                tx.oncomplete = () => res();
+                tx.onerror = e => rej(e.target.error);
+            });
+            db.close();
+        } catch (e) {
+            console.warn('[Vault] keyHex purge skipped:', e && e.message);
+        }
     }
 
     // ─── Hex utilities ────────────────────────────────────────────────────────
@@ -494,6 +539,60 @@
             return key;
         },
 
+        // [P0] Backfill a MISSING server vault_keys row from a still-present LOCAL
+        // master key, then verify the round-trip. Wrap-push-verify only — it never
+        // purges; the caller purges after this resolves. Any throw ⇒ no purge ⇒ the
+        // local key (and the user's files) stay intact. Replaces the old
+        // generateNew-on-missing-key path that minted a NEW key and orphaned files.
+        async backfillFromLocal(pin, localKeyHex) {
+            // 1. Import the EXISTING local master key (extractable so we can JWK-wrap).
+            const key = await crypto.subtle.importKey(
+                'raw', hexToBuf(localKeyHex),
+                { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
+            );
+            const jwkStr = JSON.stringify(await crypto.subtle.exportKey('jwk', key));
+
+            // 2. PBKDF2(PIN)-wrap — identical construction to generateNew.
+            const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+            const wrapKey = await this._deriveWrappingKey(pin, bufToHex(saltBytes));
+            const ivBytes = crypto.getRandomValues(new Uint8Array(12));
+            const encJwk = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: ivBytes }, wrapKey, new TextEncoder().encode(jwkStr)
+            );
+            const serverKeyData = {
+                wrappedKey: bufToHex(new Uint8Array(encJwk)),
+                salt: bufToHex(saltBytes),
+                iv: bufToHex(ivBytes)
+            };
+
+            // 3. Push to server.
+            if (!_hasToken()) throw new Error('Cannot backfill vault key while offline.');
+            const up = await fetch(VAULT_API + '/keys', {
+                method: 'POST',
+                headers: _secureHeaders({ 'Content-Type': 'application/json' }),
+                body: JSON.stringify({ keyData: serverKeyData })
+            });
+            if (!up.ok) throw new Error('Vault key backfill upload failed — NOT purging.');
+
+            // 4. VERIFY: re-fetch, unwrap with the PIN, confirm identical key bytes.
+            const vr = await fetch(VAULT_API + '/keys', { headers: _secureHeaders() });
+            const vd = vr.ok ? await vr.json() : null;
+            if (!vd || !vd.keyData) throw new Error('Backfill verify failed: no key returned — NOT purging.');
+            const wk2 = await this._deriveWrappingKey(pin, vd.keyData.salt);
+            const dec = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: hexToBuf(vd.keyData.iv) }, wk2, hexToBuf(vd.keyData.wrappedKey)
+            );
+            const recovered = await crypto.subtle.importKey(
+                'jwk', JSON.parse(new TextDecoder().decode(dec)),
+                { name: 'AES-GCM', length: 256 }, true, ['encrypt', 'decrypt']
+            );
+            const recoveredRaw = bufToHex(new Uint8Array(await crypto.subtle.exportKey('raw', recovered)));
+            if (recoveredRaw !== localKeyHex) throw new Error('Backfill verify failed: key mismatch — NOT purging.');
+
+            this.key = recovered;   // verified identical to the local key; caller may now purge
+            return recovered;
+        },
+
         async generateNew(pin) {
             const newKey = await crypto.subtle.generateKey(
                 { name: 'AES-GCM', length: 256 },
@@ -597,6 +696,47 @@
         );
     }
 
+    // ─── Filename encryption (zero-knowledge metadata) ──────────────────────────
+    // Encrypts the filename under the SAME per-user master key as the body, with a
+    // FRESH IV (never the body IV). Packed as base64( iv[12] || ciphertext+gcmTag ).
+    // The server only ever receives this opaque string.
+    async function encryptName(name) {
+        const key = await VaultKeyManager.getOrGenerateKey();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const data = new TextEncoder().encode(_sanitizeFileName(name));
+        const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, key, data);
+        const packed = new Uint8Array(12 + ct.byteLength);
+        packed.set(iv, 0);
+        packed.set(new Uint8Array(ct), 12);
+        return btoa(String.fromCharCode(...packed));
+    }
+
+    // Decrypts to an in-memory display name only. Never persisted, never logged.
+    // Returns null on any failure so rendering can show a placeholder instead.
+    async function decryptName(encryptedName) {
+        if (!encryptedName || typeof encryptedName !== 'string') return null;
+        try {
+            const key = await VaultKeyManager.getOrGenerateKey();
+            const packed = Uint8Array.from(atob(encryptedName), c => c.charCodeAt(0));
+            if (packed.length <= 12) return null;
+            const pt = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: packed.slice(0, 12) }, key, packed.slice(12)
+            );
+            return _sanitizeFileName(new TextDecoder().decode(pt));
+        } catch {
+            return null;
+        }
+    }
+
+    // [ZK] Attach an in-memory decrypted display name to each row. The decrypted
+    // name is never written back to storage and never logged.
+    async function _withDisplayNames(rows) {
+        return Promise.all((rows || []).map(async (f) => ({
+            ...f,
+            fileName: (await decryptName(f.encryptedName)) || '🔒 Encrypted file',
+        })));
+    }
+
     // ─── Upload ───────────────────────────────────────────────────────────────
 
     async function uploadFile(file, onProgress) {
@@ -665,10 +805,15 @@
 
         if (onProgress) onProgress({ stage: 'uploading', percent: 0 });
 
+        // [ZK] Encrypt the filename under the master key (fresh IV) before it leaves
+        // the device. The server never receives the plaintext name.
+        const encryptedName = await encryptName(file.name);
+
         const formData = new FormData();
-        formData.append('file', encrypted.encryptedBlob, _sanitizeFileName(file.name) + '.enc');
+        // [ZK] Neutral part name — the real name must not leak via req.file.originalname.
+        formData.append('file', encrypted.encryptedBlob, 'blob.enc');
         formData.append('owner', owner);
-        formData.append('fileName', _sanitizeFileName(file.name));  // [FIX H]
+        formData.append('encryptedName', encryptedName);  // [ZK] ciphertext, replaces plaintext fileName
         formData.append('iv', encrypted.ivHex);
         // [FIX D] authTag is NOT appended — it's already in the ciphertext blob.
         formData.append('originalSize', String(encrypted.originalSize));
@@ -721,9 +866,11 @@
         // [FIX C] Validate fileId from server response before storing.
         const fileId = _validateFileId(result?.file?.fileId);
 
+        const displayName = _sanitizeFileName(file.name);  // in-memory display only
         const normalizedMeta = {
             fileId,
-            fileName: _sanitizeFileName(file.name),
+            encryptedName,                 // [ZK] persisted (ciphertext)
+            fileName: displayName,         // in-memory display only; NOT persisted (see saveVaultIndex)
             fileSize: result.file?.fileSize || file.size,
             originalSize: encrypted.originalSize,
             fileHash: result.file?.fileHash || null,
@@ -732,11 +879,13 @@
             txHash: result.file?.txHash || null,
         };
 
-        // [FIX A] Store key in IndexedDB — never in localStorage.
+        // [FIX A] Store key material in IndexedDB — never in localStorage.
+        // [P0] keyHex is NOT persisted — it IS the master key, derived at download
+        //      time via the PIN-gated unlock. ivHex (non-secret GCM IV) is retained.
+        // [ZK] encryptedName persisted instead of the plaintext name.
         await saveKey(fileId, {
-            keyHex: encrypted.keyHex,
             ivHex: encrypted.ivHex,
-            fileName: normalizedMeta.fileName,  // [FIX H]
+            encryptedName,
             originalSize: encrypted.originalSize,
         });
 
@@ -807,14 +956,19 @@
         }
 
         let usingMasterKey = false;
-        if (!keyData && !encKeyStr) {
+        // [P0] Post-purge keystore entries have no keyHex. Derive the master key
+        //      (PIN-gated unlock) and reuse any locally cached non-secret IV; the
+        //      X-IV header is only a fallback (see below). We never delete a local IV.
+        if ((!keyData || !keyData.keyHex) && !encKeyStr) {
+            const cachedIv = keyData?.ivHex || null;
+            const cachedEnc = keyData?.encryptedName || null;
             try {
                 const masterKeyCrypto = await VaultKeyManager.getOrGenerateKey();
                 const rawArrayBuffer = await crypto.subtle.exportKey('raw', masterKeyCrypto);
                 keyData = {
                     keyHex: bufToHex(new Uint8Array(rawArrayBuffer)),
-                    fileName: 'decrypted_file',
-                    ivHex: null // Will be parsed from headers
+                    encryptedName: cachedEnc,
+                    ivHex: cachedIv // prefer local IV; falls back to X-IV header below
                 };
                 usingMasterKey = true;
             } catch (err) {
@@ -840,9 +994,10 @@
         }
 
         if (usingMasterKey) {
-            keyData.ivHex = response.headers.get('x-iv');
-            if (response.headers.get('x-file-name')) {
-                keyData.fileName = decodeURIComponent(response.headers.get('x-file-name'));
+            keyData.ivHex = keyData.ivHex || response.headers.get('x-iv');  // [P0] local IV wins; header is fallback
+            // [ZK] X-File-Name is now ciphertext; keep it for in-memory decryption below.
+            if (!keyData.encryptedName && response.headers.get('x-file-name')) {
+                keyData.encryptedName = decodeURIComponent(response.headers.get('x-file-name'));
             }
             if (!keyData.ivHex) throw new Error('Cannot decrypt file: Missing encryption IV from server');
         }
@@ -868,7 +1023,11 @@
         }
 
         // Trigger browser download.
-        const safeName = _sanitizeFileName(keyData.fileName || 'decrypted_file');  // [FIX H]
+        // [ZK] Resolve a display name in-memory only: prefer the encrypted name
+        //      (local or X-File-Name header), then any legacy plaintext name from a
+        //      shared-key payload, else the opaque fileId.
+        let resolvedName = await decryptName(keyData.encryptedName);
+        const safeName = _sanitizeFileName(resolvedName || keyData.fileName || `${fileId}.bin`);  // [FIX H]
         const blob = new Blob([plaintext]);
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -888,10 +1047,11 @@
 
     async function listFiles() {
         const owner = getOwner();
-        if (!owner) return vaultIndex.slice();
+        // [ZK] All return paths decrypt encryptedName → display name in-memory.
+        if (!owner) return await _withDisplayNames(vaultIndex);
 
         // Skip server call if no auth token exists — prevents 401 cascade
-        if (!_hasToken()) return vaultIndex.slice();
+        if (!_hasToken()) return await _withDisplayNames(vaultIndex);
 
         let response;
         try {
@@ -901,12 +1061,12 @@
             });
         } catch {
             // Network failure — fall back entirely to local index.
-            return vaultIndex.slice();
+            return await _withDisplayNames(vaultIndex);
         }
 
         if (!response.ok) {
             // Server returned error — keep using cached index.
-            return vaultIndex.slice();
+            return await _withDisplayNames(vaultIndex);
         }
 
         const data = await response.json().catch(() => ({}));
@@ -914,7 +1074,7 @@
             // Refresh local index with authoritative server list.
             vaultIndex = data.files.map(f => ({
                 fileId: f.fileId,
-                fileName: f.fileName,
+                encryptedName: f.encryptedName || null,  // [ZK] ciphertext; decrypted in-memory below
                 fileSize: f.fileSize,
                 originalSize: f.originalSize,
                 fileHash: f.fileHash || null,
@@ -923,11 +1083,11 @@
                 txHash: f.txHash || null,
             }));
             saveVaultIndex(vaultIndex);
-            return vaultIndex.slice();
+            return await _withDisplayNames(vaultIndex);
         }
 
         // Empty server list — retain local view so uploads don't vanish.
-        return vaultIndex.slice();
+        return await _withDisplayNames(vaultIndex);
     }
 
     // ─── Delete File ──────────────────────────────────────────────────────────
@@ -1011,7 +1171,7 @@
         if (!owner) return [];
 
         // Guard: skip server call if unauthenticated
-        if (!_hasToken()) return vaultIndex.slice();
+        if (!_hasToken()) return await _withDisplayNames(vaultIndex);
 
         let serverFiles = [];
         try {
@@ -1023,7 +1183,7 @@
                 if (Array.isArray(data.files) && data.files.length) {
                     serverFiles = data.files.map(f => ({
                         fileId: f.fileId,
-                        fileName: f.fileName,
+                        encryptedName: f.encryptedName || null,  // [ZK] ciphertext; decrypted in-memory below
                         fileSize: f.fileSize,
                         originalSize: f.originalSize,
                         fileHash: f.fileHash || null,
@@ -1040,7 +1200,7 @@
         // Update local state with server-authoritative list
         vaultIndex = serverFiles;
         saveVaultIndex(vaultIndex);
-        return vaultIndex.slice();
+        return await _withDisplayNames(vaultIndex);
     }
 
     // ─── Public API ───────────────────────────────────────────────────────────
@@ -1091,6 +1251,12 @@
         deleteFile,
         _generateVaultKey: (pin) => VaultKeyManager.generateNew(pin),
         _recoverVaultKey: (pin, data) => VaultKeyManager.recoverFromData(pin, data),
+        // [P0] Backfill/purge primitives for the recover/backfill unlock flow.
+        _backfillVaultKey: (pin, localKeyHex) => VaultKeyManager.backfillFromLocal(pin, localKeyHex),
+        _localMasterKeyHex: () => _anyStoredKeyHex(),
+        _purgeLocalKey: () => _purgeLegacyKeyHex(),
+        // [ZK] Filename encryption (used by the one-time name migration).
+        encryptName,
         verifyFile,
         hasKey,
         formatBytes,
