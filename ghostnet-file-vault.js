@@ -55,8 +55,8 @@
  *     raw key bytes. Keys should only be extractable at the point of
  *     creation (for storage). Keys re-imported from storage for a
  *     decrypt operation should be non-extractable.
- *     Fixed: importKey() sets extractable: false. A separate
- *     exportKeyForStorage() helper is used only at generation time.
+ *     Fixed: importKey() sets extractable: false. The upload path encrypts
+ *     with the CryptoKey directly and never re-exports the raw key bytes.
  *
  * [F] HIGH — No file size limit before loading into memory.
  *     file.arrayBuffer() loads the entire file into memory synchronously
@@ -640,11 +640,6 @@
         );
     }
 
-    async function exportKeyForStorage(key) {
-        const raw = await crypto.subtle.exportKey('raw', key);
-        return bufToHex(new Uint8Array(raw));
-    }
-
     // [FIX E] Non-extractable import — keys used for decryption cannot be
     //         re-exported from the CryptoKey object.
     async function importKey(hexKey) {
@@ -678,7 +673,6 @@
         //         is never sent to the server separately.
         return {
             encryptedBlob: new Blob([ciphertext]),
-            keyHex: await exportKeyForStorage(key),
             ivHex: bufToHex(iv),
             originalSize: plaintext.byteLength,
         };
