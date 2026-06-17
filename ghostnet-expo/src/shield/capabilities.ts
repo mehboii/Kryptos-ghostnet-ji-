@@ -41,6 +41,10 @@ export interface CapabilitySet {
    *  the app fully controls, so they are always achievable. Listed for symmetry. */
   readonly trafficShaping: boolean;
   readonly decoys: boolean;
+  /** Can we register GhostNet's own Wi-Fi network suggestions at all (Android/native)? */
+  readonly wifiSuggestion: boolean;
+  /** Can we set NON_PERSISTENT MAC randomization on those suggestions (Android 12+)? */
+  readonly macRandomizationNonPersistent: boolean;
 }
 
 /** Stable reason codes a module emits when a capability is missing. */
@@ -63,6 +67,13 @@ export const REASON = {
   DEVICE_COMPROMISED: 'device_compromised',
   DEVICE_SUSPECT: 'device_suspect',
   INTEGRITY_UNKNOWN: 'integrity_unknown',
+  /** No app API to register Wi-Fi network suggestions (web test, or iOS). The host
+   *  turns this into a platform-aware message (web test context vs iOS OS-managed). */
+  MAC_RANDO_UNAVAILABLE: 'mac_randomization_unavailable_no_suggestion_api',
+  /** The suggestion API exists but NON_PERSISTENT randomization needs Android 12+. */
+  MAC_RANDO_REQUIRES_ANDROID_12: 'mac_randomization_requires_android_12',
+  /** Native attempt did not take effect (suggestion rejected / permission / error). */
+  MAC_RANDO_NOT_APPLIED: 'mac_randomization_not_applied',
 } as const;
 
 /**
@@ -85,6 +96,8 @@ export function probeCapabilities(ports: ShieldPorts): CapabilitySet {
     attestation: ports.integrity.provider.isSupported(),
     trafficShaping: true,
     decoys: true,
+    wifiSuggestion: ports.wifi.isAvailable(),
+    macRandomizationNonPersistent: ports.wifi.supportsNonPersistentRandomization(),
   };
   ports.log.debug('capabilities', {
     bleStack: set.bleAvailable,
@@ -97,6 +110,8 @@ export function probeCapabilities(ports: ShieldPorts): CapabilitySet {
     screencap: set.screenCaptureDetection,
     a11y: set.accessibilityDetection,
     attestation: set.attestation,
+    wifiSuggest: set.wifiSuggestion,
+    macRando: set.macRandomizationNonPersistent,
   });
   return set;
 }

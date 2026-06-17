@@ -23,18 +23,34 @@ describe('tier → config (single source) is cumulative', () => {
 
   it('maps each tier to exactly the spec module set', () => {
     expect([...modulesForTier(ShieldTier.OFF)]).toEqual([]);
-    // CoResidentGuard monitors on-device observation from STEALTH up.
+    // CoResidentGuard + DeviceIntegrity monitor the device from STEALTH up;
+    // MacRandomizer flips the MAC-randomization policy on our suggested networks.
     expect(new Set(modulesForTier(ShieldTier.STEALTH))).toEqual(
-      new Set([ModuleId.BleCloak, ModuleId.DnsGuard, ModuleId.CoResidentGuard]),
+      new Set([
+        ModuleId.BleCloak,
+        ModuleId.DnsGuard,
+        ModuleId.CoResidentGuard,
+        ModuleId.DeviceIntegrity,
+        ModuleId.MacRandomizer,
+      ]),
     );
     expect(new Set(modulesForTier(ShieldTier.GHOST))).toEqual(
-      new Set([ModuleId.BleCloak, ModuleId.DnsGuard, ModuleId.CoResidentGuard, ModuleId.TrafficShaper]),
+      new Set([
+        ModuleId.BleCloak,
+        ModuleId.DnsGuard,
+        ModuleId.CoResidentGuard,
+        ModuleId.DeviceIntegrity,
+        ModuleId.MacRandomizer,
+        ModuleId.TrafficShaper,
+      ]),
     );
     expect(new Set(modulesForTier(ShieldTier.PHANTOM))).toEqual(
       new Set([
         ModuleId.BleCloak,
         ModuleId.DnsGuard,
         ModuleId.CoResidentGuard,
+        ModuleId.DeviceIntegrity,
+        ModuleId.MacRandomizer,
         ModuleId.TrafficShaper,
         ModuleId.MeshRouting,
         ModuleId.DecoyEngine,

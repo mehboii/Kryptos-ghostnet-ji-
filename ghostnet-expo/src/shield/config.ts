@@ -82,6 +82,18 @@ export function resolveConfig(tier: ShieldTier, options: ConfigOptions = {}): Sh
       enabled: atLeast(ShieldTier.STEALTH),
       clipboardClearMs: 30_000,
     },
+    // STEALTH+ : check device integrity (root/jailbreak/hook/emulator) + attest.
+    // Re-attest more aggressively at higher tiers.
+    integrity: {
+      enabled: atLeast(ShieldTier.STEALTH),
+      reattestIntervalMs: atLeast(ShieldTier.STEALTH) ? (isFull ? 5 * 60_000 : 15 * 60_000) : 0,
+    },
+    // STEALTH+ : ask the OS for non-persistent MAC randomization on GhostNet's OWN
+    // suggested mesh/relay networks (Android 12+). Policy flip only — never touches
+    // the user's other Wi-Fi and is not an app-side MAC rotation.
+    macRandomization: {
+      enabled: atLeast(ShieldTier.STEALTH),
+    },
   };
 }
 
@@ -99,5 +111,7 @@ export function modulesForTier(tier: ShieldTier): ReadonlySet<ModuleId> {
   if (cfg.decoy.enabled) ids.add(ModuleId.DecoyEngine);
   if (cfg.nodeIdRotation.enabled) ids.add(ModuleId.NodeIdRotator);
   if (cfg.coResident.enabled) ids.add(ModuleId.CoResidentGuard);
+  if (cfg.integrity.enabled) ids.add(ModuleId.DeviceIntegrity);
+  if (cfg.macRandomization.enabled) ids.add(ModuleId.MacRandomizer);
   return ids;
 }
