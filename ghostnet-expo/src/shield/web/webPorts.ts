@@ -33,11 +33,13 @@ import type {
   DecoyAnnouncement,
   DnsAdapter,
   DnsMode,
+  MacRandomizationResult,
   MeshAdapter,
   MeshFrame,
   OutboundTransform,
   ShieldLogger,
   ShieldPorts,
+  WifiSuggestionAdapter,
 } from '../types';
 import type {
   AttestationBackend,
@@ -79,6 +81,29 @@ export class WebBleAdapter implements BleAdapter {
   }
   async setAdvertisingParameters(_params: AdvertisingParameters): Promise<void> {
     void _params;
+  }
+}
+
+/* ── Wi-Fi suggestions: no API in a browser ──────────────────────────────── */
+
+/**
+ * A web page cannot register Wi-Fi network suggestions or set any MAC-randomization
+ * policy, so every probe is honest-false and apply is a no-op that NEVER reports
+ * active. MacRandomizer turns this into an `unavailable` report (active:false) with
+ * REASON.MAC_RANDO_UNAVAILABLE. There is no MAC value here to read, set, or log.
+ */
+export class WebWifiSuggestAdapter implements WifiSuggestionAdapter {
+  isAvailable(): boolean {
+    return false;
+  }
+  supportsNonPersistentRandomization(): boolean {
+    return false;
+  }
+  async applyNonPersistentMacRandomization(): Promise<MacRandomizationResult> {
+    return { requested: true, active: false, reason: 'web_test_context' };
+  }
+  async clearSuggestions(): Promise<void> {
+    /* no suggestion API in a browser */
   }
 }
 
@@ -350,6 +375,7 @@ export interface ShieldHostPorts extends ShieldPorts {
 export interface WebPorts extends ShieldHostPorts {
   readonly ble: WebBleAdapter;
   readonly dns: WebDnsAdapter;
+  readonly wifi: WebWifiSuggestAdapter;
 }
 
 /** Assemble the honest web (browser test) port set. */
@@ -360,6 +386,7 @@ export function createWebPorts(options: WebPortsOptions = {}): WebPorts {
     dns: new WebDnsAdapter(options.fetchFn),
     mesh: new WebMeshAdapter(options.meshBridge ?? {}, random),
     coResident: new WebCoResidentAdapter(),
+    wifi: new WebWifiSuggestAdapter(),
     integrity: createWebIntegrity(),
     store: new WebSecureStore(),
     clock: new SystemClock(),

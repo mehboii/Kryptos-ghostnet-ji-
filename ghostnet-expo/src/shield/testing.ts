@@ -17,6 +17,7 @@ import {
   type DecoyAnnouncement,
   type DnsAdapter,
   type DnsMode,
+  type MacRandomizationResult,
   type MeshAdapter,
   type MeshFrame,
   type OutboundTransform,
@@ -25,6 +26,7 @@ import {
   type ShieldLogger,
   type ShieldPorts,
   type TimerHandle,
+  type WifiSuggestionAdapter,
 } from './types';
 import type {
   AttestationBackend,
@@ -366,6 +368,61 @@ export class FakeCoResidentAdapter implements CoResidentAdapter {
   }
 }
 
+/* ── Fake Wi-Fi suggestion adapter (MAC-randomization policy) ─────────────── */
+
+export interface FakeWifiSuggestOptions {
+  /** Is the suggestion API present at all (false simulates web/iOS). Default true. */
+  readonly available?: boolean;
+  /** Is NON_PERSISTENT randomization supported (false simulates Android < 31). Default true. */
+  readonly supportsNonPersistent?: boolean;
+  /** Reason the native apply returns when it did NOT take effect (e.g. rejected). */
+  readonly applyReason?: string;
+  /** Force apply to report inactive even when supported (rejected/permission). Default false. */
+  readonly applyFails?: boolean;
+}
+
+/**
+ * In-memory stand-in for the native WifiNetworkSuggestion bridge. Crucially it
+ * NEVER fabricates a MAC value — it only records that the policy was requested /
+ * cleared and reports the structured { requested, active, reason } the real native
+ * module would. `appliedCount`/`clearedCount` let tests assert it only ever acts
+ * on GhostNet-suggested networks.
+ */
+export class FakeWifiSuggestAdapter implements WifiSuggestionAdapter {
+  appliedCount = 0;
+  clearedCount = 0;
+  lastResult: MacRandomizationResult | null = null;
+  private readonly avail: boolean;
+  private readonly nonPersistent: boolean;
+  private readonly fails: boolean;
+  private readonly reason?: string;
+
+  constructor(opts: FakeWifiSuggestOptions = {}) {
+    this.avail = opts.available ?? true;
+    this.nonPersistent = opts.supportsNonPersistent ?? true;
+    this.fails = opts.applyFails ?? false;
+    this.reason = opts.applyReason;
+  }
+  isAvailable(): boolean {
+    return this.avail;
+  }
+  supportsNonPersistentRandomization(): boolean {
+    return this.avail && this.nonPersistent;
+  }
+  async applyNonPersistentMacRandomization(): Promise<MacRandomizationResult> {
+    this.appliedCount++;
+    const active = this.avail && this.nonPersistent && !this.fails;
+    const result: MacRandomizationResult = active
+      ? { requested: true, active: true }
+      : { requested: true, active: false, reason: this.reason ?? 'suggestion-rejected' };
+    this.lastResult = result;
+    return result;
+  }
+  async clearSuggestions(): Promise<void> {
+    this.clearedCount++;
+  }
+}
+
 /* ── Fake integrity port (local probe + attestation provider + backend) ───── */
 
 export interface FakeProbeOptions {
@@ -477,6 +534,7 @@ export interface FakePortsOverrides {
   readonly dns?: FakeDnsOptions;
   readonly mesh?: FakeMeshOptions;
   readonly coResident?: FakeCoResidentOptions;
+  readonly wifi?: FakeWifiSuggestOptions;
   readonly probe?: FakeProbeOptions;
   readonly attestation?: FakeAttestationOptions;
   readonly seed?: number;
@@ -488,6 +546,7 @@ export interface FakePorts extends ShieldPorts {
   readonly dns: FakeDnsAdapter;
   readonly mesh: FakeMeshAdapter;
   readonly coResident: FakeCoResidentAdapter;
+  readonly wifi: FakeWifiSuggestAdapter;
   readonly integrity: FakeIntegrity;
   readonly store: MemoryStore;
   readonly clock: FakeClock;
@@ -501,9 +560,10 @@ export function createFakePorts(overrides: FakePortsOverrides = {}): FakePorts {
   const dns = new FakeDnsAdapter(overrides.dns);
   const mesh = new FakeMeshAdapter(overrides.mesh, clock);
   const coResident = new FakeCoResidentAdapter(overrides.coResident);
+  const wifi = new FakeWifiSuggestAdapter(overrides.wifi);
   const integrity = createFakeIntegrity(overrides.probe, overrides.attestation);
   const store = new MemoryStore();
   const random = new SeededRandom(overrides.seed);
   const log = overrides.logger ?? createLogger({ enabled: false });
-  return { ble, dns, mesh, coResident, integrity, store, clock, random, log };
+  return { ble, dns, mesh, coResident, wifi, integrity, store, clock, random, log };
 }

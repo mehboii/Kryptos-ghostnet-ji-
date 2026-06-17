@@ -54,6 +54,14 @@ export function honestReason(report: CapabilityReport, platform: ShieldPlatform)
       return web
         ? 'Device integrity: UNKNOWN — attestation unavailable in web test context'
         : 'Device integrity: UNKNOWN — could not attest';
+    case REASON.MAC_RANDO_UNAVAILABLE:
+      return web
+        ? 'Non-persistent MAC randomization unavailable — web test context (no Wi-Fi suggestion API)'
+        : 'Non-persistent MAC randomization unavailable — no app API (iOS OS-managed Private Wi-Fi Address) or native module not resolved';
+    case REASON.MAC_RANDO_REQUIRES_ANDROID_12:
+      return 'Non-persistent MAC randomization requires Android 12+ — registered with OS-default randomization only';
+    case REASON.MAC_RANDO_NOT_APPLIED:
+      return 'Non-persistent MAC randomization could not be applied to GhostNet-suggested networks';
     default:
       return report.reason ?? (report.active ? 'running a reduced subset' : 'inactive');
   }

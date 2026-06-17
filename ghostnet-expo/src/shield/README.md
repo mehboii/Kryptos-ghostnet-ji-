@@ -63,6 +63,7 @@ The mapping lives in exactly one place — [`config.ts`](./config.ts)
 | **BleCloak** — stop advertising | Stops GhostNet's *own* BLE advertising | ⚠️ Partial — background advertising is OS-controlled and CoreBluetooth strips service data; foreground stop works | ✅ Real when the BLE peripheral module is present | Stops the app-level discovery beacon only; `ble_advertising_control_unsupported` |
 | **BleCloak** — probe suppression | Stops GhostNet's *own* discovery beaconing | ✅ Real | ✅ Real | — |
 | ~~Hardware MAC rotation~~ | **Not attempted.** Unprivileged apps cannot change the radio MAC. "Rotation" here = overlay node id (see NodeIdRotator). | ❌ Impossible | ❌ Impossible | n/a — never claimed |
+| **MacRandomizer** | Flips the OS MAC-randomization **policy** to NON-PERSISTENT on the Wi-Fi networks **GhostNet itself suggests** (fresh randomized MAC per rejoin). A policy flip on *our* networks — **not** app-driven MAC rotation, and it cannot touch the user's home/office/café Wi-Fi. | ❌ No app API — OS-managed Private Wi-Fi Address (`unavailable`) | ✅ Real on **Android 12+** via `WifiNetworkSuggestion.setMacRandomizationSetting`; ⚠️ Android < 31 registers with OS-default randomization only | `mac_randomization_unavailable_no_suggestion_api` (iOS/web); `mac_randomization_requires_android_12` (API < 31) |
 | ~~OS WiFi probe suppression~~ | **Not attempted.** The OS radio's probe requests are outside app control. | ❌ Impossible | ❌ Impossible | n/a — never claimed |
 | **DnsGuard** — DoH | Routes DNS through an app-controlled DoH resolver, **fail-closed** | ⚠️ App-scoped only (system resolver for other apps is untouched) | ⚠️ App-scoped only | If unreachable: blocks plaintext, `doh_unreachable_failclosed`. If unsupported: `doh_unsupported_on_platform` |
 | **TrafficShaper** — padding | Pads ciphertext to fixed buckets (outer envelope; E2EE untouched) | ✅ Real | ✅ Real | — (pure overlay) |
@@ -122,7 +123,7 @@ src/shield/
   logger.ts         opt-in, local-only, redacting logger
   ShieldManager.ts  the state machine (transitions, rollback, panic, persist, events)
   traffic-model.ts  observed inter-arrival + size distribution (shared by shaper/decoy)
-  modules/          BleCloak · DnsGuard · TrafficShaper · MeshRouting · DecoyEngine · NodeIdRotator · CoResidentGuard
+  modules/          BleCloak · DnsGuard · TrafficShaper · MeshRouting · DecoyEngine · NodeIdRotator · CoResidentGuard · MacRandomizer
   testing.ts        in-memory fakes (fake clock, seeded RNG, fake adapters)
   example.ts        runnable wiring walkthrough
   index.ts          public barrel

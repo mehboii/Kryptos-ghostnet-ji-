@@ -24,7 +24,14 @@
  */
 
 import { createLogger } from '../logger';
-import type { AdvertisingParameters, BleAdapter, CoResidentAdapter, ShieldLogger } from '../types';
+import type {
+  AdvertisingParameters,
+  BleAdapter,
+  CoResidentAdapter,
+  MacRandomizationResult,
+  ShieldLogger,
+  WifiSuggestionAdapter,
+} from '../types';
 import type { AttestationProvider, IntegrityPort, LocalSignalProbe, Platform } from '../integrity/types';
 import { SystemClock, WebCryptoRandom, WebSecureStore } from './runtime';
 import {
@@ -90,6 +97,54 @@ export class CapacitorBleAdapter implements BleAdapter {
   }
 }
 
+/* ── Native Wi-Fi network suggestions (MAC randomization policy) ──────────── */
+
+/**
+ * What the Shield needs from the host's native Wi-Fi-suggestion wiring. The host
+ * implements this against the `ghostnet-wifi-suggest` Expo module: it knows the
+ * platform/API level (so the sync probes are honest) and which networks are
+ * GhostNet's OWN mesh/relay networks (so apply only ever touches those). On iOS or
+ * a build without the module, the host either omits the bridge or returns
+ * isReady()=false, and the adapter reports unavailable.
+ */
+export interface NativeWifiSuggestBridge {
+  /** True once the native suggestion module has resolved (Android, linked). */
+  isReady(): boolean;
+  /** Android 12+ (API 31+) — can NON_PERSISTENT randomization be set on a suggestion? */
+  supportsNonPersistentRandomization(): boolean;
+  /** Apply the policy to GhostNet's OWN mesh/relay networks. The host supplies the
+   *  network list; the Shield never enumerates the user's saved networks. */
+  applyNonPersistentMacRandomization(): Promise<MacRandomizationResult>;
+  /** Withdraw GhostNet's network suggestions. */
+  clearSuggestions(): Promise<void>;
+}
+
+/**
+ * Wi-Fi-suggestion adapter backed by the host's native bridge. Capability flags
+ * reflect the bridge's REAL readiness and API level: a missing module or pre-12
+ * Android reports the honest unavailable/unsupported state rather than pretending
+ * a randomized MAC is in effect. Never reads, sets, or logs a MAC value.
+ */
+export class CapacitorWifiSuggestAdapter implements WifiSuggestionAdapter {
+  constructor(private readonly bridge: NativeWifiSuggestBridge | null) {}
+
+  isAvailable(): boolean {
+    return this.bridge?.isReady() === true;
+  }
+  supportsNonPersistentRandomization(): boolean {
+    return this.isAvailable() && this.bridge!.supportsNonPersistentRandomization();
+  }
+  async applyNonPersistentMacRandomization(): Promise<MacRandomizationResult> {
+    if (!this.isAvailable()) {
+      return { requested: true, active: false, reason: 'native_module_not_resolved' };
+    }
+    return this.bridge!.applyNonPersistentMacRandomization();
+  }
+  async clearSuggestions(): Promise<void> {
+    if (this.isAvailable()) await this.bridge!.clearSuggestions();
+  }
+}
+
 /* ── Native device integrity (optional bridge; UNKNOWN until wired) ───────── */
 
 export interface NativeIntegrityBridge {
@@ -103,6 +158,7 @@ interface NativeGlobals {
   GhostNativeBle?: NativeBleBridge;
   GhostNativeCoResident?: CoResidentAdapter;
   GhostNativeIntegrity?: IntegrityPort;
+  GhostNativeWifiSuggest?: NativeWifiSuggestBridge;
   app?: { mesh?: MeshBridge };
 }
 
@@ -111,6 +167,7 @@ export interface NativePortsOptions {
   readonly meshBridge?: MeshBridge;
   readonly coResident?: CoResidentAdapter;
   readonly integrity?: IntegrityPort;
+  readonly wifiBridge?: NativeWifiSuggestBridge | null;
   readonly logger?: ShieldLogger;
   readonly globalRef?: NativeGlobals;
 }
@@ -136,11 +193,17 @@ export function createNativePorts(options: NativePortsOptions = {}): ShieldHostP
   const meshBridge = options.meshBridge ?? g.app?.mesh ?? {};
   const mesh = new WebMeshAdapter(meshBridge, random);
 
+  // Wi-Fi network suggestions (MAC-randomization policy). Backed by the host's
+  // native bridge when wired; absent/iOS/old-Android degrade honestly via the adapter.
+  const wifiBridge = options.wifiBridge ?? g.GhostNativeWifiSuggest ?? null;
+  const wifi = new CapacitorWifiSuggestAdapter(wifiBridge);
+
   return {
     ble,
     dns: new WebDnsAdapter(),
     mesh,
     coResident,
+    wifi,
     integrity,
     store: new WebSecureStore(),
     clock: new SystemClock(),

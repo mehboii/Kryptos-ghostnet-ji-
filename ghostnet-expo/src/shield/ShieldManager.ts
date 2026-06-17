@@ -21,11 +21,14 @@ import { createLogger } from './logger';
 import { BleCloak } from './modules/BleCloak';
 import { CoResidentGuard, isRuntimeDetector } from './modules/CoResidentGuard';
 import { DecoyEngine } from './modules/DecoyEngine';
+import { DeviceIntegrity, isIntegrityModule } from './modules/DeviceIntegrity';
 import { DnsGuard } from './modules/DnsGuard';
+import { MacRandomizer } from './modules/MacRandomizer';
 import { MeshRouting } from './modules/MeshRouting';
 import { NodeIdRotator } from './modules/NodeIdRotator';
 import { TrafficShaper } from './modules/TrafficShaper';
 import { TrafficModel } from './traffic-model';
+import type { IntegrityChangedPayload, IntegrityResponse, IntegrityState } from './integrity/types';
 import {
   ModuleId,
   ShieldTier,
@@ -44,6 +47,7 @@ export const TIER_STORE_KEY = 'ghostnet_shield_tier';
 type Listeners = {
   tierChanged: Set<(p: TierChangedPayload) => void>;
   degraded: Set<(p: DegradedPayload) => void>;
+  integrityChanged: Set<(p: IntegrityChangedPayload) => void>;
 };
 
 export interface ShieldManagerOptions extends ConfigOptions {
@@ -68,7 +72,11 @@ export class ShieldManager {
   /** Serializes setTier/panic so transitions never interleave. */
   private queue: Promise<unknown> = Promise.resolve();
 
-  private readonly listeners: Listeners = { tierChanged: new Set(), degraded: new Set() };
+  private readonly listeners: Listeners = {
+    tierChanged: new Set(),
+    degraded: new Set(),
+    integrityChanged: new Set(),
+  };
 
   constructor(ports: ShieldPorts, options: ShieldManagerOptions = {}) {
     this.ports = ports;
@@ -83,6 +91,11 @@ export class ShieldManager {
     for (const m of map.values()) {
       if (isRuntimeDetector(m)) {
         m.setNotifier((report) => this.onRuntimeDetection(report));
+      }
+      // Wire the integrity module to re-emit `integrityChanged` and apply policy
+      // (force-raise the tier per the verdict's response).
+      if (isIntegrityModule(m)) {
+        m.setIntegrityNotifier((payload) => this.onIntegrityChange(payload));
       }
     }
   }
@@ -100,6 +113,8 @@ export class ShieldManager {
       new DecoyEngine(ports, model),
       new NodeIdRotator(ports),
       new CoResidentGuard(ports),
+      new DeviceIntegrity(ports),
+      new MacRandomizer(ports),
     ];
   }
 
@@ -129,13 +144,41 @@ export class ShieldManager {
 
   on(event: 'tierChanged', cb: (p: TierChangedPayload) => void): () => void;
   on(event: 'degraded', cb: (p: DegradedPayload) => void): () => void;
-  on(event: 'tierChanged' | 'degraded', cb: (p: never) => void): () => void {
+  on(event: 'integrityChanged', cb: (p: IntegrityChangedPayload) => void): () => void;
+  on(event: 'tierChanged' | 'degraded' | 'integrityChanged', cb: (p: never) => void): () => void {
     if (event === 'tierChanged') {
       this.listeners.tierChanged.add(cb as (p: TierChangedPayload) => void);
       return () => this.listeners.tierChanged.delete(cb as (p: TierChangedPayload) => void);
     }
+    if (event === 'integrityChanged') {
+      this.listeners.integrityChanged.add(cb as (p: IntegrityChangedPayload) => void);
+      return () => this.listeners.integrityChanged.delete(cb as (p: IntegrityChangedPayload) => void);
+    }
     this.listeners.degraded.add(cb as (p: DegradedPayload) => void);
     return () => this.listeners.degraded.delete(cb as (p: DegradedPayload) => void);
+  }
+
+  // ── device integrity (delegated to the DeviceIntegrity module) ────────────
+
+  private integrityModule(): DeviceIntegrity | null {
+    const m = this.modules.get(ModuleId.DeviceIntegrity);
+    return m instanceof DeviceIntegrity ? m : null;
+  }
+
+  /** Latest device-integrity state, or null if the module isn't active/checked. */
+  getIntegrityState(): IntegrityState | null {
+    return this.integrityModule()?.getState() ?? null;
+  }
+
+  /** Policy response for the current integrity verdict (UNKNOWN-safe default). */
+  getIntegrityResponse(): IntegrityResponse | null {
+    return this.integrityModule()?.getResponse() ?? null;
+  }
+
+  /** Force a fresh integrity re-check + attestation (app foreground / pre-op). */
+  recheckIntegrity(): Promise<IntegrityState | null> {
+    const m = this.integrityModule();
+    return m ? m.recheck() : Promise.resolve(null);
   }
 
   /** Restore the persisted tier on app launch. No-ops (stays OFF) if none saved. */
@@ -257,6 +300,21 @@ export class ShieldManager {
     const raiseTo = this.options.autoRaiseOnCoResident;
     if (raiseTo && TIER_RANK[raiseTo] > TIER_RANK[this.currentTier]) {
       // Schedule on the transition queue so it can't interleave with one in flight.
+      void this.enqueue(() => this.applyTier(raiseTo));
+    }
+  }
+
+  /**
+   * Device-integrity verdict changed. Emit `integrityChanged`, and force-raise
+   * the tier if the verdict's policy demands it (e.g. COMPROMISED → FULL_GHOST).
+   * Enforcement of blockSensitiveOps / allowRelay is the app's job — it consults
+   * {@link getIntegrityResponse}.
+   */
+  private onIntegrityChange(payload: IntegrityChangedPayload): void {
+    for (const cb of this.listeners.integrityChanged) cb(payload);
+
+    const raiseTo = payload.response.raiseToTier;
+    if (raiseTo && TIER_RANK[raiseTo] > TIER_RANK[this.currentTier]) {
       void this.enqueue(() => this.applyTier(raiseTo));
     }
   }

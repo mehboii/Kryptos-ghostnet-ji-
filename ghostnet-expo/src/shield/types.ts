@@ -49,6 +49,7 @@ export enum ModuleId {
   NodeIdRotator = 'node-id-rotator',
   CoResidentGuard = 'co-resident-guard',
   DeviceIntegrity = 'device-integrity',
+  MacRandomizer = 'mac-randomizer',
 }
 
 /** Cover-traffic policy. `adaptive` ramps in/out so toggling Shield is not a
@@ -116,6 +117,15 @@ export interface ShieldConfig {
     readonly enabled: boolean;
     /** Periodic re-attestation interval (0 disables the timer). */
     readonly reattestIntervalMs: number;
+  };
+  readonly macRandomization: {
+    /**
+     * Ask the OS for NON-PERSISTENT MAC randomization on GhostNet's OWN suggested
+     * mesh/relay networks, so a fresh randomized MAC is presented each rejoin.
+     * This is a POLICY flip on networks WE add (Android 12+); it is NOT app-driven
+     * MAC rotation and cannot touch the user's home/office/cafe Wi-Fi.
+     */
+    readonly enabled: boolean;
   };
 }
 
@@ -305,6 +315,43 @@ export interface CoResidentAdapter {
   clearClipboard(): Promise<void>;
 }
 
+/**
+ * What the Shield actually achieved when flipping the MAC-randomization policy on
+ * GhostNet's own suggested networks. Mirrors the native module's structured return
+ * ({ requested, active, reason }). `reason` is a short, identifier-free code and
+ * NEVER a MAC value.
+ */
+export interface MacRandomizationResult {
+  readonly requested: boolean;
+  readonly active: boolean;
+  readonly reason?: string;
+}
+
+/**
+ * Wi-Fi network-suggestion port. The ONLY thing this controls is the OS MAC
+ * randomization *policy* on networks GhostNet itself suggests — never the hardware
+ * MAC, never the user's other networks, and never an app-side MAC rotation.
+ *
+ * Honesty per platform is encoded by the adapter, never the core:
+ *   - native Android 12+  → can set RANDOMIZATION_NON_PERSISTENT (real).
+ *   - native Android < 31 → suggestion API exists but the policy does not → degraded.
+ *   - native iOS          → no app API (OS-managed Private Wi-Fi Address) → unavailable.
+ *   - web test context    → no suggestion API at all → unavailable.
+ */
+export interface WifiSuggestionAdapter {
+  /** Can GhostNet register its own Wi-Fi network suggestions on this build at all?
+   *  False on web and on iOS (no app API). */
+  isAvailable(): boolean;
+  /** Does the platform support NON_PERSISTENT randomization on a suggestion
+   *  (Android 12 / API 31+)? False on web, iOS, and Android < 31. */
+  supportsNonPersistentRandomization(): boolean;
+  /** Apply the non-persistent policy to GhostNet's OWN mesh/relay networks and
+   *  report what was actually achieved. Must touch only GhostNet-suggested networks. */
+  applyNonPersistentMacRandomization(): Promise<MacRandomizationResult>;
+  /** Withdraw GhostNet's network suggestions (tier lowered / OFF). */
+  clearSuggestions(): Promise<void>;
+}
+
 /** Persistence port. Backed by expo-secure-store on device; in-memory in tests. */
 export interface SecureStorePort {
   getItem(key: string): Promise<string | null>;
@@ -337,6 +384,8 @@ export interface ShieldPorts {
   readonly dns: DnsAdapter;
   readonly mesh: MeshAdapter;
   readonly coResident: CoResidentAdapter;
+  /** Non-persistent MAC randomization policy on GhostNet's OWN suggested networks. */
+  readonly wifi: WifiSuggestionAdapter;
   /** Device-integrity probes + server-backed attestation (see integrity/types.ts). */
   readonly integrity: IntegrityPort;
   readonly store: SecureStorePort;

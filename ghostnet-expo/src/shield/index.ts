@@ -23,6 +23,36 @@ export { probeCapabilities, REASON, type CapabilitySet } from './capabilities';
 export { createLogger, NULL_LOGGER, type LoggerOptions } from './logger';
 export { TrafficModel, type TrafficModelOptions } from './traffic-model';
 export { CoResidentGuard, isRuntimeDetector, type RuntimeDetector } from './modules/CoResidentGuard';
+export {
+  DeviceIntegrity,
+  isIntegrityModule,
+  computeVerdict,
+  DEFAULT_INTEGRITY_POLICY,
+  DEFAULT_LOCAL_RISK_THRESHOLD,
+  INTEGRITY_REASON,
+  type DeviceIntegrityOptions,
+  type IntegrityModule,
+} from './modules/DeviceIntegrity';
+export { evaluateLocalSignals, signalsForPlatform, ALL_SIGNALS } from './integrity/localSignals';
+export { runAttestation } from './integrity/attestation';
+export type {
+  Platform,
+  IntegrityVerdict,
+  AttestationResult,
+  IntegritySignal,
+  SignalDef,
+  IntegrityState,
+  LocalSignalResult,
+  LocalSignalProbe,
+  AttestationProvider,
+  AttestationBackend,
+  IntegrityPort,
+  IntegrityResponse,
+  IntegrityPolicy,
+  IntegrityChangedPayload,
+} from './integrity/types';
+
+export { MacRandomizer } from './modules/MacRandomizer';
 
 // Pure traffic-shaping helpers (handy for the mesh receive side / tests).
 export { selectBucket, padFrame, unpadFrame } from './modules/TrafficShaper';
@@ -44,6 +74,8 @@ export {
   type DnsAdapter,
   type MeshAdapter,
   type CoResidentAdapter,
+  type WifiSuggestionAdapter,
+  type MacRandomizationResult,
   type SecureStorePort,
   type Clock,
   type RandomSource,
