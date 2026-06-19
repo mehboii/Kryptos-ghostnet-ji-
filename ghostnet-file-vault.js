@@ -448,6 +448,22 @@
                 }
             }
 
+            // Silent unlock on refresh: if THIS tab still holds the session wrap
+            // key, unwrap the locally-cached key without re-prompting. The wrap key
+            // lives only in sessionStorage, so it survives a page reload but is gone
+            // when the tab/browser is closed — giving "PIN once per tab session".
+            // This runs before the prompt so a plain refresh never shows the dialog.
+            try {
+                const silent = await this._trySilentLocalKey();
+                if (silent) {
+                    this.key = silent;
+                    markVaultUnlocked();
+                    return silent;
+                }
+            } catch (e) {
+                console.warn('[Vault] Silent local unlock unavailable:', e);
+            }
+
             // Show the PIN prompt when we have no in-memory key AND either:
             //  - the server holds an authoritative key (serverKeyData) — the ONLY
             //    way to obtain it is the PIN, so a stale "unlocked" session flag
@@ -464,6 +480,9 @@
                 this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
                 if (this.key) {
                     markVaultUnlocked();
+                    // Cache into the session wrap-store so a refresh in this tab
+                    // unwraps silently above instead of re-prompting. Best-effort.
+                    await this._cacheKeyToSession(this.key);
                     return this.key;
                 }
             }
@@ -542,6 +561,7 @@
                         this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
                         if (this.key) {
                             markVaultUnlocked();
+                            await this._cacheKeyToSession(this.key);
                             return this.key;
                         }
                     }
@@ -559,6 +579,59 @@
                 { name: 'PBKDF2', salt, iterations: 600000, hash: 'SHA-256' },
                 keyMaterial, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
             );
+        },
+
+        // Returns the device wrap key from sessionStorage, or null if this tab has
+        // none (fresh tab / browser reopened). Never creates one — callers that mint
+        // a key handle creation themselves.
+        _sessionWrapKey: async function () {
+            const b64 = (() => { try { return sessionStorage.getItem('ghostnet_vault_wrap_key'); } catch { return null; } })();
+            if (!b64) return null;
+            const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+            return crypto.subtle.importKey('raw', bytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        },
+
+        // Silent refresh path: unwrap the locally-cached key using the session wrap
+        // key. Returns null (no prompt, no generation) when either piece is absent.
+        async _trySilentLocalKey() {
+            const wrappedData = (() => { try { return localStorage.getItem('ghostnet_vault_local_key_wrapped'); } catch { return null; } })();
+            if (!wrappedData) return null;
+            const wrapKey = await this._sessionWrapKey();
+            if (!wrapKey) return null;   // wrap key gone → cannot unwrap silently
+            const packed = Uint8Array.from(atob(wrappedData), c => c.charCodeAt(0));
+            const jwkBytes = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: packed.slice(0, 12) }, wrapKey, packed.slice(12)
+            );
+            const jwk = JSON.parse(new TextDecoder().decode(jwkBytes));
+            return crypto.subtle.importKey('jwk', jwk, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        },
+
+        // Cache a freshly-recovered key into the session wrap-store so a refresh in
+        // this tab unwraps it silently. Wrapped under a random sessionStorage-only
+        // key (same at-rest posture as locally-generated keys). Best-effort: a
+        // non-extractable key or any storage error is swallowed — recovery still
+        // succeeds, the next refresh just re-prompts.
+        async _cacheKeyToSession(key) {
+            try {
+                const jwk = await crypto.subtle.exportKey('jwk', key); // throws if non-extractable
+                let b64 = (() => { try { return sessionStorage.getItem('ghostnet_vault_wrap_key'); } catch { return null; } })();
+                if (!b64) {
+                    const raw = crypto.getRandomValues(new Uint8Array(32));
+                    b64 = btoa(String.fromCharCode(...raw));
+                    sessionStorage.setItem('ghostnet_vault_wrap_key', b64);
+                }
+                const wrapKeyBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+                const wrapKey = await crypto.subtle.importKey('raw', wrapKeyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+                const jwkBytes = new TextEncoder().encode(JSON.stringify(jwk));
+                const enc = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, wrapKey, jwkBytes);
+                const out = new Uint8Array(12 + enc.byteLength);
+                out.set(iv);
+                out.set(new Uint8Array(enc), 12);
+                localStorage.setItem('ghostnet_vault_local_key_wrapped', btoa(String.fromCharCode(...out)));
+            } catch (e) {
+                console.warn('[Vault] Could not cache key for silent refresh:', e);
+            }
         },
 
         async recoverFromData(pin, serverKeyData) {
