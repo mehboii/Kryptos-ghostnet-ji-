@@ -399,8 +399,28 @@
 
     const VaultKeyManager = {
         key: null,
+        _keyPromise: null,
 
         async getOrGenerateKey() {
+            if (this.key) return this.key;
+            // [FIX] Single-flight guard. Concurrent callers — notably decryptName()
+            // running over every vault row via Promise.all in _withDisplayNames —
+            // must SHARE one recovery flow. Without this, each concurrent call opened
+            // its OWN "Recover Vault Key" modal. The stacked modals all reuse the same
+            // element IDs (vault-pin-input / vault-pin-submit / vault-pin-error), so
+            // getElementById in the Confirm handler always resolved to the FIRST
+            // (empty, bottom) modal. Result: the visible top modal's Confirm silently
+            // did nothing, Cancel only peeled off one layer, and reload re-prompted.
+            if (this._keyPromise) return this._keyPromise;
+            this._keyPromise = this._resolveKey();
+            try {
+                return await this._keyPromise;
+            } finally {
+                this._keyPromise = null;
+            }
+        },
+
+        async _resolveKey() {
             if (this.key) return this.key;
 
             // When no auth token exists (offline / pre-login), skip server sync
