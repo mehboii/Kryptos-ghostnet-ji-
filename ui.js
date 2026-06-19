@@ -2881,15 +2881,20 @@ const UI = {
 
             window._vaultKeyResolver = resolve;
 
-            const pinBtn = document.getElementById('vault-pin-submit');
+            // Scope all lookups to THIS modal. document.getElementById would return
+            // the first matching node in the DOM, which breaks if another modal with
+            // the same IDs is ever present.
+            const pinBtn = modal.querySelector('#vault-pin-submit');
+            const pinInput = modal.querySelector('#vault-pin-input');
+            const pinError = modal.querySelector('#vault-pin-error');
             const pinHandler = async () => {
-                const pin = document.getElementById('vault-pin-input').value;
+                const pin = pinInput.value;
                 if (pin.length < 6) {
-                    document.getElementById('vault-pin-error').textContent = 'Enter full 6-digit PIN';
+                    pinError.textContent = 'Enter full 6-digit PIN';
                     return;
                 }
-                document.getElementById('vault-pin-error').textContent = 'Processing...';
-                document.getElementById('vault-pin-submit').disabled = true;
+                pinError.textContent = 'Processing...';
+                pinBtn.disabled = true;
 
                 try {
                     let finalKey = null;
@@ -2920,8 +2925,8 @@ const UI = {
                     modal.remove();
                     resolve(finalKey);
                 } catch (e) {
-                    document.getElementById('vault-pin-error').textContent = e.message || 'Incorrect PIN';
-                    document.getElementById('vault-pin-submit').disabled = false;
+                    pinError.textContent = e.message || 'Incorrect PIN';
+                    pinBtn.disabled = false;
                 }
             };
             pinBtn.addEventListener('click', pinHandler);
