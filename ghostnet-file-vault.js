@@ -448,7 +448,19 @@
                 }
             }
 
-            if (window.UI && window.UI.promptVaultKeyRecovery && !isVaultUnlocked()) {
+            // Show the PIN prompt when we have no in-memory key AND either:
+            //  - the server holds an authoritative key (serverKeyData) — the ONLY
+            //    way to obtain it is the PIN, so a stale "unlocked" session flag
+            //    (set on a previous load, but the key itself was never persisted
+            //    and is gone after reload) must NOT suppress it; or
+            //  - this tab hasn't unlocked yet (first run / local-key vaults).
+            // Without the serverKeyData override we fell through to the local
+            // fallback, found the sessionStorage wrap key also gone, and dead-ended
+            // on "Vault session expired" with no way to re-enter the PIN.
+            const canPrompt = !!(window.UI && window.UI.promptVaultKeyRecovery);
+            let prompted = false;
+            if (canPrompt && (serverKeyData || !isVaultUnlocked())) {
+                prompted = true;
                 this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
                 if (this.key) {
                     markVaultUnlocked();
@@ -521,6 +533,18 @@
             } catch (fallbackErr) {
                 console.error('[Vault] Fallback failed:', fallbackErr);
                 if (fallbackErr && typeof fallbackErr.message === 'string' && /vault session expired/i.test(fallbackErr.message)) {
+                    // The local wrap key for this tab is gone, so the local copy is
+                    // unreadable. Don't dead-end: clear the stale unlock flag and let
+                    // the user re-enter their PIN (recover from server / regenerate)
+                    // instead of throwing into every vault operation.
+                    lockVault();
+                    if (canPrompt && !prompted) {
+                        this.key = await window.UI.promptVaultKeyRecovery(serverKeyData);
+                        if (this.key) {
+                            markVaultUnlocked();
+                            return this.key;
+                        }
+                    }
                     throw fallbackErr;
                 }
                 throw new Error('Vault Key unavailable. Local fallback failed.');
