@@ -117,6 +117,8 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import { ethers } from 'ethers';
+import { blake3 } from '@noble/hashes/blake3.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import multer from 'multer';
 import authRouter from './auth/auth.routes.js';
 import monitor from './monitoring/error-monitor.js';
@@ -847,6 +849,33 @@ function _canonicalNodeInput(publicKey, displayName) {
     return `${String(publicKey).length}:${String(publicKey)}|${String(displayName).length}:${String(displayName)}`;
 }
 
+// v1 (LEGACY): keccak256 of canonical(publicKey, displayName) → "0x" + 64 hex.
+function _deriveNodeIdV1(publicKey, displayName) {
+    return ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+}
+
+// v2 (CURRENT): BLAKE3 of the uncompressed secp256k1 public-key bytes → "gn_" + 64 hex.
+// MUST stay byte-identical to crypto-identity.js _deriveNodeIdV2() (same canonical
+// uncompressed pubkey, same BLAKE3 lib) so client-minted v2 ids verify here.
+function _deriveNodeIdV2(publicKey) {
+    const unc = ethers.utils.computePublicKey(publicKey, false); // "0x04" + 128 hex
+    return 'gn_' + bytesToHex(blake3(hexToBytes(unc.slice(2))));
+}
+
+// Accept-both binding check: does `nodeId` derive from `publicKey` under v2 or v1?
+function _nodeIdDerivesFrom(nodeId, publicKey, displayName) {
+    try {
+        if (typeof nodeId === 'string' && nodeId.startsWith('gn_')) {
+            return _deriveNodeIdV2(publicKey).toLowerCase() === nodeId.toLowerCase();
+        }
+        // v1 requires displayName; only attempt when present.
+        return displayName != null &&
+            _deriveNodeIdV1(publicKey, displayName).toLowerCase() === String(nodeId).toLowerCase();
+    } catch (_) {
+        return false;
+    }
+}
+
 app.post('/auth/node', nodeAuthLimiter, (req, res) => {
     let nodeId;
     try { nodeId = validateNodeId(req.body?.nodeId); }
@@ -878,13 +907,13 @@ app.post('/auth/node', nodeAuthLimiter, (req, res) => {
     if (signerAddr !== expectedAddr) {
         return res.status(401).json({ error: 'Signature does not match public key' });
     }
-    // 2) Bind the public key to the claimed nodeId. Primary: cryptographic derivation
-    //    (nodeId === keccak256(canonical(publicKey, displayName))). Fallback for older
-    //    clients that don't send displayName yet: a previously-stored public key.
+    // 2) Bind the public key to the claimed nodeId. Primary: cryptographic derivation,
+    //    accepting BOTH v2 (BLAKE3, "gn_") and v1 (keccak, "0x") schemes so new and
+    //    existing nodes both authenticate. Fallback for older clients that don't send
+    //    displayName yet: a previously-stored public key.
     const existing = registeredNodes[nodeId];
     const displayName = typeof req.body?.displayName === 'string' ? req.body.displayName : null;
-    const derivedOk = displayName != null
-        && nodeId === ethers.utils.id(_canonicalNodeInput(publicKey, displayName));
+    const derivedOk = _nodeIdDerivesFrom(nodeId, publicKey, displayName);
     const storedOk = !!existing?.publicKey && existing.publicKey === publicKey;
     if (!derivedOk && !storedOk) {
         return res.status(401).json({ error: 'Public key does not match node identity' });

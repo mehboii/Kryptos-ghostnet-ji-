@@ -41,6 +41,7 @@ const scriptFiles = [
   'mesh-hardening.js',
   'proximity-connect.js',
   'proximity-connect-ui.js',
+  'blake3.browser.js',   // window.GhostBlake3 — MUST precede crypto-identity.js (v2 BLAKE3 node IDs)
   'crypto-identity.js',
   'jsQR.js',
   'qrcode.min.js',

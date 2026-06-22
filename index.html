@@ -1613,6 +1613,10 @@
             </section>
 
             <!-- Identity UI Logic -->
+            <!-- Vendored BLAKE3 global (window.GhostBlake3); MUST load before crypto-identity.js,
+                 which uses it for v2 (BLAKE3) Node ID derivation. Regenerate with
+                 node tools/build-blake3-browser.mjs -->
+            <script src="blake3.browser.js"></script>
             <script src="crypto-identity.js"></script>
             <script>
                 window.IdentityUI = (() => {
