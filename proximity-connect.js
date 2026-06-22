@@ -486,11 +486,13 @@ class ProximityConnect {
 
     // ── nodeId ↔ identity-key binding ───────────────────────────
     /**
-     * nodeId is deterministically derived as
-     * ethers.id("<len>:<uncompressed 0x pubkey>|<len>:<displayName>")
-     * (crypto-identity.js generateNodeId). A valid signature only proves the peer
-     * owns SOME key — without this check it could pair that key with a victim's
-     * nodeId/GhostTag. Recompute the derivation and fail closed on mismatch.
+     * nodeId is deterministically derived from the peer's public key under one of:
+     *   v2 (CURRENT): "gn_" + BLAKE3(uncompressed pubkey bytes)        — pubkey-only
+     *   v1 (LEGACY):  ethers.id("<len>:<pubkey>|<len>:<displayName>")  — keccak256
+     * (crypto-identity.js generateNodeId / nodeIdMatches). A valid signature only
+     * proves the peer owns SOME key — without this check it could pair that key with
+     * a victim's nodeId/GhostTag. Recompute under BOTH schemes and fail closed on
+     * mismatch so v1 and v2 nodes interoperate.
      */
     _assertNodeIdBinding(claimedNodeId, identityPubHex, displayName) {
         const gi = (typeof window !== 'undefined') ? window.GhostIdentity : null;
@@ -507,9 +509,14 @@ class ProximityConnect {
         } catch (_) {
             throw new Error('Peer identity key is not a valid secp256k1 key');
         }
-        const derived = gi.generateNodeId(canonicalPub, displayName);
-        if (!claimedNodeId || !derived ||
-            String(derived).toLowerCase() !== String(claimedNodeId).toLowerCase()) {
+        // Accept BOTH derivations so v2 (BLAKE3, "gn_") and v1 (keccak, "0x") nodes
+        // interoperate. nodeIdMatches dispatches on the claimed id's prefix.
+        const ok = (typeof gi.nodeIdMatches === 'function')
+            ? gi.nodeIdMatches(claimedNodeId, canonicalPub, displayName)
+            // Fallback for older identity module: v1-only check.
+            : (claimedNodeId && String(gi.generateNodeId(canonicalPub, displayName)).toLowerCase()
+                 === String(claimedNodeId).toLowerCase());
+        if (!ok) {
             throw new Error('Peer nodeId does not derive from its identity key — impersonation blocked');
         }
     }

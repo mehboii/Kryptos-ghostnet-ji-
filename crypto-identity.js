@@ -171,22 +171,93 @@ const GhostIdentity = (() => {
     }
 
     // ─── nodeId DERIVATION ───────────────────────────────────────────────────
-    // [FIX F] Use a length-prefixed canonical encoding to prevent collisions.
-    //   Format: "<pubkeyLen>:<pubkey>|<nameLen>:<name>"
+    //
+    // Two derivation versions coexist (see Step-2 breaking-change analysis):
+    //   v1 (LEGACY): keccak256(canonical(publicKey, displayName)) → "0x" + 64 hex.
+    //                Binds displayName; nodeId changes on rename.
+    //   v2 (CURRENT): BLAKE3(uncompressed secp256k1 publicKey bytes) → "gn_" + 64 hex.
+    //                Public-key-only → rename-stable. High-entropy input, so BLAKE3
+    //                (fast, collision-resistant) is the right tool; the slow KDF
+    //                (PBKDF2) stays reserved for the low-entropy PIN — untouched here.
+    //
+    // Existing identities keep their v1 id; only NEWLY CREATED identities get v2.
+    // Verifiers (proximity binding, server node-auth) accept BOTH so v1↔v2 nodes
+    // still recognise each other.
+    const ID_VERSION_LEGACY = 1;   // keccak256, displayName-bound, "0x" prefix
+    const ID_VERSION_CURRENT = 2;  // BLAKE3, pubkey-only, "gn_" prefix
+    const NODE_ID_V2_PREFIX = 'gn_';
+
+    // [FIX F] Length-prefixed canonical encoding prevents second-preimage collisions.
+    //   Format: "<pubkeyLen>:<pubkey>|<nameLen>:<name>"  (v1 only)
     function _canonicalNodeInput(publicKey, displayName) {
         const pk = String(publicKey);
         const name = String(displayName);
         return `${pk.length}:${pk}|${name.length}:${name}`;
     }
 
-    /**
-     * Deterministic Node ID Generation.
-     * Uses Keccak256 (ethers.id) of a canonical input.
-     * Always returns the same value for the same public key + display name.
-     */
-    function generateNodeId(publicKey, displayName) {
-        if (!publicKey) return null;
+    // Canonicalise any secp256k1 pubkey (compressed/uncompressed, with/without 0x)
+    // to the uncompressed lowercase form used at creation (wallet.signingKey.publicKey),
+    // so creation and verification hash identical bytes.
+    function _uncompressedPubBytes(publicKey) {
+        const B = _blake3();
+        const raw = '0x' + String(publicKey).replace(/^0x/i, '').toLowerCase();
+        const unc = ethers.SigningKey.computePublicKey(raw, false); // "0x04" + 128 hex
+        return B.hexToBytes(unc.slice(2));
+    }
+
+    function _blake3() {
+        const B = (typeof window !== 'undefined' && window.GhostBlake3) ||
+                  (typeof GhostBlake3 !== 'undefined' ? GhostBlake3 : null);
+        if (!B || typeof B.blake3 !== 'function') {
+            throw new Error('BLAKE3 unavailable — blake3.browser.js must load before crypto-identity.js');
+        }
+        return B;
+    }
+
+    function _deriveNodeIdV1(publicKey, displayName) {
         return ethers.id(_canonicalNodeInput(publicKey, displayName));
+    }
+
+    function _deriveNodeIdV2(publicKey) {
+        const B = _blake3();
+        return NODE_ID_V2_PREFIX + B.bytesToHex(B.blake3(_uncompressedPubBytes(publicKey)));
+    }
+
+    /**
+     * Deterministic Node ID generation.
+     * @param {string} publicKey   secp256k1 public key (uncompressed hex preferred)
+     * @param {string} displayName only used by v1 (legacy keccak) derivation
+     * @param {number} version     ID_VERSION_CURRENT (2, BLAKE3) by default; pass
+     *                             ID_VERSION_LEGACY (1) to reproduce a pre-existing id.
+     */
+    function generateNodeId(publicKey, displayName, version = ID_VERSION_CURRENT) {
+        if (!publicKey) return null;
+        return version === ID_VERSION_LEGACY
+            ? _deriveNodeIdV1(publicKey, displayName)
+            : _deriveNodeIdV2(publicKey);
+    }
+
+    /**
+     * Accept-both verifier: does `claimedNodeId` derive from `publicKey` under
+     * EITHER the v2 (BLAKE3) or v1 (keccak) scheme? Used by anti-impersonation
+     * binding checks so v1 and v2 nodes interoperate. Dispatches on the id prefix
+     * to avoid redundant hashing, falling back to trying both.
+     */
+    function nodeIdMatches(claimedNodeId, publicKey, displayName) {
+        if (!claimedNodeId || !publicKey) return false;
+        const claimed = String(claimedNodeId).toLowerCase();
+        try {
+            if (claimed.startsWith(NODE_ID_V2_PREFIX)) {
+                return _deriveNodeIdV2(publicKey).toLowerCase() === claimed;
+            }
+            if (claimed.startsWith('0x')) {
+                return _deriveNodeIdV1(publicKey, displayName).toLowerCase() === claimed;
+            }
+        } catch (_) { /* fall through to exhaustive attempt */ }
+        // Unknown shape: try both schemes.
+        try { if (_deriveNodeIdV2(publicKey).toLowerCase() === claimed) return true; } catch (_) {}
+        try { if (_deriveNodeIdV1(publicKey, displayName).toLowerCase() === claimed) return true; } catch (_) {}
+        return false;
     }
 
     // ─── CORE: Generate New Identity ─────────────────────────────────────────
@@ -210,8 +281,9 @@ const GhostIdentity = (() => {
         const publicKey = wallet.signingKey.publicKey;
         const address = wallet.address;
         
-        // [FIX F] Collision-safe deterministic derivation.
-        const nodeId = generateNodeId(publicKey, displayName);
+        // NEW identity → v2 (BLAKE3, rename-stable). This is the only path that
+        // mints a fresh id, so "BLAKE3 for newly created identities" lives here.
+        const nodeId = generateNodeId(publicKey, displayName, ID_VERSION_CURRENT);
 
         return {
             mnemonic,    // show once, never store
@@ -220,6 +292,7 @@ const GhostIdentity = (() => {
             address,
             displayName,
             nodeId,
+            idVersion: ID_VERSION_CURRENT, // tag derivation scheme for migration/repair
             ghostTag: '', // [Feature 1]
         };
     }
@@ -233,10 +306,16 @@ const GhostIdentity = (() => {
             const publicKey = wallet.signingKey.publicKey;
             const address = wallet.address;
             
-            // [FIX F] Deterministic derivation during restore.
-            const nodeId = generateNodeId(publicKey, displayName);
+            // Restore reproduces an EXISTING identity. A bare seed phrase carries no
+            // version marker, so to honour "do not break existing IDs" we reproduce the
+            // legacy v1 (keccak) id — the scheme every pre-upgrade identity used.
+            // KNOWN LIMITATION: an identity *created* under v2 and later restored on a
+            // fresh device reverts to a v1 id. Verifiers accept both, so it still
+            // functions; full fidelity needs server-assisted version lookup by pubkey
+            // (tracked separately). displayName is required to reproduce a v1 id.
+            const nodeId = generateNodeId(publicKey, displayName, ID_VERSION_LEGACY);
 
-            return { privateKey, publicKey, address, displayName, nodeId, ghostTag: '' };
+            return { privateKey, publicKey, address, displayName, nodeId, idVersion: ID_VERSION_LEGACY, ghostTag: '' };
         } catch {
             throw new Error('Invalid seed phrase. Please check your words.');
         }
@@ -274,7 +353,10 @@ const GhostIdentity = (() => {
                 // [Migration] Fix missing nodeId inside the object
                 if (data && !data.nodeId && data.publicKey) {
                     console.log("[Identity] Migration: Derived missing nodeId for unified identity.");
-                    data.nodeId = generateNodeId(data.publicKey, data.displayName);
+                    // Reproduce the ORIGINAL id: honour a stored idVersion, else assume
+                    // legacy v1 (a v2 identity always persists its nodeId, so a missing
+                    // nodeId almost always means a pre-upgrade v1 identity).
+                    data.nodeId = generateNodeId(data.publicKey, data.displayName, data.idVersion || ID_VERSION_LEGACY);
                     localStorage.setItem(_SK.IDENTITY, JSON.stringify(data));
                 }
                 return data;
@@ -294,7 +376,8 @@ const GhostIdentity = (() => {
         // [Migration] Fix missing nodeId in separate keys
         if ((!nodeId || nodeId === 'null') && publicKey) {
             console.log("[Identity] Migration: Derived missing nodeId from separate keys.");
-            nodeId = generateNodeId(publicKey, displayName);
+            // Separate-key storage predates v2 → reproduce the legacy v1 id.
+            nodeId = generateNodeId(publicKey, displayName, ID_VERSION_LEGACY);
             localStorage.setItem(_SK.NODE_ID, nodeId);
         }
 
@@ -491,7 +574,10 @@ const GhostIdentity = (() => {
         // Display helpers.
         shortenKey,
         shortenNodeId,
-        generateNodeId, // Exposed publicly for deterministic derivation
+        generateNodeId,  // Exposed publicly for deterministic derivation
+        nodeIdMatches,   // Accept-both (v2 BLAKE3 / v1 keccak) binding verifier
+        ID_VERSION_LEGACY,
+        ID_VERSION_CURRENT,
     };
 })();
 
