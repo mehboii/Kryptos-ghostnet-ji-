@@ -809,7 +809,7 @@ function requireAuth(req, res, next) {
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (xAuthToken || null);
     if (!token) return res.status(401).json({ error: 'Authentication required' });
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
         // Normalize: email-auth uses `userId`, node-auth uses `id`
         decoded.id = decoded.id || decoded.userId;
         if (!decoded.id) return res.status(401).json({ error: 'Invalid token: missing user identifier' });
@@ -924,7 +924,7 @@ app.post('/auth/node', nodeAuthLimiter, (req, res) => {
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
         try {
-            const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET);
+            const decoded = jwt.verify(authHeader.slice(7), JWT_SECRET, { algorithms: ['HS256'] });
             authedId = decoded.id || decoded.userId || null;
         } catch (_) { /* invalid/expired — treat as unauthenticated */ }
     }
@@ -2190,7 +2190,7 @@ server.on('upgrade', (req, socket, head) => {
         if (!token) { socket.destroy(); return; }
 
         let user;
-        try { user = jwt.verify(token, JWT_SECRET); }
+        try { user = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] }); }
         catch (_) { socket.destroy(); return; }
 
         // Validate tokenVersion — reject revoked tokens (post-logout/password-reset)

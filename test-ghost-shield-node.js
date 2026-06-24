@@ -7,7 +7,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -70,18 +70,19 @@ global.btoa = (s) => Buffer.from(s, 'binary').toString('base64');
 global.navigator = { bluetooth: null, connection: null };
 
 // ── Load scripts by eval ─────────────────────────────────────────
-function loadScript(filename) {
-    const code = fs.readFileSync(path.join(__dirname, filename), 'utf-8');
+async function loadScript(filename) {
     try {
-        eval(code);
+        // Controlled dynamic import of the script by file URL (no arbitrary eval).
+        // The scripts attach their API to the global `window` as a side effect.
+        await import(pathToFileURL(path.join(__dirname, filename)).href);
     } catch (e) {
         console.error(`  ERROR loading ${filename}: ${e.message}`);
     }
 }
 
-loadScript('shieldConfig.js');
-loadScript('signal-intelligence.js');
-loadScript('ghost-shield.js');
+await loadScript('shieldConfig.js');
+await loadScript('signal-intelligence.js');
+await loadScript('ghost-shield.js');
 
 // ── Test framework ───────────────────────────────────────────────
 let passed = 0, failed = 0, skipped = 0;

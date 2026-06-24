@@ -26,7 +26,7 @@ const JWT_SECRET = _isPlaceholder
 
 const JWT_EXPIRES_IN = process.env.AUTH_JWT_EXPIRES_IN || '24h';
 
-const BCRYPT_SALT_ROUNDS = 10;
+const BCRYPT_SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS, 10) || 12;
 
 export {
     JWT_SECRET,
