@@ -2058,13 +2058,23 @@ app.post('/analytics/event', requireAuth, analyticsEventLimiter, async (req, res
 });
 
 const ANALYTICS_SECRET = process.env.ANALYTICS_ADMIN_SECRET || null;
+if (!ANALYTICS_SECRET) {
+    console.warn('[analytics] ANALYTICS_ADMIN_SECRET not configured — /analytics/dashboard will deny all requests (fail closed).');
+}
 
 app.get('/analytics/dashboard', requireAuth, async (req, res) => {
-    if (ANALYTICS_SECRET) {
-        const provided = req.headers['x-analytics-secret'] || '';
-        if (provided !== ANALYTICS_SECRET) {
-            return res.status(403).json({ error: 'Forbidden' });
-        }
+    // Fail closed: if no admin secret is configured, never serve dashboard data.
+    if (!ANALYTICS_SECRET) {
+        return res.status(403).json({ error: 'Forbidden' });
+    }
+    // Constant-time secret comparison (guard against length mismatch first, since
+    // timingSafeEqual throws on unequal-length buffers).
+    const provided = req.headers['x-analytics-secret'] || '';
+    const providedBuf = Buffer.from(String(provided));
+    const secretBuf = Buffer.from(ANALYTICS_SECRET);
+    if (providedBuf.length !== secretBuf.length ||
+        !crypto.timingSafeEqual(providedBuf, secretBuf)) {
+        return res.status(403).json({ error: 'Forbidden' });
     }
 
     const days = Math.min(parseInt(req.query.days, 10) || 30, 90);
