@@ -311,7 +311,8 @@
         <!-- SIDEBAR -->
         <aside class="sidebar" id="app-sidebar">
             <div class="brand">
-                <div class="logo-glow">GHOST<br>NET</div>
+                <div class="brand-emblem" aria-hidden="true">G<span>·</span></div>
+                <div class="brand-lockup"><strong>ghostnet</strong><small>PRIVATE NETWORK</small></div>
             </div>
 
             <!-- PROFILE WIDGET -->
@@ -327,6 +328,7 @@
             </div>
 
             <nav class="nav-menu">
+                <span class="nav-caption">WORKSPACE</span>
                 <button class="nav-btn active" data-target="home">
                     <i data-lucide="globe"></i> <span>Home</span>
                 </button>
@@ -342,6 +344,7 @@
                 <button class="nav-btn" data-target="vault">
                     <i data-lucide="hard-drive"></i> <span>Vault</span>
                 </button>
+                <span class="nav-caption nav-caption-secondary">NETWORK &amp; IDENTITY</span>
                 <button class="nav-btn" data-target="profile">
                     <i data-lucide="user"></i> <span>Profile</span>
                 </button>
@@ -360,19 +363,25 @@
 
             <div class="status-panel" style="margin-top:0;">
                 <div class="status-indicator"></div>
-                <span>MESH CONNECTED</span>
+                <span>Mesh connected</span>
             </div>
         </aside>
 
         <!-- MAIN VIEWPORT -->
         <main id="main-content" class="main-content" style="position: relative;">
 
-            <!-- THEME TOGGLE (TOP RIGHT) -->
-            <button class="btn-tiny theme-toggle-btn" onclick="UI.toggleTheme()"
-                style="position: absolute; top: 15px; right: 15px; z-index: 100; display:flex; align-items:center; gap:8px; padding: 8px 12px; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); cursor:pointer; box-shadow: var(--glow);">
-                <i id="theme-icon" data-lucide="moon" style="width: 16px;"></i> <span id="theme-label"
-                    style="font-size: 0.8rem; font-weight: 500;">Dark Mode</span>
-            </button>
+            <!-- APPEARANCE CONTROLS -->
+            <div class="appearance-controls" role="group" aria-label="Appearance">
+                <label class="glass-toggle" title="Turn liquid glass on or off">
+                    <span>Liquid glass</span>
+                    <input id="glass-effect-toggle" type="checkbox" checked aria-label="Liquid glass effect">
+                    <span class="glass-toggle-track" aria-hidden="true"></span>
+                </label>
+                <button class="btn-tiny theme-toggle-btn" onclick="UI.toggleTheme()">
+                    <i id="theme-icon" data-lucide="moon" style="width: 16px;"></i>
+                    <span id="theme-label">Dark Mode</span>
+                </button>
+            </div>
 
             <!-- HOME SECTION (Mesh Visualization) -->
             <section id="view-home" class="view-section active">
@@ -380,8 +389,9 @@
                 <!-- Hero Header Bar -->
                 <div class="home-hero">
                     <div class="home-hero-left">
-                        <h1 class="home-title">Mesh Overview</h1>
-                        <p class="home-subtitle">Live Decentralized Topology</p>
+                        <span class="page-eyebrow">YOUR NETWORK</span>
+                        <h1 class="home-title">Mesh overview</h1>
+                        <p class="home-subtitle">Live connections across your private mesh.</p>
                     </div>
                     <div class="home-hero-right">
                         <span class="home-badge home-badge--live">
@@ -2862,6 +2872,16 @@
     <script src="screenshot-protection.js"></script>
     <script src="ui.js"></script>
     <script>lucide.createIcons();</script>
+    <script>
+        (() => {
+            const control = document.getElementById("glass-effect-toggle");
+            if (!control) return;
+            try { control.checked = localStorage.getItem("ghostnet_glass_effect") !== "off"; } catch (_) {}
+            control.addEventListener("change", () => {
+                try { localStorage.setItem("ghostnet_glass_effect", control.checked ? "on" : "off"); } catch (_) {}
+            });
+        })();
+    </script>
 </body>
 
 </html>
