@@ -5825,11 +5825,13 @@ body:has(#glass-effect-toggle:checked) .mesh-overlay {
     box-shadow: none;
 }
 
-/* Liquid Glass ON: a quieter champagne scene and distinct material layers. */
+/* Theme-aware liquid glass: translucent body, luminous rim, and diffused backdrop. */
 body:has(#glass-effect-toggle:checked) {
     --accent: #b45d37;
     --accent-dim: rgba(204, 112, 68, .11);
-    --glass-edge: rgba(255, 255, 255, .64);
+    --glass-edge: rgba(255, 255, 255, .82);
+    --glass-highlight: rgba(255, 255, 255, .9);
+    --glass-shade: rgba(100, 72, 48, .14);
     --glass-shadow:
         0 2px 5px rgba(87, 55, 32, .035),
         0 11px 25px rgba(87, 55, 32, .075),
@@ -5838,10 +5840,10 @@ body:has(#glass-effect-toggle:checked) {
         inset 1px 0 0 rgba(255, 255, 255, .29);
     --glass-surface:
         linear-gradient(176deg, rgba(255, 255, 255, .11), rgba(255, 252, 246, .015) 34%, rgba(255, 248, 236, .035) 84%, rgba(255, 255, 255, .08)),
-        rgba(255, 250, 242, .045);
+        rgba(255, 250, 242, .24);
     --glass-secondary:
         linear-gradient(176deg, rgba(255, 255, 255, .14), rgba(255, 250, 240, .025) 42%, rgba(255, 255, 255, .07)),
-        rgba(255, 250, 242, .075);
+        rgba(255, 250, 242, .3);
     --glass-control:
         linear-gradient(175deg, rgba(255, 255, 255, .28), rgba(255, 250, 241, .10) 55%, rgba(255, 255, 255, .13)),
         rgba(255, 250, 242, .16);
@@ -5852,15 +5854,17 @@ body:has(#glass-effect-toggle:checked) {
 
 body:has(#glass-effect-toggle:checked) .app-container {
     background:
-        radial-gradient(ellipse 40% 32% at 56% 28%, rgba(196, 144, 101, .16), transparent 78%),
-        radial-gradient(ellipse 43% 48% at 13% 86%, rgba(216, 153, 99, .085), transparent 78%),
+        radial-gradient(ellipse 40% 32% at 56% 28%, rgba(220, 136, 92, .48), transparent 78%),
+        radial-gradient(ellipse 43% 48% at 13% 86%, rgba(137, 170, 192, .36), transparent 78%),
         linear-gradient(115deg, #f8efe2, #fffbf3 57%, #f9eee0);
 }
 
 [data-theme="dark"] body:has(#glass-effect-toggle:checked) {
     --accent: #e3a47e;
     --accent-dim: rgba(223, 139, 90, .12);
-    --glass-edge: rgba(255, 232, 207, .24);
+    --glass-edge: rgba(255, 240, 225, .26);
+    --glass-highlight: rgba(255, 240, 225, .3);
+    --glass-shade: rgba(0, 0, 0, .38);
     --glass-shadow:
         0 2px 5px rgba(0, 0, 0, .075),
         0 12px 27px rgba(0, 0, 0, .17),
@@ -5869,20 +5873,21 @@ body:has(#glass-effect-toggle:checked) .app-container {
         inset 1px 0 0 rgba(255, 229, 204, .07);
     --glass-surface:
         linear-gradient(176deg, rgba(255, 235, 213, .085), rgba(255, 235, 213, .015) 42%, rgba(255, 235, 213, .04)),
-        rgba(74, 53, 44, .16);
+        rgba(28, 25, 25, .42);
     --glass-secondary:
         linear-gradient(176deg, rgba(255, 231, 204, .065), rgba(255, 231, 204, .01) 55%, rgba(255, 231, 204, .025)),
-        rgba(65, 46, 39, .13);
+        rgba(28, 25, 25, .48);
     --glass-control:
         linear-gradient(176deg, rgba(255, 235, 213, .13), rgba(255, 235, 213, .025) 55%, rgba(255, 235, 213, .065)),
         rgba(92, 66, 54, .19);
-    --surface: rgba(74, 53, 44, .16);
+    --surface: rgba(28, 25, 25, .42);
 }
 
 [data-theme="dark"] body:has(#glass-effect-toggle:checked) .app-container {
     background:
-        radial-gradient(ellipse 46% 46% at 84% 8%, rgba(171, 93, 55, .14), transparent 76%),
-        linear-gradient(115deg, #281f1b, #30241f 58%, #2b211d);
+        radial-gradient(ellipse 46% 46% at 84% 8%, rgba(184, 96, 63, .38), transparent 76%),
+        radial-gradient(ellipse 43% 48% at 13% 86%, rgba(72, 112, 143, .3), transparent 78%),
+        linear-gradient(115deg, #141619, #242125 58%, #181a20);
 }
 
 /* The broad planes diffuse the scene; foreground cards sit one level above. */
@@ -5890,9 +5895,9 @@ body:has(#glass-effect-toggle:checked) :is(.sidebar, .mobile-bottom-nav, .home-c
     .chat-sidebar, .chat-main-panel, .wlt-card-outer, .auth-card-outer) {
     background: var(--glass-secondary);
     border-color: var(--glass-edge);
-    box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(25px) saturate(117%) contrast(1.045);
-    -webkit-backdrop-filter: blur(25px) saturate(117%) contrast(1.045);
+    box-shadow: var(--glass-shadow), inset 1px 1px 1px var(--glass-highlight), inset -1px -1px 2px var(--glass-shade);
+    backdrop-filter: blur(25px) saturate(165%);
+    -webkit-backdrop-filter: blur(25px) saturate(165%);
 }
 
 body:has(#glass-effect-toggle:checked) :is(.home-stat-card, .home-stat-card:hover, .node-card, .node-card:hover,
@@ -5900,9 +5905,9 @@ body:has(#glass-effect-toggle:checked) :is(.home-stat-card, .home-stat-card:hove
     .vault-upload-zone, .vault-file-card, .modal-card) {
     background: var(--glass-surface);
     border-color: var(--glass-edge);
-    box-shadow: var(--glass-shadow);
-    backdrop-filter: blur(19px) saturate(120%) contrast(1.055);
-    -webkit-backdrop-filter: blur(19px) saturate(120%) contrast(1.055);
+    box-shadow: var(--glass-shadow), inset 1px 1px 1px var(--glass-highlight), inset -1px -1px 2px var(--glass-shade);
+    backdrop-filter: blur(16px) saturate(175%);
+    -webkit-backdrop-filter: blur(16px) saturate(175%);
 }
 
 body:has(#glass-effect-toggle:checked) :is(.appearance-controls .theme-toggle-btn, .glass-toggle, .status-panel,
@@ -5915,10 +5920,10 @@ body:has(#glass-effect-toggle:checked) :is(.appearance-controls .theme-toggle-bt
     border-color: var(--glass-edge);
     box-shadow:
         0 2px 7px rgba(87, 55, 32, .055),
-        inset 0 1px 0 rgba(255, 255, 255, .82),
-        inset 0 -1px 0 rgba(154, 104, 71, .08);
-    backdrop-filter: blur(15px) saturate(120%) contrast(1.045);
-    -webkit-backdrop-filter: blur(15px) saturate(120%) contrast(1.045);
+        inset 0 1px 0 var(--glass-highlight),
+        inset 0 -1px 1px var(--glass-shade);
+    backdrop-filter: blur(15px) saturate(160%);
+    -webkit-backdrop-filter: blur(15px) saturate(160%);
 }
 
 body:has(#glass-effect-toggle:checked) :is(.btn-primary, .auth-btn-primary, .wlt-btn-send, #chat-send, .ghostcard-btn) {
@@ -5954,7 +5959,7 @@ body:has(#glass-effect-toggle:checked) .mesh-overlay {
 }
 
 @media (prefers-reduced-transparency: reduce) {
-    body:has(#glass-effect-toggle:checked) {
+    :root body:has(#glass-effect-toggle:checked) {
         --glass-surface: var(--bg-panel);
         --glass-secondary: var(--bg-panel);
         --glass-control: var(--bg-panel);
