@@ -1,12 +1,12 @@
 /**
- * GhostNet Immersive UI
+ * Kryptos Immersive UI
  * Single-file logic for Visualization, State, and Interaction.
  */
 
 /**
  * GhostCode diagnostic (why it can stick on "Loading..."):
  * - `index.html` renders the badge with literal "Loading..." (`#ghostcode-badge`).
- * - The app stores a node JWT in `sessionStorage.ghostnet_token` via `POST /auth/node`.
+ * - The app stores a node JWT in `sessionStorage.kryptos_token` via `POST /auth/node`.
  * - The UI calls `GET /user/shortcode` expecting a GhostCode back.
  * - Node JWTs originally did not map to an email-auth user, so the server could return 404.
  * - Identity/token availability can lag initial render (race), so one fetch attempt is not enough.
@@ -18,8 +18,8 @@
 // Vault fileName/fileHash) must never reach screenshots or session-replay/error
 // tools. The offline/prod bundle is ALSO run through terser drop_console, which
 // strips the calls entirely. Re-enable in a dev console with:
-//   window.__GHOSTNET_DEV__ = true
-const __DEV__ = (typeof window !== 'undefined' && window.__GHOSTNET_DEV__ === true);
+//   window.__KRYPTOS_DEV__ = true
+const __DEV__ = (typeof window !== 'undefined' && window.__KRYPTOS_DEV__ === true);
 
 /** Escape user-controlled strings before inserting into HTML / attribute contexts. */
 function _escapeHTML(str) {
@@ -62,7 +62,7 @@ function _escapeSelector(str) {
 
 const IS_NATIVE = window.Capacitor?.isNativePlatform?.() ?? false;
 const PLATFORM = window.Capacitor?.getPlatform?.() ?? 'web';
-console.log('[GhostNet] Platform:', PLATFORM, '| Native:', IS_NATIVE);
+console.log('[Kryptos] Platform:', PLATFORM, '| Native:', IS_NATIVE);
 
 if (IS_NATIVE && window.Capacitor?.Plugins?.KeepAwake) {
     try {
@@ -87,7 +87,7 @@ window.AppState = {
 };
 
 // --- CONSTANTS ---
-const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
 
 // ── PRIVACY-RESPECTING ANALYTICS ─────────────────────────────────────────
 const GhostAnalytics = (() => {
@@ -97,9 +97,9 @@ const GhostAnalytics = (() => {
     function send(payload) {
         const token = (() => {
             try {
-                const raw = sessionStorage.getItem('ghostnet_token')
-                          || localStorage.getItem('ghostnet_token')
-                          || localStorage.getItem('ghostnet_jwt');
+                const raw = sessionStorage.getItem('kryptos_token')
+                          || localStorage.getItem('kryptos_token')
+                          || localStorage.getItem('kryptos_jwt');
                 if (!raw) return null;
                 const parsed = JSON.parse(raw);
                 return parsed?.token || raw;
@@ -119,9 +119,9 @@ const GhostAnalytics = (() => {
         const batch = queue.splice(0, queue.length);
         const token = (() => {
             try {
-                const raw = sessionStorage.getItem('ghostnet_token')
-                          || localStorage.getItem('ghostnet_token')
-                          || localStorage.getItem('ghostnet_jwt');
+                const raw = sessionStorage.getItem('kryptos_token')
+                          || localStorage.getItem('kryptos_token')
+                          || localStorage.getItem('kryptos_jwt');
                 if (!raw) return null;
                 const parsed = JSON.parse(raw);
                 return parsed?.token || raw;
@@ -159,9 +159,9 @@ let _authRedirectFired = false;
  */
 function _readToken() {
     const sources = [
-        sessionStorage.getItem('ghostnet_token'),
-        localStorage.getItem('ghostnet_token'),
-        localStorage.getItem('ghostnet_jwt'),
+        sessionStorage.getItem('kryptos_token'),
+        localStorage.getItem('kryptos_token'),
+        localStorage.getItem('kryptos_jwt'),
     ];
     for (const raw of sources) {
         if (!raw) continue;
@@ -247,9 +247,9 @@ async function _waitForToken(maxWait = 5000) {
         // Don't just passively poll: if no valid token exists, proactively kick off
         // a refresh ourselves instead of depending on init()/autoAuthOnLoad timing.
         // This is the race that produced "Auth token never arrived after 5s".
-        if (!triggered && typeof window.ghostnetEnsureAuth === 'function') {
+        if (!triggered && typeof window.kryptosEnsureAuth === 'function') {
             triggered = true;
-            try { window.ghostnetEnsureAuth(); } catch (_) {}
+            try { window.kryptosEnsureAuth(); } catch (_) {}
         }
         await new Promise(r => setTimeout(r, 200));
     }
@@ -260,7 +260,7 @@ async function _waitForToken(maxWait = 5000) {
  * Show a toast notification for a given duration.
  */
 function showToast(message, durationMs = 2000) {
-    const el = document.getElementById('ghostnet-toast');
+    const el = document.getElementById('kryptos-toast');
     if (!el) return;
     el.textContent = message;
     el.style.opacity = '1';
@@ -414,12 +414,12 @@ class MeshNetwork {
 
 const UI = {
     init: () => {
-        console.log("SYSTEM: Booting GhostNet UI...");
+        console.log("SYSTEM: Booting Kryptos UI...");
 
         // Prevent Railway cold starts (ping every 4 minutes) — skip when offline
         setInterval(() => {
             if (navigator.onLine) {
-                fetch('https://ghostnet-ji-production.up.railway.app/health', { method: 'GET' })
+                fetch('https://kryptos-ji-production.up.railway.app/health', { method: 'GET' })
                     .catch(() => {});
             }
         }, 4 * 60 * 1000);
@@ -431,13 +431,13 @@ const UI = {
                 stored = GhostIdentity.getStoredIdentity();
             } else {
                 // Fallback if GhostIdentity not yet loaded
-                const nodeId = localStorage.getItem('ghostnet_node_id');
+                const nodeId = localStorage.getItem('kryptos_node_id');
                 if (nodeId) {
                     stored = {
                         nodeId,
-                        displayName: localStorage.getItem('ghostnet_display_name'),
-                        address: localStorage.getItem('ghostnet_address'),
-                        publicKey: localStorage.getItem('ghostnet_pubkey')
+                        displayName: localStorage.getItem('kryptos_display_name'),
+                        address: localStorage.getItem('kryptos_address'),
+                        publicKey: localStorage.getItem('kryptos_pubkey')
                     };
                 }
             }
@@ -584,7 +584,7 @@ const UI = {
                 
                 // Get userId for conversations fetch
                 let userId = null;
-                const storedId = localStorage.getItem('ghostnet_user');
+                const storedId = localStorage.getItem('kryptos_user');
                 if (storedId) {
                     try { userId = JSON.parse(storedId).id; } catch(e){}
                 }
@@ -636,7 +636,7 @@ const UI = {
         // initiated navigation (clicking the nav buttons) is NEVER blocked: after signing
         // out you can still move freely around the app (no hard gate — that's the
         // decentralized design). If you then trigger something that needs auth, the
-        // 'ghostnet:auth-required' event re-shows the PIN on its own.
+        // 'kryptos:auth-required' event re-shows the PIN on its own.
         if (opts.programmatic && target !== 'profile') {
             const GATE_SCREENS = ['pin', 'locked', 'welcome', 'setpin', 'name',
                 'generating', 'confirm', 'restore', 'seed', 'success',
@@ -731,14 +731,14 @@ const UI = {
 
         // 1. Selective Storage Cleanup
         // ONLY remove session/token keys — NEVER touch identity or seed phrase
-        // NOTE: 'ghostnet_node_id' is IDENTITY data (used by getStoredIdentity),
+        // NOTE: 'kryptos_node_id' is IDENTITY data (used by getStoredIdentity),
         //       NOT a session key. Removing it breaks nodeId on next login.
         const sessionKeys = [
-            'ghostnet_token',
-            'ghostnet_jwt',
-            'ghostnet_vault_unlocked',
-            'ghostnet_session_key',
-            'ghostnet_last_convo'
+            'kryptos_token',
+            'kryptos_jwt',
+            'kryptos_vault_unlocked',
+            'kryptos_session_key',
+            'kryptos_last_convo'
         ];
 
         sessionKeys.forEach(k => {
@@ -749,15 +749,15 @@ const UI = {
         if (isDestroy) {
             console.log('[UI] Full identity destruction requested...');
             const identityKeys = [
-                'ghostnet_identity',
-                'ghostnet_identity_vault',
-                'ghostnet_vault_index',
-                'ghostnet_seed_words',
-                'ghostnet_ble_devices',
-                'ghostnet_ghost_tag',
-                'ghostnet_pending_tag_claim',
-                'ghostnet_pending_tag_claim_data',
-                'ghostnet_tag_sync_conflict'
+                'kryptos_identity',
+                'kryptos_identity_vault',
+                'kryptos_vault_index',
+                'kryptos_seed_words',
+                'kryptos_ble_devices',
+                'kryptos_ghost_tag',
+                'kryptos_pending_tag_claim',
+                'kryptos_pending_tag_claim_data',
+                'kryptos_tag_sync_conflict'
             ];
             identityKeys.forEach(k => localStorage.removeItem(k));
             
@@ -769,7 +769,7 @@ const UI = {
             // Also wipe all avatars
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key && key.startsWith('ghostnet_avatar_')) {
+                if (key && key.startsWith('kryptos_avatar_')) {
                     localStorage.removeItem(key);
                     i--;
                 }
@@ -778,11 +778,11 @@ const UI = {
 
         // Restore theme preference
         if (!isDestroy) {
-            localStorage.setItem('ghostnet_theme', theme);
+            localStorage.setItem('kryptos_theme', theme);
         }
         
         // 2. Vault Cleanup [MODIFIED - Feature Isolation]
-        // Do NOT wipe local storage metadata (ghostnet_vault_index) unless it's a destroy.
+        // Do NOT wipe local storage metadata (kryptos_vault_index) unless it's a destroy.
         // This allows files to show up immediately on re-login before fetch completes.
         if (window.GhostVault && typeof window.GhostVault.clearVaultState === 'function') {
             // We'll call a less destructive lock if not destroying
@@ -874,8 +874,8 @@ const UI = {
 
         // 8. Cross-tab logout signal — other tabs detect this via 'storage' event
         try {
-            localStorage.setItem('ghostnet_logout_signal', Date.now().toString());
-            localStorage.removeItem('ghostnet_logout_signal');
+            localStorage.setItem('kryptos_logout_signal', Date.now().toString());
+            localStorage.removeItem('kryptos_logout_signal');
         } catch (_) {}
 
         // 9. Restore Scroll Style
@@ -964,7 +964,7 @@ const UI = {
                 }
                 // Custom toast warning
                 const toast = document.createElement('div');
-                toast.textContent = 'Screenshots are protected in GhostNet';
+                toast.textContent = 'Screenshots are protected in Kryptos';
                 toast.style.position = 'fixed';
                 toast.style.bottom = '20px';
                 toast.style.left = '50%';
@@ -1067,7 +1067,7 @@ const UI = {
     },
 
     initTheme: () => {
-        const stored = localStorage.getItem('ghostnet_theme');
+        const stored = localStorage.getItem('kryptos_theme');
         if (stored === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
             const label = document.getElementById('theme-label');
@@ -1090,12 +1090,12 @@ const UI = {
 
         if (isDark) {
             doc.removeAttribute('data-theme');
-            localStorage.setItem('ghostnet_theme', 'light');
+            localStorage.setItem('kryptos_theme', 'light');
             if (label) label.innerText = 'Dark Mode';
             if (icon) icon.setAttribute('data-lucide', 'moon');
         } else {
             doc.setAttribute('data-theme', 'dark');
-            localStorage.setItem('ghostnet_theme', 'dark');
+            localStorage.setItem('kryptos_theme', 'dark');
             if (label) label.innerText = 'Light Mode';
             if (icon) icon.setAttribute('data-lucide', 'sun');
         }
@@ -1137,7 +1137,7 @@ const UI = {
 
         try {
             // 1. Try to get address from stored identity (crypto-identity.js saves it)
-            const storedIdentity = localStorage.getItem('ghostnet_identity');
+            const storedIdentity = localStorage.getItem('kryptos_identity');
             if (storedIdentity) {
                 const parsed = JSON.parse(storedIdentity);
                 if (parsed.address && /^0x[a-fA-F0-9]{40}$/.test(parsed.address)) {
@@ -1147,7 +1147,7 @@ const UI = {
 
             // 2. Fallback: try the legacy localStorage key
             if (!ethAddress) {
-                const legacyAddr = localStorage.getItem('ghostnet_address');
+                const legacyAddr = localStorage.getItem('kryptos_address');
                 if (legacyAddr && /^0x[a-fA-F0-9]{40}$/.test(legacyAddr)) {
                     ethAddress = legacyAddr;
                 }
@@ -1163,10 +1163,10 @@ const UI = {
 
             // 4. Fallback: derive from privateKey if available in session
             if (!ethAddress && typeof ethers !== 'undefined') {
-                const encPK = localStorage.getItem('ghostnet_enc_pk');
+                const encPK = localStorage.getItem('kryptos_enc_pk');
                 // Can't decrypt without PIN, but the address should already be saved
                 // If we have a publicKey, we can compute the address from it
-                const storedPubKey = localStorage.getItem('ghostnet_pubkey');
+                const storedPubKey = localStorage.getItem('kryptos_pubkey');
                 if (storedPubKey) {
                     try {
                         ethAddress = ethers.computeAddress(storedPubKey);
@@ -1278,7 +1278,7 @@ const UI = {
         // Check if we have a stored SOL address
         let solAddress = '';
         try {
-            const stored = localStorage.getItem('ghostnet_sol_address');
+            const stored = localStorage.getItem('kryptos_sol_address');
             if (stored && stored.length >= 32) {
                 solAddress = stored;
             }
@@ -1669,7 +1669,7 @@ const UI = {
         }
 
         // Silent backend validation with timeout for offline resilience
-        const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+        const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
         const VALIDATE_TIMEOUT_MS = 8000; // 8s timeout — don't hang forever offline
 
         try {
@@ -1678,8 +1678,8 @@ const UI = {
 
             // Ensure a valid session token before validating (it lives in sessionStorage
             // with a 1h expiry, so it may be missing after an app restart/timeout → 401).
-            if (window.ghostnetEnsureAuth && Object.keys(getAuthHeaders()).length === 0) {
-                await window.ghostnetEnsureAuth();
+            if (window.kryptosEnsureAuth && Object.keys(getAuthHeaders()).length === 0) {
+                await window.kryptosEnsureAuth();
             }
 
             const doValidateFetch = () => {
@@ -1696,12 +1696,12 @@ const UI = {
             // inside the client's 1h wrapper, in which case ensureAuth() would just hand
             // back the same dead token and the retry would 401 again. Removing it forces
             // ensureAuth to actually mint a fresh one.
-            if (res.status === 401 && window.ghostnetEnsureAuth) {
+            if (res.status === 401 && window.kryptosEnsureAuth) {
                 try {
-                    sessionStorage.removeItem('ghostnet_token');
-                    localStorage.removeItem('ghostnet_token');
+                    sessionStorage.removeItem('kryptos_token');
+                    localStorage.removeItem('kryptos_token');
                 } catch (_) {}
-                const refreshed = await window.ghostnetEnsureAuth();
+                const refreshed = await window.kryptosEnsureAuth();
                 if (refreshed) res = await doValidateFetch();
             }
 
@@ -1718,7 +1718,7 @@ const UI = {
                 // modal — close the modal so the user can actually see and use it.
                 if (res.status === 401) {
                     if (errEl) errEl.textContent = ' Session expired — re-unlock with your PIN, then try again.';
-                    if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
+                    if (typeof window.kryptosEnsureAuth === 'function') window.kryptosEnsureAuth();
                     setTimeout(() => {
                         const ov = document.querySelector('.modal-overlay');
                         if (ov) ov.remove();
@@ -1837,14 +1837,14 @@ const UI = {
             // ask the identity module to acquire one (it is single-flight, so concurrent
             // callers don't stampede /auth/node). If it still can't — the auth gate is open
             // and the user must unlock — bail quietly instead of busy-waiting 5s and erroring.
-            // The 'ghostnet:auth-ready' listener re-runs this the moment a token arrives, so
+            // The 'kryptos:auth-ready' listener re-runs this the moment a token arrives, so
             // the list fills in on its own. No central fetch authority involved.
             let token = _readToken();
-            if (!token && typeof window.ghostnetEnsureAuth === 'function') {
-                token = await window.ghostnetEnsureAuth();
+            if (!token && typeof window.kryptosEnsureAuth === 'function') {
+                token = await window.kryptosEnsureAuth();
             }
             if (!token) {
-                console.debug('[UI] Conversations deferred — awaiting unlock (auto-retries on ghostnet:auth-ready).');
+                console.debug('[UI] Conversations deferred — awaiting unlock (auto-retries on kryptos:auth-ready).');
                 return;
             }
 
@@ -2115,7 +2115,7 @@ const UI = {
         // Load History (skipped entirely when burn mode is on — the chat starts fresh)
         if (convoId && convoId !== 'new' && !_burnOn) {
             try {
-                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${encodeURIComponent(convoId)}`, {
+                const res = await fetch(`https://kryptos-ji-production.up.railway.app/history?convoId=${encodeURIComponent(convoId)}`, {
                     headers: getAuthHeaders()
                 });
                 if (res.ok) {
@@ -2261,7 +2261,7 @@ const UI = {
             'BTC': { color: '#F7931A', gradient: 'linear-gradient(135deg, #F7931A, #e2750a)', darkGlow: 'rgba(247,147,26,0.35)', name: 'Bitcoin' },
             'SOL': { color: '#9945FF', gradient: 'linear-gradient(135deg, #9945FF, #14F195)', darkGlow: 'rgba(153,69,255,0.35)', name: 'Solana' },
             'USDT': { color: '#26A17B', gradient: 'linear-gradient(135deg, #26A17B, #1a7a5c)', darkGlow: 'rgba(38,161,123,0.35)', name: 'Tether' },
-            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'GhostNet' }
+            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'Kryptos' }
         };
 
         let walletAssets = [];
@@ -2269,7 +2269,7 @@ const UI = {
             walletAssets = AppState.wallet;
         } else if (AppState.wallet && AppState.wallet.balance) {
             walletAssets = [
-                { symbol: "AHT", balance: AppState.wallet.balance, chain: "GhostNet" },
+                { symbol: "AHT", balance: AppState.wallet.balance, chain: "Kryptos" },
                 { symbol: "ETH", balance: 0.0, chain: "Ethereum" }
             ];
         }
@@ -2286,7 +2286,7 @@ const UI = {
                 <div class="wlt-portfolio-left">
                     <div class="wlt-portfolio-label">Portfolio Value</div>
                     <div class="wlt-portfolio-total">${totalBalanceDisplay}</div>
-                    <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · GhostNet Wallet</div>
+                    <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · Kryptos Wallet</div>
                 </div>
                 <div class="wlt-portfolio-tokens">
                     ${walletAssets.map(a => {
@@ -2547,7 +2547,7 @@ const UI = {
                 const myId = (window.AppState && window.AppState.identity) ? (window.AppState.identity.nodeId || window.AppState.identity.id) : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 try {
-                    const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
+                    const res = await fetch('https://kryptos-ji-production.up.railway.app/message', {
                         method: 'POST',
                         headers: getAuthHeaders(),
                         body: JSON.stringify({ senderId: myId, receiverId: targetId, content: text })
@@ -2592,7 +2592,7 @@ const UI = {
         if (!convoId || convoId === 'new') { UI.showToast('Open a conversation first.', '#ef4444'); return; }
         if (!confirm(`Delete all messages with ${peerName || 'this contact'}? The contact stays, the messages are removed for you.`)) return;
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/messages?convoId=${encodeURIComponent(convoId)}`, {
+            const res = await fetch(`https://kryptos-ji-production.up.railway.app/messages?convoId=${encodeURIComponent(convoId)}`, {
                 method: 'DELETE',
                 headers: getAuthHeaders()
             });
@@ -2801,7 +2801,7 @@ const UI = {
             statusEl.textContent = '✓✓';           // double tick, blue = read
             statusEl.title = 'Read';
             statusEl.style.opacity = '1';
-            statusEl.style.color = '#3b82f6';       // solid GhostNet blue (matches logo / Mesh Overview)
+            statusEl.style.color = '#3b82f6';       // solid Kryptos blue (matches logo / Mesh Overview)
         } else if (status === 'delivered') {
             statusEl.textContent = '✓✓';           // double tick, grey = delivered
             statusEl.title = 'Delivered';
@@ -2941,13 +2941,13 @@ const UI = {
                 const res = await fetch(`${BACKEND_URL}/user/profile`, { headers: authHeaders() });
                 if (res.ok) {
                     const user = await res.json();
-                    localStorage.setItem('ghostnet_profile_cache', JSON.stringify(user));
-                    localStorage.setItem('ghostnet_user', JSON.stringify(user));
+                    localStorage.setItem('kryptos_profile_cache', JSON.stringify(user));
+                    localStorage.setItem('kryptos_user', JSON.stringify(user));
                 }
             } catch { }
         }
 
-        const stored = localStorage.getItem('ghostnet_profile_cache') || localStorage.getItem('ghostnet_user');
+        const stored = localStorage.getItem('kryptos_profile_cache') || localStorage.getItem('kryptos_user');
         if (stored) {
             try {
                 const user = JSON.parse(stored);
@@ -3049,7 +3049,7 @@ const UI = {
                 alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
             } else {
                 alert("Profile saved!");
-                localStorage.setItem("ghostnet_user", JSON.stringify(data.user || data));
+                localStorage.setItem("kryptos_user", JSON.stringify(data.user || data));
                 UI.loadProfile();
             }
         } catch (err) {
@@ -3122,7 +3122,7 @@ const UI = {
             return;
         }
         if (!window.GhostVault) {
-            ensureVaultBanner(' Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
+            ensureVaultBanner(' Vault encryption module failed to load. Refresh the page, or ensure `kryptos-file-vault.js` is reachable.');
             showToast('Vault encryption unavailable — module not loaded');
             setVaultEnabled(false);
             return;
@@ -3569,9 +3569,9 @@ const UI = {
             }
 
             const liveToken =
-                sessionStorage.getItem('ghostnet_token') ||
-                localStorage.getItem('ghostnet_jwt') ||
-                localStorage.getItem('ghostnet_token') ||
+                sessionStorage.getItem('kryptos_token') ||
+                localStorage.getItem('kryptos_jwt') ||
+                localStorage.getItem('kryptos_token') ||
                 '';
 
             if (liveToken) {
@@ -3629,8 +3629,8 @@ const UI = {
         }
         if (navigator.share) {
             navigator.share({
-                text: 'Find me on GhostNet: ' + code,
-                title: 'GhostNet'
+                text: 'Find me on Kryptos: ' + code,
+                title: 'Kryptos'
             }).catch(() => {});
         } else {
             _copyToClipboard(code).then(() => showToast('GhostCode copied — share it anywhere')).catch(e => console.error('Share fallback failed:', e));
@@ -3719,7 +3719,7 @@ const UI = {
                             resultContainer.textContent = '';
                             resultContainer.style.display = 'block';
                             resultContainer.style.cssText = 'display:block;padding:10px 12px;margin:0 8px 8px 8px;color:var(--text-muted);font-size:0.8rem;text-align:center;';
-                            resultContainer.textContent = 'No GhostNet user found with that code';
+                            resultContainer.textContent = 'No Kryptos user found with that code';
                         } else {
                             resultContainer.style.display = 'none';
                         }
@@ -3741,7 +3741,7 @@ const UI = {
     generateGhostCard: async () => {
         if (!AppState || !AppState.identity || !AppState.identity.nodeId) {
             const toast = document.createElement('div');
-            toast.textContent = 'Connect to GhostNet first to generate your card';
+            toast.textContent = 'Connect to Kryptos first to generate your card';
             toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
@@ -3895,7 +3895,7 @@ const UI = {
 
             ctx.fillStyle = 'rgba(255,255,255,0.4)';
             ctx.font = '10px Arial';
-            ctx.fillText('GhostNet', 80, 190);
+            ctx.fillText('Kryptos', 80, 190);
 
             // Right Side: QR Code
             ctx.fillStyle = '#ffffff';
@@ -4087,7 +4087,7 @@ const UI = {
                 const tempDiv = document.createElement('div');
                 // Single-use nonce for burn-after-scan
                 const nonce = Array.from(crypto.getRandomValues(new Uint8Array(8))).map(b => b.toString(16).padStart(2,'0')).join('');
-                const qrData = JSON.stringify({"v":2,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS,"nonce":nonce});
+                const qrData = JSON.stringify({"v":2,"app":"kryptos","nodeId":nodeId,"name":displayName,"exp":expTS,"nonce":nonce});
                 new QRCode(tempDiv, {
                     text: qrData,
                     width: 180,
@@ -4276,7 +4276,7 @@ const UI = {
                     if (code) {
                         try {
                             const data = JSON.parse(code.data);
-                            if (data.v && data.app === 'ghostnet' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
+                            if (data.v && data.app === 'kryptos' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
                                 handleSuccess(data);
                                 return;
                             } else {
@@ -4421,8 +4421,8 @@ window.UI = UI; // Expose to global scope for onclick handlers
 
 // ─── Decentralized auth lifecycle reactions (browser CustomEvent bus) ───────────
 // There is NO central auth controller and NO shared fetch wrapper. The identity
-// module merely broadcasts two events on the global bus — 'ghostnet:auth-required'
-// when an unlock is needed, 'ghostnet:auth-ready' when a token is obtained. Each
+// module merely broadcasts two events on the global bus — 'kryptos:auth-required'
+// when an unlock is needed, 'kryptos:auth-ready' when a token is obtained. Each
 // feature listens independently and refreshes ONLY its own data. This is the
 // decentralized, event-driven coordination that replaces 401-storming: when the
 // gate opens, loaders bail quietly; when a token lands, they re-run themselves.
@@ -4430,9 +4430,9 @@ window.UI = UI; // Expose to global scope for onclick handlers
     const currentUserId = () =>
         (window.AppState && AppState.identity && (AppState.identity.nodeId || AppState.identity.id))
         || (window.app && window.app.identity && window.app.identity.nodeId)
-        || sessionStorage.getItem('ghostnet_node_id');
+        || sessionStorage.getItem('kryptos_node_id');
 
-    window.addEventListener('ghostnet:auth-ready', () => {
+    window.addEventListener('kryptos:auth-ready', () => {
         try {
             const uid = currentUserId();
             if (uid && UI.loadConversations) UI.loadConversations(uid);
@@ -4448,7 +4448,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
     // Cross-tab logout: if another tab fires clearSession, log out this tab too
     window.addEventListener('storage', (e) => {
-        if (e.key === 'ghostnet_logout_signal' && e.newValue) {
+        if (e.key === 'kryptos_logout_signal' && e.newValue) {
             console.log('[UI] Cross-tab logout detected. Clearing session in this tab...');
             UI.clearSession();
         }

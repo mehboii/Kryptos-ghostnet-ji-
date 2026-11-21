@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════
- *  GhostNet — Encryption Integrity Test Suite
+ *  Kryptos — Encryption Integrity Test Suite
  * ═══════════════════════════════════════════════════════════════════════
  *
  *  Objective:
@@ -763,7 +763,7 @@ async function testFullMessageLifecycle() {
 async function main() {
   console.log();
   console.log(`${C.bold}${C.bgBlue}${C.white}                                                                     ${C.reset}`);
-  console.log(`${C.bold}${C.bgBlue}${C.white}    GhostNet — Encryption Integrity Test Suite                      ${C.reset}`);
+  console.log(`${C.bold}${C.bgBlue}${C.white}    Kryptos — Encryption Integrity Test Suite                      ${C.reset}`);
   console.log(`${C.bold}${C.bgBlue}${C.white}   Testing: E2E Encryption · Network Interception · Key Isolation     ${C.reset}`);
   console.log(`${C.bold}${C.bgBlue}${C.white}                                                                     ${C.reset}`);
   console.log();

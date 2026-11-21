@@ -1,4 +1,4 @@
-# 🧪 GhostNet Manual Test Checklist — Core Flows
+# 🧪 Kryptos Manual Test Checklist — Core Flows
 
 This focused checklist covers the **Core End-to-End User Journey**. Execute these steps sequentially to ensure the critical paths are fully operational.
 
@@ -65,7 +65,7 @@ This focused checklist covers the **Core End-to-End User Journey**. Execute thes
 - [ ] **8. Logout**
   - Open Profile settings.
   - Click "Logout" (or safety wipe).
-  - **Expected**: Session tokens (`ghostnet_token`) are cleared. App returns to the welcome/login screen.
+  - **Expected**: Session tokens (`kryptos_token`) are cleared. App returns to the welcome/login screen.
 
 - [ ] **9. Recover with Seed Phrase**
   - On the welcome screen, click "Restore Identity" or "Recover with seed phrase".

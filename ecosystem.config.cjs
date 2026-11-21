@@ -1,5 +1,5 @@
 /**
- * GhostNet PM2 Ecosystem Configuration — SECURITY HARDENED
+ * Kryptos PM2 Ecosystem Configuration — SECURITY HARDENED
  *
  * Vulnerabilities found and fixed:
  *
@@ -34,7 +34,7 @@
  *     deployments PM2 is commonly started by root or a sudoer. All 12
  *     services then run as root with full filesystem and network access.
  *     Fixed: uid/gid fields added, pointing to a dedicated unprivileged
- *     service account. Change 'ghostnet' to your actual service user.
+ *     service account. Change 'kryptos' to your actual service user.
  *     NOTE: PM2 must itself be started as root to drop privileges; the
  *     service account must not have login shell or sudo rights.
  *
@@ -49,7 +49,7 @@
  *          && pm2 set pm2-logrotate:retain 7 && pm2 set pm2-logrotate:compress true
  *
  * [F] RELAY NODES SHARE IDENTICAL CONFIG — NO ISOLATION
- *     ghostnet-relay-1/2/3 all run the same script from the same cwd with the
+ *     kryptos-relay-1/2/3 all run the same script from the same cwd with the
  *     same environment. They share any file-based state (SQLite, PID files,
  *     lock files). A compromise of relay-1 is therefore identical to a
  *     compromise of relay-2 and relay-3. For an onion routing system, relay
@@ -78,11 +78,11 @@
  * Usage:
  *   pm2 start ecosystem.config.cjs                   → production (default)
  *   pm2 start ecosystem.config.cjs --env development → development
- *   pm2 start ecosystem.config.cjs --only ghostnet-server
+ *   pm2 start ecosystem.config.cjs --only kryptos-server
  *   pm2 stop all | pm2 restart all | pm2 logs
  *
  * Before first run:
- *   useradd -r -s /sbin/nologin ghostnet       (create service account)
+ *   useradd -r -s /sbin/nologin kryptos       (create service account)
  *   pm2 install pm2-logrotate
  *   pm2 set pm2-logrotate:max_size 20M
  *   pm2 set pm2-logrotate:retain 7
@@ -96,8 +96,8 @@ const ROOT = __dirname;
 
 // ─── Service account (must exist on the host) ─────────────────────────────
 // [FIX D] All services run as this unprivileged user, not as root.
-const SERVICE_USER = 'ghostnet';
-const SERVICE_GROUP = 'ghostnet';
+const SERVICE_USER = 'kryptos';
+const SERVICE_GROUP = 'kryptos';
 
 // ─── Shared non-secret base environment ──────────────────────────────────
 // [FIX A] Production is the default.
@@ -106,7 +106,7 @@ const SERVICE_GROUP = 'ghostnet';
 function baseEnv(overrides = {}) {
     return {
         NODE_ENV: 'production',
-        GHOSTNET_MODE: 'cloud',
+        KRYPTOS_MODE: 'cloud',
         ...overrides,
     };
 }
@@ -115,7 +115,7 @@ function baseEnv(overrides = {}) {
 function baseDevEnv(overrides = {}) {
     return {
         NODE_ENV: 'development',
-        GHOSTNET_MODE: 'development',
+        KRYPTOS_MODE: 'development',
         ...overrides,
     };
 }
@@ -156,13 +156,13 @@ function service(name, script, cwd, port, opts = {}) {
         // [FIX A] Production is the default env.
         // [FIX C] Only service-specific, non-secret values here.
         env: baseEnv({
-            GHOSTNET_SERVICE: name,
+            KRYPTOS_SERVICE: name,
             ...portEnv,
             ...(opts.env || {}),
         }),
 
         env_development: baseDevEnv({
-            GHOSTNET_SERVICE: name,
+            KRYPTOS_SERVICE: name,
             ...portEnv,
             ...(opts.devEnv || {}),
         }),
@@ -182,8 +182,8 @@ module.exports = {
 
         // ── Main API + WebSocket + Auth ──────────────────
         service(
-            'ghostnet-server',
-            path.join(ROOT, 'ghostnet-server.js'),
+            'kryptos-server',
+            path.join(ROOT, 'kryptos-server.js'),
             ROOT,
             8080,
             {
@@ -195,18 +195,18 @@ module.exports = {
 
         // ── Multi-chain Blockchain Bridge ─────────────────
         service(
-            'ghostnet-bridge',
-            path.join(ROOT, 'ghostnet-bridge', 'bridge.js'),
-            path.join(ROOT, 'ghostnet-bridge'),
+            'kryptos-bridge',
+            path.join(ROOT, 'kryptos-bridge', 'bridge.js'),
+            path.join(ROOT, 'kryptos-bridge'),
             3001,
             { maxMemory: '250M', restartDelay: 3000, listenTimeout: 15000 }
         ),
 
         // ── Client UI Static File Server ──────────────────
         service(
-            'ghostnet-client',
-            path.join(ROOT, 'ghostnet-client', 'server.js'),
-            path.join(ROOT, 'ghostnet-client'),
+            'kryptos-client',
+            path.join(ROOT, 'kryptos-client', 'server.js'),
+            path.join(ROOT, 'kryptos-client'),
             3000,
             { maxMemory: '150M', listenTimeout: 8000 }
         ),
@@ -217,18 +217,18 @@ module.exports = {
 
         // ── SQLite Message Persistence ────────────────────
         service(
-            'ghostnet-messages',
-            path.join(ROOT, 'ghostnet-messages', 'server.js'),
-            path.join(ROOT, 'ghostnet-messages'),
+            'kryptos-messages',
+            path.join(ROOT, 'kryptos-messages', 'server.js'),
+            path.join(ROOT, 'kryptos-messages'),
             8090,
             { listenTimeout: 8000 }
         ),
 
         // ── Blockchain Abstraction Layer ──────────────────
         service(
-            'ghostnet-chain',
-            path.join(ROOT, 'ghostnet-chain', 'chain-service.js'),
-            path.join(ROOT, 'ghostnet-chain'),
+            'kryptos-chain',
+            path.join(ROOT, 'kryptos-chain', 'chain-service.js'),
+            path.join(ROOT, 'kryptos-chain'),
             4000,
             { maxMemory: '200M', listenTimeout: 10000 }
         ),
@@ -236,9 +236,9 @@ module.exports = {
         // ── Encrypted File Vault ──────────────────────────
         // Vault is the highest-value target — tightest restart policy.
         service(
-            'ghostnet-vault',
-            path.join(ROOT, 'ghostnet-vault', 'vault-service.js'),
-            path.join(ROOT, 'ghostnet-vault'),
+            'kryptos-vault',
+            path.join(ROOT, 'kryptos-vault', 'vault-service.js'),
+            path.join(ROOT, 'kryptos-vault'),
             4001,
             {
                 maxMemory: '250M',
@@ -255,14 +255,14 @@ module.exports = {
         //  RELAY_PORT so it can use isolated storage paths
         //  and state. In a hardened deployment each should
         //  also run under a distinct uid:
-        //    ghostnet-relay1 / ghostnet-relay2 / ghostnet-relay3
+        //    kryptos-relay1 / kryptos-relay2 / kryptos-relay3
         // ══════════════════════════════════════════════════
 
         // ── Relay Node #1 ─────────────────────────────────
         service(
-            'ghostnet-relay-1',
-            path.join(ROOT, 'ghostnet-bridge', 'relay', 'server.js'),
-            path.join(ROOT, 'ghostnet-bridge', 'relay'),
+            'kryptos-relay-1',
+            path.join(ROOT, 'kryptos-bridge', 'relay', 'server.js'),
+            path.join(ROOT, 'kryptos-bridge', 'relay'),
             8081,
             {
                 maxMemory: '150M',
@@ -274,9 +274,9 @@ module.exports = {
 
         // ── Relay Node #2 ─────────────────────────────────
         service(
-            'ghostnet-relay-2',
-            path.join(ROOT, 'ghostnet-bridge', 'relay', 'server.js'),
-            path.join(ROOT, 'ghostnet-bridge', 'relay'),
+            'kryptos-relay-2',
+            path.join(ROOT, 'kryptos-bridge', 'relay', 'server.js'),
+            path.join(ROOT, 'kryptos-bridge', 'relay'),
             8082,
             {
                 maxMemory: '150M',
@@ -288,9 +288,9 @@ module.exports = {
 
         // ── Relay Node #3 ─────────────────────────────────
         service(
-            'ghostnet-relay-3',
-            path.join(ROOT, 'ghostnet-bridge', 'relay', 'server.js'),
-            path.join(ROOT, 'ghostnet-bridge', 'relay'),
+            'kryptos-relay-3',
+            path.join(ROOT, 'kryptos-bridge', 'relay', 'server.js'),
+            path.join(ROOT, 'kryptos-bridge', 'relay'),
             8083,
             {
                 maxMemory: '150M',
@@ -306,18 +306,18 @@ module.exports = {
 
         // ── Node Discovery Registry ───────────────────────
         service(
-            'ghostnet-registry',
-            path.join(ROOT, 'ghostnet-bridge', 'registry.js'),
-            path.join(ROOT, 'ghostnet-bridge'),
+            'kryptos-registry',
+            path.join(ROOT, 'kryptos-bridge', 'registry.js'),
+            path.join(ROOT, 'kryptos-bridge'),
             9000,
             { maxMemory: '100M', listenTimeout: 5000 }
         ),
 
         // ── BLE Peripheral Service ────────────────────────
         // Requires the service account to be in the 'bluetooth' group:
-        //   usermod -aG bluetooth ghostnet
+        //   usermod -aG bluetooth kryptos
         service(
-            'ghostnet-ble',
+            'kryptos-ble',
             path.join(ROOT, 'ble-peripheral.js'),
             ROOT,
             null,
@@ -334,8 +334,8 @@ module.exports = {
 
         // ── Health Watchdog ───────────────────────────────
         service(
-            'ghostnet-watchdog',
-            path.join(ROOT, 'ghostnet-watchdog.cjs'),
+            'kryptos-watchdog',
+            path.join(ROOT, 'kryptos-watchdog.cjs'),
             ROOT,
             null,
             {

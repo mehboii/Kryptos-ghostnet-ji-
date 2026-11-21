@@ -4,7 +4,7 @@ This is a temporary snapshot of the current page's DOM structure. The DOM will c
 <current_dom>
 [0] (174,54)<a class='logo' href='index.html' />
 	[1] (141,54)<div  />
-	[2] (188,54)<span >GhostNet />
+	[2] (188,54)<span >Kryptos />
 [3] (697,54)<a href='index.html#about'>About />
 [4] (764,54)<a href='index.html#how-it-works'>How it Works />
 [5] (843,54)<a href='index.html#developers'>Developers />
@@ -13,11 +13,11 @@ Email
 [6] (500,129)<label >Message />
 [7] (500,233)<textarea  />
 [8] (500,394)<button class='btn btn-primary ripple'>Send Secure Message />
-GhostNet
+Kryptos
 [9] (665,774)<a href='#'>Docs />
 [10] (715,774)<a href='#'>GitHub />
 [11] (782,774)<a href='#'>Whitepaper />
 [12] (850,774)<a href='contact.html'>Contact />
-© 2026 GhostNet Infrastructure. All rights reserved.
+© 2026 Kryptos Infrastructure. All rights reserved.
 
 </current_dom>

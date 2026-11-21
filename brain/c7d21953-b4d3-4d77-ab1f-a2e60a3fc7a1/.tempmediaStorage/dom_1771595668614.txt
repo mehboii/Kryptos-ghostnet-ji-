@@ -1,9 +1,9 @@
-GhostNet
+Kryptos
 [0] (651,54)<a href='#about'>About />
 [1] (717,54)<a href='#how-it-works'>How it Works />
 [2] (796,54)<a href='#developers'>Developers />
 [3] (857,54)<button aria-label='Toggle Theme' class='icon-btn' id='theme-toggle' />
-GhostNet 2.0 Now Live
+Kryptos 2.0 Now Live
 Private Infrastructure for the
 Decentralized
                         Future.

@@ -1,12 +1,12 @@
-# GhostNet Repair & Mesh Enhancement Walkthrough
+# Kryptos Repair & Mesh Enhancement Walkthrough
 
-I have successfully repaired the [script.js](file:///C:/Users/novtw/.gemini/antigravity/scratch/ghostnet-client/script.js) logic to align with the new "Ahost Net" UI interactons and implemented the requested Bluetooth functionality.
+I have successfully repaired the [script.js](file:///C:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/script.js) logic to align with the new "Ahost Net" UI interactons and implemented the requested Bluetooth functionality.
 
 ## Changes Verified
 
 ### 1. UI & Navigation Repairs
 - **Problem**: The UI overhaul changed class names from `.nav-links li` to `.nav-item` and `.tab-content` to `.view-panel`, breaking navigation.
-- **Fix**: Updated all `els` selectors in [script.js](file:///C:/Users/novtw/.gemini/antigravity/scratch/ghostnet-client/script.js).
+- **Fix**: Updated all `els` selectors in [script.js](file:///C:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/script.js).
 - **Validation**: Clicking the Sidebar icons now correctly switches between "Network", "Chat", "BLE", and "Vault" views. The breadcrumb title updates dynamically.
 
 ### 2. Authentication Flow
@@ -18,14 +18,14 @@ I have successfully repaired the [script.js](file:///C:/Users/novtw/.gemini/anti
 - **Problem**: User requested "Real Access" + "Mesh Creation visuals".
 - **Fix**: 
     - Implemented `navigator.bluetooth.requestDevice` for the "Broadcast Beacon" button.
-    - Added [visualizeMeshNode()](file:///C:/Users/novtw/.gemini/antigravity/scratch/ghostnet-client/script.js#345-384) function that draws nodes on the radar.
+    - Added [visualizeMeshNode()](file:///C:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/script.js#345-384) function that draws nodes on the radar.
     - **New Visual**: Added connection lines ("hops") from the center to detected nodes to simulate the mesh topology forming in real-time.
 
 ### 4. Layout Fixes
-- Added a [resizeCanvas()](file:///C:/Users/novtw/.gemini/antigravity/scratch/ghostnet-client/script.js#145-151) trigger after the Auth overlay disappears to ensure the Network Map renders at full size immediately.
+- Added a [resizeCanvas()](file:///C:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/script.js#145-151) trigger after the Auth overlay disappears to ensure the Network Map renders at full size immediately.
 
 ## How to Test
-1. **Open [index.html](file:///C:/Users/novtw/.gemini/antigravity/scratch/ghostnet-client/index.html)**.
+1. **Open [index.html](file:///C:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/index.html)**.
 2. Click **INITIALIZE UPLINK**.
 3. **Navigate to the Bluetooth Tab** (Icon: ᛒ).
 4. Click **BROADCAST BEACON**.

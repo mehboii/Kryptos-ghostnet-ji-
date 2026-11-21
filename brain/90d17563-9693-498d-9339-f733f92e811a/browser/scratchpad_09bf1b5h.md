@@ -1,4 +1,4 @@
-# GhostNet Node Firmware Dashboard Walkthrough
+# Kryptos Node Firmware Dashboard Walkthrough
 
 ## Progress Checklist
 - [ ] Open http://localhost:8000

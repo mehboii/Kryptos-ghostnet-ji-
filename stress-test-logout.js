@@ -1,6 +1,6 @@
 /**
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
- *  GhostNet — Logout Flow End-to-End Stress Test
+ *  Kryptos — Logout Flow End-to-End Stress Test
  * ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
  *
  *  Tests the FULL logout lifecycle under stress:
@@ -61,11 +61,11 @@ const args = Object.fromEntries(
     })
 );
 
-const BACKEND_URL  = args.url || 'https://ghostnet-ji-production.up.railway.app';
+const BACKEND_URL  = args.url || 'https://kryptos-ji-production.up.railway.app';
 const NUM_USERS    = parseInt(args.users || '50', 10);
 const RAPID_CYCLES = parseInt(args.cycles || '10', 10);
 const STAGGER_MS   = parseInt(args.stagger || '200', 10);
-const PASSWORD     = 'GhostNet!Str3ss2026';
+const PASSWORD     = 'Kryptos!Str3ss2026';
 const MAX_RETRIES  = 3;
 
 // ─── Stats ───────────────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ async function requestWithRetry(method, path, opts = {}, retries = MAX_RETRIES) 
 // ─── User Lifecycle Helpers ──────────────────────────────────────────────────
 
 function generateEmail() {
-    return `stress_${crypto.randomBytes(8).toString('hex')}@ghostnet-test.io`;
+    return `stress_${crypto.randomBytes(8).toString('hex')}@kryptos-test.io`;
 }
 
 /**
@@ -258,7 +258,7 @@ function attemptWebSocket(token, timeoutMs = 5000) {
         try {
             const ws = new WebSocket(wsUrl, {
                 handshakeTimeout: timeoutMs,
-                headers: { 'User-Agent': 'GhostNet-LogoutStress' }
+                headers: { 'User-Agent': 'Kryptos-LogoutStress' }
             });
 
             ws.on('open', () => {
@@ -773,7 +773,7 @@ async function printReport() {
     try {
         const fs = await import('fs');
         const logLines = [
-            `GhostNet Logout Stress Test Results`,
+            `Kryptos Logout Stress Test Results`,
             `Date: ${new Date().toISOString()}`,
             `Backend: ${BACKEND_URL}`,
             `Duration: ${elapsed}s`,
@@ -796,7 +796,7 @@ function sleep(ms) {
 
 async function main() {
     console.log('━'.repeat(72));
-    console.log('  GhostNet — Logout Flow End-to-End Stress Test');
+    console.log('  Kryptos — Logout Flow End-to-End Stress Test');
     console.log('━'.repeat(72));
     console.log(`  Backend:     ${BACKEND_URL}`);
     console.log(`  Users:       ${NUM_USERS}`);

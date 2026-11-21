@@ -1,5 +1,5 @@
 # ============================================
-# GhostNet — Docker Ignore
+# Kryptos — Docker Ignore
 # ============================================
 
 # Dependencies (rebuilt inside container)
@@ -50,5 +50,5 @@ simulation.js
 
 # PM2 (replaced by Docker)
 ecosystem.config.cjs
-ghostnet-orchestrator.cjs
-ghostnet-watchdog.cjs
+kryptos-orchestrator.cjs
+kryptos-watchdog.cjs

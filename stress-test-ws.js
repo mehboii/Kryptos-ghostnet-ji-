@@ -1,5 +1,5 @@
 /**
- * GhostNet WebSocket Stress Test
+ * Kryptos WebSocket Stress Test
  *
  * Simulates 50+ concurrent users connecting to the Railway backend.
  * Logs every connect, disconnect, reconnect, error, and message event.
@@ -29,7 +29,7 @@ const args = Object.fromEntries(
 );
 
 const NUM_CLIENTS     = parseInt(args.clients || '50', 10);
-const BACKEND_URL     = args.url || 'https://ghostnet-ji-production.up.railway.app';
+const BACKEND_URL     = args.url || 'https://kryptos-ji-production.up.railway.app';
 const WS_URL          = args.wsurl || null; // auto-derived if not set
 const DURATION_SEC    = parseInt(args.duration || '60', 10);
 const CHAOS_MODE      = !!args.chaos;
@@ -163,7 +163,7 @@ class StressClient {
         try {
             this.ws = new WebSocket(wsUrl, {
                 handshakeTimeout: 10000,
-                headers: { 'User-Agent': `GhostNet-StressTest/${this.id}` }
+                headers: { 'User-Agent': `Kryptos-StressTest/${this.id}` }
             });
         } catch (e) {
             logEvent(this.id, 'CONNECT_ERR', e.message);
@@ -311,7 +311,7 @@ class StressClient {
 
 async function main() {
     console.log('='.repeat(80));
-    console.log('  GhostNet WebSocket Stress Test');
+    console.log('  Kryptos WebSocket Stress Test');
     console.log('='.repeat(80));
     console.log(`  Backend:    ${BACKEND_URL}`);
     console.log(`  Clients:    ${NUM_CLIENTS}`);

@@ -1,5 +1,5 @@
 /**
- * GhostNet Mesh Hardening — Step 2
+ * Kryptos Mesh Hardening — Step 2
  *
  * [2.1] Adaptive BLE Scan Scheduler (exponential backoff + motion reset)
  * [2.2] Split-Brain Reconciliation (Merkle-tree-based ledger sync)
@@ -327,7 +327,7 @@ class ZeroRouteQueue {
         this.MAX_QUEUE_PER_RECIPIENT = 200;
         this.MAX_TOTAL_QUEUED = 2000;
         this.MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours TTL
-        this.STORAGE_KEY = 'ghostnet_zero_route_queue';
+        this.STORAGE_KEY = 'kryptos_zero_route_queue';
         this._totalQueued = 0;
         this._listeners = {};
 
@@ -381,7 +381,7 @@ class ZeroRouteQueue {
         const ikm = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey']);
         const salt = crypto.getRandomValues(new Uint8Array(16));
         const aesKey = await crypto.subtle.deriveKey(
-            { name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('GhostNet-ZRQ-v1') },
+            { name: 'HKDF', hash: 'SHA-256', salt, info: new TextEncoder().encode('Kryptos-ZRQ-v1') },
             ikm,
             { name: 'AES-GCM', length: 256 },
             false,

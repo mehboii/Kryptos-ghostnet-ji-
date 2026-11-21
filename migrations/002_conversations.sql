@@ -1,4 +1,4 @@
--- GhostNet Supabase Migration 002 — Conversations
+-- Kryptos Supabase Migration 002 — Conversations
 -- Persists conversation metadata so chat history survives server restarts/redeploys.
 -- Without this, conversations lived only in the ephemeral conversations.json and were
 -- wiped on every Railway redeploy, making /history return 404 even though the messages

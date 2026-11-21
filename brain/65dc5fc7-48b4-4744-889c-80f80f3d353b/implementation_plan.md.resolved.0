@@ -2,19 +2,19 @@
 
 ## Background
 
-GhostTag is the human-readable username system for GhostNet identities. Currently, the frontend **already has** a GhostTag input field during registration and displays it on the identity dashboard, but:
+GhostTag is the human-readable username system for Kryptos identities. Currently, the frontend **already has** a GhostTag input field during registration and displays it on the identity dashboard, but:
 
 1. **No server-side uniqueness enforcement** — the tag is only saved locally in `localStorage`. Two users can claim the same tag.
 2. **No case normalization** — `@Alice` and `@alice` are treated as different tags.
 3. **No reservation/claim API** — the server has no `/ghosttag` endpoint or database table.
 4. **No lookup by tag** — you can't find a user by their `@username`, only by nodeId.
-5. **No sharing mechanism** — the invite link (`ghostnet.n11x.dev/invite/@username`) exists in the UI but has no backend resolution.
+5. **No sharing mechanism** — the invite link (`kryptos.n11x.dev/invite/@username`) exists in the UI but has no backend resolution.
 
 ## Proposed Changes
 
-### Server — `ghostnet-server.js`
+### Server — `kryptos-server.js`
 
-#### [MODIFY] [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-server.js)
+#### [MODIFY] [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-server.js)
 
 Add a `ghosttags.json` data file and three new endpoints:
 
@@ -55,7 +55,7 @@ Data structure in `ghosttags.json`:
 
 3. **Dashboard display**: After login, verify the tag is still bound server-side (graceful — if server is unreachable, show local value). No functional change needed; the `@tag` display already works.
 
-4. **Invite link sharing**: Add a "Share" button that copies `ghostnet.n11x.dev/invite/@tag` or uses the Web Share API on mobile.
+4. **Invite link sharing**: Add a "Share" button that copies `kryptos.n11x.dev/invite/@tag` or uses the Web Share API on mobile.
 
 5. **Chat: Start by GhostTag**: In `openNewChat()`, allow typing `@username` in the contact field. Resolve via `GET /ghosttag/resolve/:tag` to get the nodeId for encryption.
 

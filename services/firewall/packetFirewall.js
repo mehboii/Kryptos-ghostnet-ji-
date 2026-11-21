@@ -187,7 +187,7 @@ class PacketFirewall {
     // ── 5b. Schema Validation ────────────────────────────────────
 
     /**
-     * Validate that the packet conforms to the GhostNet protocol schema.
+     * Validate that the packet conforms to the Kryptos protocol schema.
      * Expected: { type: string, payload: object, timestamp: number,
      *             nonce: string, signature: string }
      */

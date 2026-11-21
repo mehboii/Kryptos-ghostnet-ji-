@@ -1,3 +1,0 @@
-0c48b9e fix: remove duplicate BACKEND_URL/authHeaders in ui.js and duplicate messages/requireAuth in ghostnet-server.js
-5235f87 Fix Ghost Card and QR scanner bugs in ui.js
-aaf25a3 fix: resolve all merge conflicts, add GhostCode system + QR scanner + Ghost Cards

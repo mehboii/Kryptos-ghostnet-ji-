@@ -1,4 +1,4 @@
-const GhostIdentity = require("./ghostnet-identity");
+const GhostIdentity = require("./kryptos-identity");
 // Add this environment check so it doesn't crash the simulation if run there
 if (typeof window === 'undefined') {
     // We are in Node
@@ -14,7 +14,7 @@ if (typeof window === 'undefined') {
     console.log("Pub Key:", id.publicKey ? "OK" : "MISSING");
 
     // 2. Sign
-    const msg = "Hello GhostNet";
+    const msg = "Hello Kryptos";
     console.log("Signing:", msg);
     const sig = await GhostIdentity.signMessage(msg, id.privateKey);
     console.log("Signature:", sig.substring(0, 20) + "...");

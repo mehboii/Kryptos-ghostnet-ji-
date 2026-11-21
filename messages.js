@@ -1,7 +1,7 @@
 
 /**
 
- * GhostNet — Hardened Message System
+ * Kryptos — Hardened Message System
  * Fixes all 8 security vulnerabilities identified in the audit.
  *
  * Covers:
@@ -36,7 +36,7 @@ const MESSAGE_ENCRYPTION_KEY = process.env.MESSAGE_ENCRYPTION_KEY
 // Fail fast if secrets are missing
 if (!MESSAGE_HMAC_SECRET || !MESSAGE_ENCRYPTION_KEY) {
     throw new Error(
-        '[GhostNet] FATAL: MESSAGE_HMAC_SECRET and MESSAGE_ENCRYPTION_KEY ' +
+        '[Kryptos] FATAL: MESSAGE_HMAC_SECRET and MESSAGE_ENCRYPTION_KEY ' +
         'must be set in environment variables.'
     );
 }

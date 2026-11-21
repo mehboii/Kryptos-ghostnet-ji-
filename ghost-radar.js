@@ -1,7 +1,7 @@
 /**
  * Ghost Radar — real passive signal scanner.
  *
- * BLE is the real core: it drives the native radio through window.GhostNetBLE
+ * BLE is the real core: it drives the native radio through window.KryptosBLE
  * (the same bridge Proximity Connect uses, backed by react-native-ble-plx). It
  * scans UNFILTERED for every nearby BLE device, tracks them live, and derives
  * vendor / category / proximity from the advertisement — NOTHING is invented or
@@ -63,7 +63,7 @@ class GhostRadarEngine {
   }
 
   get _ble() {
-    return (typeof window !== 'undefined') ? window.GhostNetBLE : null;
+    return (typeof window !== 'undefined') ? window.KryptosBLE : null;
   }
 
   // ── Environment ─────────────────────────────────────────────
@@ -226,7 +226,7 @@ class GhostRadarEngine {
     if (companyId != null) rec.companyId = companyId;
     if (vendor) rec.vendor = vendor;
 
-    rec.isGhostNode = this._isGhostNetNode(rec);
+    rec.isGhostNode = this._isKryptosNode(rec);
     rec.category = this._categorize(rec);
     rec.proximity = this._proximity(rec.rssi);
 
@@ -243,7 +243,7 @@ class GhostRadarEngine {
     } catch (_) { return null; }
   }
 
-  _isGhostNetNode(rec) {
+  _isKryptosNode(rec) {
     const n = rec.name;
     if (!n) return false;
     return n.startsWith('GhostNode') || (n.startsWith('0x') && n.length === 42);
@@ -254,7 +254,7 @@ class GhostRadarEngine {
   _categorize(rec) {
     const uuids = (rec.serviceUUIDs || []).map((u) => this._short16(u)).filter(Boolean);
     const has = (x) => uuids.includes(x);
-    if (rec.isGhostNode) return 'GhostNet node';
+    if (rec.isGhostNode) return 'Kryptos node';
     if (has('180d')) return 'Wearable / fitness';
     if (has('1812')) return 'Input device';
     if (has('fd5a') || has('fe2c') || has('fdcf')) return 'Audio / earbuds';

@@ -1,6 +1,6 @@
 {
-  "appId": "dev.n11x.ghostnet",
-  "appName": "GhostNet",
+  "appId": "dev.n11x.kryptos",
+  "appName": "Kryptos",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

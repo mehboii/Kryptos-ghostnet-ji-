@@ -29,10 +29,10 @@ const GhostTag = (() => {
 
     // ─── CONSTANTS ──────────────────────────────────────────────────────────
     const TAG_REGEX = /^[a-z0-9_]{3,20}$/;
-    const STORAGE_KEY_TAG = 'ghostnet_ghost_tag';
-    const STORAGE_KEY_PENDING = 'ghostnet_pending_tag_claim_data';
-    const STORAGE_KEY_PENDING_FLAG = 'ghostnet_pending_tag_claim';
-    const STORAGE_KEY_SYNC_CONFLICT = 'ghostnet_tag_sync_conflict';
+    const STORAGE_KEY_TAG = 'kryptos_ghost_tag';
+    const STORAGE_KEY_PENDING = 'kryptos_pending_tag_claim_data';
+    const STORAGE_KEY_PENDING_FLAG = 'kryptos_pending_tag_claim';
+    const STORAGE_KEY_SYNC_CONFLICT = 'kryptos_tag_sync_conflict';
 
     let _syncInterval = null;
     let _isOnline = navigator.onLine;
@@ -42,15 +42,15 @@ const GhostTag = (() => {
     function _getApiUrl() {
         return (window.BACKEND && window.BACKEND.http)
             ? window.BACKEND.http
-            : 'https://ghostnet-ji-production.up.railway.app';
+            : 'https://kryptos-ji-production.up.railway.app';
     }
 
     function _getAuthToken() {
         // Try sessionStorage first (index.html stores JSON envelope there)
         const sources = [
-            sessionStorage.getItem('ghostnet_token'),
-            localStorage.getItem('ghostnet_token'),
-            localStorage.getItem('ghostnet_jwt'),
+            sessionStorage.getItem('kryptos_token'),
+            localStorage.getItem('kryptos_token'),
+            localStorage.getItem('kryptos_jwt'),
         ];
         for (const raw of sources) {
             if (!raw) continue;
@@ -89,7 +89,7 @@ const GhostTag = (() => {
     function getLocalTag() {
         // 1. Try unified identity
         try {
-            const identity = localStorage.getItem('ghostnet_identity');
+            const identity = localStorage.getItem('kryptos_identity');
             if (identity) {
                 const parsed = JSON.parse(identity);
                 if (parsed && parsed.ghostTag) return _normalizeTag(parsed.ghostTag);
@@ -112,12 +112,12 @@ const GhostTag = (() => {
 
         // Also update unified identity
         try {
-            const identity = localStorage.getItem('ghostnet_identity');
+            const identity = localStorage.getItem('kryptos_identity');
             if (identity) {
                 const parsed = JSON.parse(identity);
                 if (parsed) {
                     parsed.ghostTag = normalized;
-                    localStorage.setItem('ghostnet_identity', JSON.stringify(parsed));
+                    localStorage.setItem('kryptos_identity', JSON.stringify(parsed));
                 }
             }
         } catch (_) {}
@@ -133,12 +133,12 @@ const GhostTag = (() => {
         localStorage.removeItem(STORAGE_KEY_SYNC_CONFLICT);
 
         try {
-            const identity = localStorage.getItem('ghostnet_identity');
+            const identity = localStorage.getItem('kryptos_identity');
             if (identity) {
                 const parsed = JSON.parse(identity);
                 if (parsed) {
                     parsed.ghostTag = '';
-                    localStorage.setItem('ghostnet_identity', JSON.stringify(parsed));
+                    localStorage.setItem('kryptos_identity', JSON.stringify(parsed));
                 }
             }
         } catch (_) {}
@@ -588,7 +588,7 @@ const GhostTag = (() => {
     function getInviteLink(tag) {
         const normalized = _normalizeTag(tag || getLocalTag());
         if (!normalized) return null;
-        return `ghostnet.n11x.dev/invite/@${normalized}`;
+        return `kryptos.n11x.dev/invite/@${normalized}`;
     }
 
     /**
@@ -597,7 +597,7 @@ const GhostTag = (() => {
     function getShareText(tag) {
         const normalized = _normalizeTag(tag || getLocalTag());
         if (!normalized) return null;
-        return `Connect with me on GhostNet: @${normalized}\n${getInviteLink(normalized)}`;
+        return `Connect with me on Kryptos: @${normalized}\n${getInviteLink(normalized)}`;
     }
 
     // ─── STATUS ─────────────────────────────────────────────────────────────

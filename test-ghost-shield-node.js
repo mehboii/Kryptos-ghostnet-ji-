@@ -308,7 +308,7 @@ if (si) {
     // GhostNode
     const node = si.processSignal({ mac: '0xa752f1234567', rssi: -50, isGhostNode: true });
     assert('GhostNode → score = 0', node?.threatScore === 0);
-    assert('GhostNode → type = "GhostNet Node"', node?.type === 'GhostNet Node');
+    assert('GhostNode → type = "Kryptos Node"', node?.type === 'Kryptos Node');
     assert('GhostNode → threatLevel ALLOWED', node?.threatLevel === 'ALLOWED');
 
     // Report

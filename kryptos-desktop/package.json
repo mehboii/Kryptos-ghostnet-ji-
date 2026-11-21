@@ -1,0 +1,12 @@
+{
+  "name": "kryptos-desktop",
+  "version": "1.0.0",
+  "description": "Kryptos — Native Desktop App",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^33.0.0"
+  }
+}

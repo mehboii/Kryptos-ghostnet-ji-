@@ -1,4 +1,4 @@
-// GhostNet migration runner.
+// Kryptos migration runner.
 // Applies every migrations/*.sql file in filename order against DATABASE_URL.
 // Usage: node db/migrate.js   (loads .env via dotenv)
 import 'dotenv/config';

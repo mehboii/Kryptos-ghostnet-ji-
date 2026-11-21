@@ -6,9 +6,9 @@ On logout, clear all vault files from the UI and local storage (but NOT from ser
 
 ### Vault Module
 
-#### [MODIFY] [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+#### [MODIFY] [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
 
-**1. Add `clearVaultState()` function** — clears in-memory `vaultIndex`, removes `ghostnet_vault_index` from localStorage, and clears the vault UI list. Does NOT delete files from server/IPFS. Also calls existing `lockVault()` to clear session keys.
+**1. Add `clearVaultState()` function** — clears in-memory `vaultIndex`, removes `kryptos_vault_index` from localStorage, and clears the vault UI list. Does NOT delete files from server/IPFS. Also calls existing `lockVault()` to clear session keys.
 
 **2. Add `refreshVaultForUser()` function** — re-fetches files from server via the existing `listFiles()` API, updates the in-memory `vaultIndex` and localStorage, and returns the file list for UI rendering.
 
@@ -36,6 +36,6 @@ On logout, clear all vault files from the UI and local storage (but NOT from ser
 ### Browser Testing
 1. Open the app in a browser, log in, and navigate to the Vault tab — files should appear
 2. Click logout — vault files should disappear from the UI
-3. Check localStorage — `ghostnet_vault_index` should be cleared
+3. Check localStorage — `kryptos_vault_index` should be cleared
 4. Log back in — vault files for that user should reload from the server
 5. Verify file cards show: filename, size, date, SHA-256 hash, and Stored badge

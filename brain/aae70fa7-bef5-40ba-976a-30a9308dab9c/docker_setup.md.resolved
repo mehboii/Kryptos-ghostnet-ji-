@@ -1,4 +1,4 @@
-# 🐳 GhostNet — Docker Setup
+# 🐳 Kryptos — Docker Setup
 
 ## Files Created
 
@@ -12,22 +12,22 @@
 
 | File | Change |
 |------|--------|
-| [registry.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-bridge/registry.js) | Relay node URLs now configurable via `GHOSTNET_RELAY_NODES` env var (Docker containers use hostnames, not `localhost`) |
+| [registry.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-bridge/registry.js) | Relay node URLs now configurable via `KRYPTOS_RELAY_NODES` env var (Docker containers use hostnames, not `localhost`) |
 | [.env.example](file:///c:/Users/novtw/.gemini/antigravity/scratch/.env.example) | Added Docker port override documentation |
 
 ## Architecture
 
 ```mermaid
 graph TB
-    subgraph Docker Network: ghostnet-network
-        S["ghostnet-server :8080<br/>API + WebSocket + Auth"]
-        B["ghostnet-bridge :3001<br/>Blockchain Bridge"]
-        C["ghostnet-client :3000<br/>UI Server"]
-        M["ghostnet-messages :8090<br/>SQLite Persistence"]
-        R1["ghostnet-relay-1 :8081"]
-        R2["ghostnet-relay-2 :8082"]
-        R3["ghostnet-relay-3 :8083"]
-        REG["ghostnet-registry :9000<br/>Node Discovery"]
+    subgraph Docker Network: kryptos-network
+        S["kryptos-server :8080<br/>API + WebSocket + Auth"]
+        B["kryptos-bridge :3001<br/>Blockchain Bridge"]
+        C["kryptos-client :3000<br/>UI Server"]
+        M["kryptos-messages :8090<br/>SQLite Persistence"]
+        R1["kryptos-relay-1 :8081"]
+        R2["kryptos-relay-2 :8082"]
+        R3["kryptos-relay-3 :8083"]
+        REG["kryptos-registry :9000<br/>Node Discovery"]
     end
 
     S --> B
@@ -44,16 +44,16 @@ graph TB
 
 | PM2 Service | Docker Service | Port | Health Check |
 |-------------|---------------|------|-------------|
-| `ghostnet-server` | `ghostnet-server` | 8080 | `GET /status` |
-| `ghostnet-bridge` | `ghostnet-bridge` | 3001 | `GET /wallet` |
-| `ghostnet-client` | `ghostnet-client` | 3000 | `GET /health` |
-| `ghostnet-messages` | `ghostnet-messages` | 8090 | `GET /users` |
-| `ghostnet-relay-1` | `ghostnet-relay-1` | 8081 | — |
-| `ghostnet-relay-2` | `ghostnet-relay-2` | 8082 | — |
-| `ghostnet-relay-3` | `ghostnet-relay-3` | 8083 | — |
-| `ghostnet-registry` | `ghostnet-registry` | 9000 | — |
-| `ghostnet-ble` | *excluded* | — | N/A (requires host Bluetooth) |
-| `ghostnet-watchdog` | *excluded* | — | Docker handles restarts natively |
+| `kryptos-server` | `kryptos-server` | 8080 | `GET /status` |
+| `kryptos-bridge` | `kryptos-bridge` | 3001 | `GET /wallet` |
+| `kryptos-client` | `kryptos-client` | 3000 | `GET /health` |
+| `kryptos-messages` | `kryptos-messages` | 8090 | `GET /users` |
+| `kryptos-relay-1` | `kryptos-relay-1` | 8081 | — |
+| `kryptos-relay-2` | `kryptos-relay-2` | 8082 | — |
+| `kryptos-relay-3` | `kryptos-relay-3` | 8083 | — |
+| `kryptos-registry` | `kryptos-registry` | 9000 | — |
+| `kryptos-ble` | *excluded* | — | N/A (requires host Bluetooth) |
+| `kryptos-watchdog` | *excluded* | — | Docker handles restarts natively |
 
 > [!NOTE]
 > **BLE** and **Watchdog** services are intentionally excluded — BLE requires direct host Bluetooth hardware access, and Docker's `restart: unless-stopped` + health checks replace the watchdog.
@@ -81,19 +81,19 @@ docker compose down
 
 ```bash
 # Start a single service
-docker compose up -d ghostnet-server
+docker compose up -d kryptos-server
 
 # Rebuild after code changes
 docker compose up -d --build
 
 # View a specific service's logs
-docker compose logs -f ghostnet-server
+docker compose logs -f kryptos-server
 
 # Restart a service
-docker compose restart ghostnet-bridge
+docker compose restart kryptos-bridge
 
 # Shell into a container
-docker compose exec ghostnet-server sh
+docker compose exec kryptos-server sh
 
 # Nuke everything (including volumes/data)
 docker compose down -v
@@ -103,9 +103,9 @@ docker compose down -v
 
 | Volume | Mounted To | Contains |
 |--------|-----------|----------|
-| `ghostnet-data` | `/app/data` | General app data |
-| `ghostnet-logs` | `/app/logs` | Service log files |
-| `ghostnet-sqlite` | `/app/ghostnet-messages` | SQLite database |
+| `kryptos-data` | `/app/data` | General app data |
+| `kryptos-logs` | `/app/logs` | Service log files |
+| `kryptos-sqlite` | `/app/kryptos-messages` | SQLite database |
 | Bind mounts | [./messages.json](file:///c:/Users/novtw/.gemini/antigravity/scratch/messages.json), etc. | JSON data files (synced with host) |
 
 > [!IMPORTANT]
@@ -115,10 +115,10 @@ docker compose down -v
 
 1. **Single Dockerfile, multi-service** — All services share the same image (same Node.js codebase), with the `command` field in [docker-compose.yml](file:///c:/Users/novtw/.gemini/antigravity/scratch/docker-compose.yml) selecting which service to run. This keeps builds fast and images consistent.
 
-2. **Multi-stage builds** — Dependencies for each sub-project (`ghostnet-bridge`, `ghostnet-client`, `relay`) are installed in parallel build stages, then copied into the final image. This means a code change doesn't re-install dependencies.
+2. **Multi-stage builds** — Dependencies for each sub-project (`kryptos-bridge`, `kryptos-client`, `relay`) are installed in parallel build stages, then copied into the final image. This means a code change doesn't re-install dependencies.
 
-3. **Non-root user** — The production image runs as `ghostnet:ghostnet`, not `root`.
+3. **Non-root user** — The production image runs as `kryptos:kryptos`, not `root`.
 
 4. **Tini init** — Proper PID 1 signal handling so `docker stop` cleanly shuts down Node.js processes.
 
-5. **Docker network** — All services communicate via the `ghostnet-network` bridge network using container hostnames (e.g., `http://ghostnet-bridge:3001`).
+5. **Docker network** — All services communicate via the `kryptos-network` bridge network using container hostnames (e.g., `http://kryptos-bridge:3001`).

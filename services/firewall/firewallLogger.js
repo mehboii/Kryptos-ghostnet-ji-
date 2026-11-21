@@ -1,5 +1,5 @@
 /**
- * firewallLogger.js — Encrypted Audit Trail for the GhostNet Firewall
+ * firewallLogger.js — Encrypted Audit Trail for the Kryptos Firewall
  * =====================================================================
  *
  * Every firewall event — blocked connections, detected attacks, rule

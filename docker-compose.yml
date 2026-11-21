@@ -1,11 +1,11 @@
 # ============================================
-# GhostNet — Docker Compose Orchestration
+# Kryptos — Docker Compose Orchestration
 # ============================================
 # Replaces PM2 ecosystem with container-native services.
 #
 # Usage:
 #   docker compose up -d              → start all services
-#   docker compose up -d ghostnet-server  → single service
+#   docker compose up -d kryptos-server  → single service
 #   docker compose logs -f            → live tail all logs
 #   docker compose down               → stop everything
 #   docker compose build              → rebuild all images
@@ -17,21 +17,21 @@ services:
   # ══════════════════════════════════════════
   #  CORE: Main API + WebSocket + Auth
   # ══════════════════════════════════════════
-  ghostnet-server:
+  kryptos-server:
     build: .
-    container_name: ghostnet-server
-    command: ["node", "ghostnet-server.js"]
+    container_name: kryptos-server
+    command: ["node", "kryptos-server.js"]
     ports:
-      - "${GHOSTNET_SERVER_PORT:-8080}:8080"
+      - "${KRYPTOS_SERVER_PORT:-8080}:8080"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - GHOSTNET_MODE=${GHOSTNET_MODE:-development}
+      - KRYPTOS_MODE=${KRYPTOS_MODE:-development}
       - PORT=8080
-      - GHOSTNET_BRIDGE_URL=http://ghostnet-bridge:3001
+      - KRYPTOS_BRIDGE_URL=http://kryptos-bridge:3001
     volumes:
-      - ghostnet-data:/app/data
-      - ghostnet-logs:/app/logs
+      - kryptos-data:/app/data
+      - kryptos-logs:/app/logs
       - ./messages.json:/app/messages.json
       - ./conversations.json:/app/conversations.json
       - ./users.json:/app/users.json:ro
@@ -44,26 +44,26 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
     depends_on:
-      ghostnet-messages:
+      kryptos-messages:
         condition: service_healthy
 
   # ══════════════════════════════════════════
   #  BRIDGE: Multi-chain Blockchain Bridge
   # ══════════════════════════════════════════
-  ghostnet-bridge:
+  kryptos-bridge:
     build: .
-    container_name: ghostnet-bridge
-    command: ["node", "ghostnet-bridge/bridge.js"]
+    container_name: kryptos-bridge
+    command: ["node", "kryptos-bridge/bridge.js"]
     ports:
-      - "${GHOSTNET_BRIDGE_PORT:-3001}:3001"
+      - "${KRYPTOS_BRIDGE_PORT:-3001}:3001"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=3001
     volumes:
-      - ghostnet-logs:/app/logs
+      - kryptos-logs:/app/logs
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/wallet"]
       interval: 30s
@@ -72,17 +72,17 @@ services:
       start_period: 15s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
   # ══════════════════════════════════════════
   #  CLIENT: UI Static File Server
   # ══════════════════════════════════════════
-  ghostnet-client:
+  kryptos-client:
     build: .
-    container_name: ghostnet-client
-    command: ["node", "ghostnet-client/server.js"]
+    container_name: kryptos-client
+    command: ["node", "kryptos-client/server.js"]
     ports:
-      - "${GHOSTNET_CLIENT_PORT:-3000}:3000"
+      - "${KRYPTOS_CLIENT_PORT:-3000}:3000"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
@@ -95,23 +95,23 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
   # ══════════════════════════════════════════
   #  MESSAGES: SQLite Persistence Service
   # ══════════════════════════════════════════
-  ghostnet-messages:
+  kryptos-messages:
     build: .
-    container_name: ghostnet-messages
-    command: ["node", "ghostnet-messages/server.js"]
+    container_name: kryptos-messages
+    command: ["node", "kryptos-messages/server.js"]
     ports:
-      - "${GHOSTNET_MESSAGES_PORT:-8090}:8090"
+      - "${KRYPTOS_MESSAGES_PORT:-8090}:8090"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
       - PORT=8090
     volumes:
-      - ghostnet-sqlite:/app/ghostnet-messages
+      - kryptos-sqlite:/app/kryptos-messages
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8090/users"]
       interval: 30s
@@ -120,17 +120,17 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
   # ══════════════════════════════════════════
   #  RELAY NODES: Onion Routing Chain
   # ══════════════════════════════════════════
-  ghostnet-relay-1:
+  kryptos-relay-1:
     build: .
-    container_name: ghostnet-relay-1
-    command: ["node", "ghostnet-bridge/relay/server.js"]
+    container_name: kryptos-relay-1
+    command: ["node", "kryptos-bridge/relay/server.js"]
     ports:
-      - "${GHOSTNET_RELAY_1_PORT:-8081}:8081"
+      - "${KRYPTOS_RELAY_1_PORT:-8081}:8081"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
@@ -144,14 +144,14 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
-  ghostnet-relay-2:
+  kryptos-relay-2:
     build: .
-    container_name: ghostnet-relay-2
-    command: ["node", "ghostnet-bridge/relay/server.js"]
+    container_name: kryptos-relay-2
+    command: ["node", "kryptos-bridge/relay/server.js"]
     ports:
-      - "${GHOSTNET_RELAY_2_PORT:-8082}:8082"
+      - "${KRYPTOS_RELAY_2_PORT:-8082}:8082"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
@@ -165,14 +165,14 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
-  ghostnet-relay-3:
+  kryptos-relay-3:
     build: .
-    container_name: ghostnet-relay-3
-    command: ["node", "ghostnet-bridge/relay/server.js"]
+    container_name: kryptos-relay-3
+    command: ["node", "kryptos-bridge/relay/server.js"]
     ports:
-      - "${GHOSTNET_RELAY_3_PORT:-8083}:8083"
+      - "${KRYPTOS_RELAY_3_PORT:-8083}:8083"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
@@ -186,21 +186,21 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
   # ══════════════════════════════════════════
   #  REGISTRY: Node Discovery
   # ══════════════════════════════════════════
-  ghostnet-registry:
+  kryptos-registry:
     build: .
-    container_name: ghostnet-registry
-    command: ["node", "ghostnet-bridge/registry.js"]
+    container_name: kryptos-registry
+    command: ["node", "kryptos-bridge/registry.js"]
     ports:
-      - "${GHOSTNET_REGISTRY_PORT:-9000}:9000"
+      - "${KRYPTOS_REGISTRY_PORT:-9000}:9000"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - GHOSTNET_RELAY_NODES=ws://ghostnet-server:8080,ws://ghostnet-relay-1:8081,ws://ghostnet-relay-2:8082,ws://ghostnet-relay-3:8083
+      - KRYPTOS_RELAY_NODES=ws://kryptos-server:8080,ws://kryptos-relay-1:8081,ws://kryptos-relay-2:8082,ws://kryptos-relay-3:8083
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:9000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
       interval: 30s
@@ -209,26 +209,26 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
     depends_on:
-      - ghostnet-relay-1
-      - ghostnet-relay-2
-      - ghostnet-relay-3
+      - kryptos-relay-1
+      - kryptos-relay-2
+      - kryptos-relay-3
 
   # ══════════════════════════════════════════
   #  CHAIN: Blockchain Abstraction Layer
   # ══════════════════════════════════════════
-  ghostnet-chain:
+  kryptos-chain:
     build: .
-    container_name: ghostnet-chain
-    command: ["node", "ghostnet-chain/chain-service.js"]
+    container_name: kryptos-chain
+    command: ["node", "kryptos-chain/chain-service.js"]
     ports:
-      - "${GHOSTNET_CHAIN_PORT:-4000}:4000"
+      - "${KRYPTOS_CHAIN_PORT:-4000}:4000"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - GHOSTNET_CHAIN_PORT=4000
-      - GHOSTNET_CHAIN_PROVIDER=${GHOSTNET_CHAIN_PROVIDER:-evm}
+      - KRYPTOS_CHAIN_PORT=4000
+      - KRYPTOS_CHAIN_PROVIDER=${KRYPTOS_CHAIN_PROVIDER:-evm}
       - ETH_RPC_URL=${ETH_RPC_URL:-http://127.0.0.1:8545}
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
@@ -238,47 +238,47 @@ services:
       start_period: 10s
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
 
   # ══════════════════════════════════════════
   #  VAULT: Encrypted File Storage
   # ══════════════════════════════════════════
-  ghostnet-vault:
+  kryptos-vault:
     build: .
-    container_name: ghostnet-vault
-    command: ["node", "ghostnet-vault/vault-service.js"]
+    container_name: kryptos-vault
+    command: ["node", "kryptos-vault/vault-service.js"]
     ports:
-      - "${GHOSTNET_VAULT_PORT:-4001}:4001"
+      - "${KRYPTOS_VAULT_PORT:-4001}:4001"
     env_file: .env
     environment:
       - NODE_ENV=${NODE_ENV:-development}
-      - GHOSTNET_VAULT_PORT=4001
-      - GHOSTNET_CHAIN_URL=http://ghostnet-chain:4000
+      - KRYPTOS_VAULT_PORT=4001
+      - KRYPTOS_CHAIN_URL=http://kryptos-chain:4000
     volumes:
-      - ghostnet-vault:/app/ghostnet-vault/vault-data
+      - kryptos-vault:/app/kryptos-vault/vault-data
     restart: unless-stopped
     networks:
-      - ghostnet
+      - kryptos
     depends_on:
-      - ghostnet-chain
+      - kryptos-chain
 
 # ══════════════════════════════════════════
 #  VOLUMES
 # ══════════════════════════════════════════
 volumes:
-  ghostnet-data:
+  kryptos-data:
     driver: local
-  ghostnet-logs:
+  kryptos-logs:
     driver: local
-  ghostnet-sqlite:
+  kryptos-sqlite:
     driver: local
-  ghostnet-vault:
+  kryptos-vault:
     driver: local
 
 # ══════════════════════════════════════════
 #  NETWORKS
 # ══════════════════════════════════════════
 networks:
-  ghostnet:
+  kryptos:
     driver: bridge
-    name: ghostnet-network
+    name: kryptos-network

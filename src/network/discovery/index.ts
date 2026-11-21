@@ -39,22 +39,22 @@ export interface DiscoveryOptions {
 
 const DEFAULT_BOOTSTRAP_NODES: BootstrapNode[] = [
   {
-    host: 'bootstrap1.ghostnet.local',
+    host: 'bootstrap1.kryptos.local',
     port: 6881,
     publicKeyHex: '0000000000000000000000000000000000000000000000000000000000000000',
-    name: 'ghostnet-bootstrap-1',
+    name: 'kryptos-bootstrap-1',
   },
   {
-    host: 'bootstrap2.ghostnet.local',
+    host: 'bootstrap2.kryptos.local',
     port: 6881,
     publicKeyHex: '0000000000000000000000000000000000000000000000000000000000000000',
-    name: 'ghostnet-bootstrap-2',
+    name: 'kryptos-bootstrap-2',
   },
   {
-    host: 'bootstrap3.ghostnet.local',
+    host: 'bootstrap3.kryptos.local',
     port: 6881,
     publicKeyHex: '0000000000000000000000000000000000000000000000000000000000000000',
-    name: 'ghostnet-bootstrap-3',
+    name: 'kryptos-bootstrap-3',
   },
 ];
 

@@ -1,0 +1,16 @@
+{
+    "name": "kryptos-chain",
+    "version": "1.0.0",
+    "description": "Kryptos Blockchain Abstraction Layer — switchable EVM backend",
+    "type": "module",
+    "main": "chain-service.js",
+    "scripts": {
+        "start": "node chain-service.js"
+    },
+    "dependencies": {
+        "cors": "^2.8.6",
+        "dotenv": "^16.6.1",
+        "ethers": "^6.16.0",
+        "express": "^4.22.1"
+    }
+}

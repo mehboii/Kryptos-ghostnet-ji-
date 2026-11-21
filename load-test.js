@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * GhostNet Backend — API Load Test (ESM)
+ * Kryptos Backend — API Load Test (ESM)
  * ───────────────────────────────────────
  * Hits /health, /auth, /messages, /nodes with 100 concurrent requests each.
  * Logs response times (min, max, avg, p50, p95, p99) and failure counts.
@@ -10,7 +10,7 @@
 
 import fs from 'fs';
 
-const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
 const ENDPOINTS = ['/health', '/auth', '/messages', '/nodes'];
 const CONCURRENCY = 100;
 const TIMEOUT_MS = 15000;
@@ -113,7 +113,7 @@ async function main() {
   const startTime = new Date().toISOString();
 
   log('╔════════════════════════════════════════════════════════════════╗');
-  log('║   GhostNet Backend — API Load Test                            ║');
+  log('║   Kryptos Backend — API Load Test                            ║');
   log(`║   Target: ${BACKEND_URL.padEnd(49)}║`);
   log(`║   Concurrency: ${String(CONCURRENCY).padEnd(44)}║`);
   log(`║   Started: ${startTime.padEnd(48)}║`);

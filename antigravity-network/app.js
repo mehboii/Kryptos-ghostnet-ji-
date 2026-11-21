@@ -1,6 +1,6 @@
 
 /**
- * GhostNet Application Logic
+ * Kryptos Application Logic
  * Integrates Identity, GhostMesh Transport, and Chat.
  * 
  * Architecture:
@@ -31,7 +31,7 @@ window.app = {
 // [DAST-09] IndexedDB-backed non-extractable storage key
 async function _getOrCreateStorageKey() {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open('ghostnet_keys', 1);
+        const req = indexedDB.open('kryptos_keys', 1);
         req.onupgradeneeded = (e) => {
             e.target.result.createObjectStore('keys');
         };
@@ -61,13 +61,13 @@ async function _getOrCreateStorageKey() {
 
 // Initialize App on Load
 window.addEventListener('DOMContentLoaded', async () => {
-    console.log(" System: Initializing GhostNet...");
+    console.log(" System: Initializing Kryptos...");
 
     // --- 1. IDENTITY ---
-    let myId = localStorage.getItem('ghostnet_user_id');
+    let myId = localStorage.getItem('kryptos_user_id');
     if (!myId) {
         myId = "user_" + crypto.randomUUID();
-        localStorage.setItem('ghostnet_user_id', myId);
+        localStorage.setItem('kryptos_user_id', myId);
     }
 
     // [RT-BREAK-12] Persist identity keypair in IndexedDB across page loads
@@ -75,7 +75,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         let storedIdentity = null;
         try {
             storedIdentity = await new Promise((resolve, reject) => {
-                const req = indexedDB.open('ghostnet_keys', 1);
+                const req = indexedDB.open('kryptos_keys', 1);
                 req.onerror = () => reject(req.error);
                 req.onsuccess = () => {
                     const db = req.result;
@@ -94,7 +94,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             window.app.identity = await window.GhostIdentity.generateIdentity();
             try {
                 await new Promise((resolve, reject) => {
-                    const req = indexedDB.open('ghostnet_keys', 1);
+                    const req = indexedDB.open('kryptos_keys', 1);
                     req.onerror = () => reject(req.error);
                     req.onsuccess = () => {
                         const db = req.result;
@@ -319,7 +319,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         try {
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             // [DAST-F13] Cookie-based auth — cookie sent automatically with upgrade request
-            const wsUrl = (window.GHOSTNET_CONFIG && window.GHOSTNET_CONFIG.wsUrl)
+            const wsUrl = (window.KRYPTOS_CONFIG && window.KRYPTOS_CONFIG.wsUrl)
                 || `${protocol}//${window.location.host}/ws`;
             const ws = new WebSocket(wsUrl);
             ws.onopen = () => {
@@ -371,6 +371,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.dispatchEvent(new Event("app:state"));
 
     if (window.location.protocol === 'file:') {
-        alert(" WARNING: You are running from a file:// path.\n\nPlease run 'node ghostnet-server.js' and visit http://localhost:8080");
+        alert(" WARNING: You are running from a file:// path.\n\nPlease run 'node kryptos-server.js' and visit http://localhost:8080");
     }
 });

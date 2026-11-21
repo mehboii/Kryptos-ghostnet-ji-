@@ -1,7 +1,0 @@
-{
-  "name": "ghostnet-wifi-suggest",
-  "version": "0.1.0",
-  "description": "Non-persistent MAC randomization policy for GhostNet-suggested Wi-Fi networks (Android 12+ only)",
-  "main": "index.ts",
-  "private": true
-}

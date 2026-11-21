@@ -1,4 +1,4 @@
-# GhostNet Node Firmware Dashboard
+# Kryptos Node Firmware Dashboard
 
 ### Design Architecture & Aesthetic
 The dashboard follows a **"Palantir Gotham meets Cyberpunk"** design language, emphasizing high-contrast data visualization, military-grade security cues, and a deep matte black foundation.
@@ -52,10 +52,10 @@ The dashboard follows a **"Palantir Gotham meets Cyberpunk"** design language, e
 
 ### How to Launch
 
-1. **Standalone File**: Open `c:\Users\novtw\Documents\ghostnet-node-dashboard\index.html` in any modern browser.
+1. **Standalone File**: Open `c:\Users\novtw\Documents\kryptos-node-dashboard\index.html` in any modern browser.
 2. **Local Server (Python)**:
    ```powershell
-   cd c:\Users\novtw\Documents\ghostnet-node-dashboard
+   cd c:\Users\novtw\Documents\kryptos-node-dashboard
    python -m http.server 8000
    ```
    Then navigate to `http://localhost:8000`.

@@ -5,7 +5,7 @@
 2. [ ] Click on the "Profile" tab in the sidebar navigation.
 3. [ ] Verify the UI elements:
     - [ ] "Node Identity" hero header.
-    - [ ] "GhostNet" title.
+    - [ ] "Kryptos" title.
     - [ ] "Create New Identity" button.
     - [ ] "Restore With Seed Phrase" button.
     - [ ] Animated logo ring.

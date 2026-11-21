@@ -1,5 +1,5 @@
 {
   "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "Implementation plan to fix GhostNet app bugs: session clear loop, identity preservation, seed phrase restore, 413 error (payload size), and 404 error (vault key endpoint).",
+  "summary": "Implementation plan to fix Kryptos app bugs: session clear loop, identity preservation, seed phrase restore, 413 error (payload size), and 404 error (vault key endpoint).",
   "updatedAt": "2026-03-15T07:06:54.186146200Z"
 }

@@ -1,5 +1,5 @@
 /**
- * GhostNet Application Logic — FULLY HARDENED VERSION
+ * Kryptos Application Logic — FULLY HARDENED VERSION
  *
  * Vulnerabilities fixed in THIS pass (on top of prior hardening):
  *
@@ -34,8 +34,8 @@
 // ─────────────────────────────────────────────
 
 function getAuthToken() {
-    const raw = sessionStorage.getItem('ghostnet_token')
-        || localStorage.getItem('ghostnet_token') || '';
+    const raw = sessionStorage.getItem('kryptos_token')
+        || localStorage.getItem('kryptos_token') || '';
     if (!raw) return '';
     try {
         const parsed = JSON.parse(raw);
@@ -93,9 +93,9 @@ const MsgRateLimit = (() => {
 })();
 
 var BACKEND = {
-    http: 'https://ghostnet-ji-production.up.railway.app',
-    ws: 'wss://ghostnet-ji-production.up.railway.app/ws',
-    url: (path) => `https://ghostnet-ji-production.up.railway.app${path}`
+    http: 'https://kryptos-ji-production.up.railway.app',
+    ws: 'wss://kryptos-ji-production.up.railway.app/ws',
+    url: (path) => `https://kryptos-ji-production.up.railway.app${path}`
 };
 
 const MAX_MSG_LENGTH = 2000;
@@ -116,15 +116,15 @@ const ALLOWED_ATTACHMENT_MIME = new Set([
 //  obtained during the interactive unlock flow. After a page reload / new tab /
 //  remembered session / token expiry there was NO token, so every authed call
 //  (/validate-node, /history, /conversations, vault…) returned HTTP 401.
-//  This transparently refreshes the token on load via window.ghostnetEnsureAuth()
+//  This transparently refreshes the token on load via window.kryptosEnsureAuth()
 //  (defined in index.html). It no-ops if a valid token already exists.
 // ─────────────────────────────────────────────
 (function autoAuthOnLoad() {
     let tries = 0;
     const tick = async () => {
         tries++;
-        if (typeof window.ghostnetEnsureAuth === 'function') {
-            try { await window.ghostnetEnsureAuth(); } catch (_) {}
+        if (typeof window.kryptosEnsureAuth === 'function') {
+            try { await window.kryptosEnsureAuth(); } catch (_) {}
             return;
         }
         if (tries < 40) setTimeout(tick, 250); // wait up to ~10s for the auth closure
@@ -163,14 +163,14 @@ window.app = {
 //  MAIN INIT
 // ─────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', async () => {
-    log.info('Initializing GhostNet...');
+    log.info('Initializing Kryptos...');
 
     // ── 1. IDENTITY ──────────────────────────────
 
-    let myId = localStorage.getItem('ghostnet_user_id');
+    let myId = localStorage.getItem('kryptos_user_id');
     if (!myId) {
         myId = generateSecureId('user');
-        localStorage.setItem('ghostnet_user_id', myId);
+        localStorage.setItem('kryptos_user_id', myId);
     }
 
     let stored = null;
@@ -178,9 +178,9 @@ window.addEventListener('DOMContentLoaded', async () => {
         if (window.GhostIdentity) {
             stored = GhostIdentity.getStoredIdentity();
         } else {
-            const nodeId = localStorage.getItem('ghostnet_node_id');
-            const displayName = localStorage.getItem('ghostnet_display_name');
-            const address = localStorage.getItem('ghostnet_address');
+            const nodeId = localStorage.getItem('kryptos_node_id');
+            const displayName = localStorage.getItem('kryptos_display_name');
+            const address = localStorage.getItem('kryptos_address');
             if (nodeId && nodeId !== 'null') stored = { nodeId, displayName, address };
         }
     } catch (e) {
@@ -251,7 +251,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             }
         } else if (window.app.mesh && !window.app.mesh.wsReady) {
             // Mesh was deferred because no auth token was present at startup — retry now.
-            let token = sessionStorage.getItem('ghostnet_token') || localStorage.getItem('ghostnet_token') || '';
+            let token = sessionStorage.getItem('kryptos_token') || localStorage.getItem('kryptos_token') || '';
             // Unwrap JSON envelope {token, expiresAt} written by _setAuthToken
             if (token) {
                 try { const p = JSON.parse(token); if (p && p.token) token = p.token; } catch (_) {}
@@ -303,8 +303,8 @@ window.addEventListener('DOMContentLoaded', async () => {
             // returns '' for an expired token, so without this the POST would 401 and the
             // message would be silently dropped (the recipient never receives it) even
             // though the sender already saw the optimistic bubble.
-            if (!getAuthToken() && typeof window.ghostnetEnsureAuth === 'function') {
-                await window.ghostnetEnsureAuth();
+            if (!getAuthToken() && typeof window.kryptosEnsureAuth === 'function') {
+                await window.kryptosEnsureAuth();
             }
 
             const doPost = () => fetch(BACKEND.url('/message'), {
@@ -317,12 +317,12 @@ window.addEventListener('DOMContentLoaded', async () => {
 
             // Token may be server-side expired while we still thought it valid → refresh
             // once and retry so the message isn't lost on a stale session.
-            if (response.status === 401 && typeof window.ghostnetEnsureAuth === 'function') {
+            if (response.status === 401 && typeof window.kryptosEnsureAuth === 'function') {
                 try {
-                    sessionStorage.removeItem('ghostnet_token');
-                    localStorage.removeItem('ghostnet_token');
+                    sessionStorage.removeItem('kryptos_token');
+                    localStorage.removeItem('kryptos_token');
                 } catch (_) {}
-                const refreshed = await window.ghostnetEnsureAuth();
+                const refreshed = await window.kryptosEnsureAuth();
                 if (refreshed) response = await doPost();
             }
 
@@ -340,7 +340,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                 // Surface auth failures so the message isn't silently lost — prompt re-unlock.
                 if (response.status === 401) {
                     if (typeof _showDevWarning === 'function') _showDevWarning(' Message not sent — please unlock to re-authenticate.');
-                    if (typeof window.ghostnetEnsureAuth === 'function') window.ghostnetEnsureAuth();
+                    if (typeof window.kryptosEnsureAuth === 'function') window.kryptosEnsureAuth();
                 } else if (response.status === 404 && window.UI) {
                     UI.addMessage(` ${errMsg}`, 'them');
                 }
@@ -588,7 +588,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     } else {
         log.warn('GhostMesh not loaded, using direct WebSocket fallback.');
-        if (window.__GHOSTNET_OFFLINE__) {
+        if (window.__KRYPTOS_OFFLINE__) {
             log.info('Offline standalone mode — skipping WebSocket fallback (no server).');
         } else try {
             const ws = new WebSocket(BACKEND.ws);
@@ -732,7 +732,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             import('@capacitor/app').then(({ App }) => {
                 App.addListener('appStateChange', ({ isActive }) => {
                     if (isActive) {
-                        log.info('[GhostNet] App resumed — checking WebSocket...');
+                        log.info('[Kryptos] App resumed — checking WebSocket...');
                         if (window.app.mesh && (!window.app.mesh.ws || window.app.mesh.ws.readyState !== WebSocket.OPEN)) {
                             window.app.mesh.connectWebSocket();
                         }
@@ -743,7 +743,7 @@ window.addEventListener('DOMContentLoaded', async () => {
             import('@capacitor/network').then(({ Network }) => {
                 Network.addListener('networkStatusChange', status => {
                     if (status.connected) {
-                        log.info('[GhostNet] Network restored — reconnecting WebSocket...');
+                        log.info('[Kryptos] Network restored — reconnecting WebSocket...');
                         if (window.app.mesh && (!window.app.mesh.ws || window.app.mesh.ws.readyState !== WebSocket.OPEN)) {
                             window.app.mesh.connectWebSocket();
                         }
@@ -760,7 +760,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     if (window.location.protocol === 'file:') {
         _showDevWarning(
-            ' Running from file:// — run node ghostnet-server.js and visit http://localhost:8080'
+            ' Running from file:// — run node kryptos-server.js and visit http://localhost:8080'
         );
     }
 

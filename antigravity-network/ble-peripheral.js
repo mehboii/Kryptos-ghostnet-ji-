@@ -3,7 +3,7 @@ const bleno = require('@abandonware/bleno');
 const crypto = require('crypto');
 
 /**
- * GhostNet BLE Peripheral — SECURITY HARDENED
+ * Kryptos BLE Peripheral — SECURITY HARDENED
  *
  * FIXES:
  * [FIX 09-A] Generate a real Ed25519 key pair at startup instead of hardcoded placeholder
@@ -27,7 +27,7 @@ const { publicKey: nodePublicKey, privateKey: nodePrivateKey } = crypto.generate
 const pubKeyHex = nodePublicKey.toString('hex');
 const myName = "GhostNode_" + pubKeyHex.slice(-8);
 
-console.log(`Starting GhostNet Peripheral: ${myName}`);
+console.log(`Starting Kryptos Peripheral: ${myName}`);
 console.log(`Public Key (last 16): …${pubKeyHex.slice(-16)}`);
 
 let updateCallback = null;

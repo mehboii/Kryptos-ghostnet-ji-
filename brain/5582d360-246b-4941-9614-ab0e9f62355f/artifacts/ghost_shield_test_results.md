@@ -29,7 +29,7 @@ Each tier **progressively restricts** network behavior. The tests confirm these 
 
 ## What Changed
 
-### Firmware ([ghostnet-node.js](file:///c:/Users/novtw/Documents/ghostnet-node-dashboard/firmware/ghostnet-node.js))
+### Firmware ([kryptos-node.js](file:///c:/Users/novtw/Documents/kryptos-node-dashboard/firmware/kryptos-node.js))
 - Added `GHOST_SHIELD_TIERS` constant and `ghost_shield_tier` config field (0–3)
 - `sendHello()` — tier 1+ suppresses UDP broadcasts
 - `handleTCPMessage()` — tier 2+ blocks relay with `GHOST_SHIELD_BLOCK` status
@@ -39,7 +39,7 @@ Each tier **progressively restricts** network behavior. The tests confirm these 
 - `handleGhostShieldTransition()` — emits `GHOST_SHIELD_CHANGE` events
 - `buildStats()` — includes `ghost_shield_tier`, `ghost_shield_name`, `ghost_shield_effects`
 
-### Test File ([test-ghost-shield.js](file:///c:/Users/novtw/Documents/ghostnet-node-dashboard/firmware/test-ghost-shield.js))
+### Test File ([test-ghost-shield.js](file:///c:/Users/novtw/Documents/kryptos-node-dashboard/firmware/test-ghost-shield.js))
 - Self-contained mini daemon with real UDP/TCP/WebSocket servers
 - Tests actual network I/O, not mocked behavior
 - Validates every tier transition direction (up, down, skip)

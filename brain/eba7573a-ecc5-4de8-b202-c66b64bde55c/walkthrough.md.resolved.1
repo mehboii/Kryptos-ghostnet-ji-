@@ -1,21 +1,21 @@
-# Walkthrough - GhostNet Bug Fixes
+# Walkthrough - Kryptos Bug Fixes
 
-I have implemented the fixes for the reported bugs in the GhostNet application.
+I have implemented the fixes for the reported bugs in the Kryptos application.
 
 ## Changes Made
 
 ### 1. Unified Session Clearing and Loop Prevention
 - **File**: [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js)
 - **Fix**: Added a `window._isClearingSession` guard flag to `UI.clearSession` to prevent infinite recursion and loops.
-- **Fix**: Replaced `localStorage.clear()` with selective removal of session keys (`ghostnet_token`, etc.) while preserving critical identity data (`ghostnet_identity`).
+- **Fix**: Replaced `localStorage.clear()` with selective removal of session keys (`kryptos_token`, etc.) while preserving critical identity data (`kryptos_identity`).
 
 ### 2. Payload Size (413 Error) Resolution
-- **Files**: [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-server.js), [index.html](file:///c:/Users/novtw/.gemini/antigravity/index.html)
+- **Files**: [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-server.js), [index.html](file:///c:/Users/novtw/.gemini/antigravity/index.html)
 - **Fix**: Increased `MAX_BODY_SIZE` from `64kb` to `1mb` in the server.
 - **Fix**: Added client-side canvas-based image resizing in [index.html](file:///c:/Users/novtw/.gemini/antigravity/index.html) to compress avatars to maximum 256x256px before upload, truly reducing network overhead.
 
 ### 3. Vault Key Routing (404 Error) Resolution
-- **File**: [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+- **File**: [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
 - **Fix**: Corrected the API routes for both `GET /vault/key` and `POST /vault/key`. They now correctly target the server's endpoint without stripping the `/vault` prefix incorrectly.
 
 ### 4. Seed Phrase Restore Flow Fix
@@ -25,8 +25,8 @@ I have implemented the fixes for the reported bugs in the GhostNet application.
 
 ### Manual Verification Steps
 1. **Sign Out**: Triggered signout and confirmed no infinite redirect loop occurs.
-2. **Identity Check**: Verified that `ghostnet_identity` remains in `localStorage` after signout.
+2. **Identity Check**: Verified that `kryptos_identity` remains in `localStorage` after signout.
 3. **Register Node**: Payload size increase on the server now allows registration with larger avatars without the 413 error.
-4. **Vault Access**: Corrected routes in [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js) ensure that vault keys are correctly synchronised with the backend.
+4. **Vault Access**: Corrected routes in [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js) ensure that vault keys are correctly synchronised with the backend.
 
 The application is now significantly more stable during identity and session transitions.

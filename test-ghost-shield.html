@@ -389,7 +389,7 @@ function testForceMaxHops() {
         gs.disableLevel(3);
         assert('Hops: MAX_HOPS restored after disable', GhostMesh.prototype.MAX_HOPS === origHops, `restored to: ${GhostMesh.prototype.MAX_HOPS}`);
     } else {
-        skip('Hops: GhostMesh not loaded in test env', 'need ghostnet-mesh.js loaded');
+        skip('Hops: GhostMesh not loaded in test env', 'need kryptos-mesh.js loaded');
     }
 
     gs.disableAll();
@@ -453,11 +453,11 @@ function testSignalIntelligence() {
     assert('SigInt: threat score > 60 for suspicious device', threat.threatScore > 60, `score: ${threat.threatScore}`);
     assert('SigInt: classified as THREAT', threat.threatLevel === 'THREAT');
 
-    // Process a GhostNet node
+    // Process a Kryptos node
     const node = si.processSignal({ mac: '0xa752f1234567', rssi: -50, isGhostNode: true });
     assert('SigInt: GhostNode processed', node !== null);
     assert('SigInt: GhostNode threat score is 0', node.threatScore === 0);
-    assert('SigInt: GhostNode type is "GhostNet Node"', node.type === 'GhostNet Node');
+    assert('SigInt: GhostNode type is "Kryptos Node"', node.type === 'Kryptos Node');
 
     // Signal report
     const report = si.getSignalReport();
@@ -528,10 +528,10 @@ function testGhostRadar() {
     assert('Radar: _freqToChannel 2437 = Ch6', gr._freqToChannel(2437) === 6);
     assert('Radar: _freqToChannel 2462 = Ch11', gr._freqToChannel(2462) === 11);
 
-    // Test GhostNet node detection
-    assert('Radar: _isGhostNetNode detects "GhostNode" prefix', gr._isGhostNetNode({ name: 'GhostNode-abc123' }) === true);
-    assert('Radar: _isGhostNetNode detects 0x address', gr._isGhostNetNode({ name: '0x1234567890abcdef1234567890abcdef12345678' }) === true);
-    assert('Radar: _isGhostNetNode rejects normal name', gr._isGhostNetNode({ name: 'iPhone 15' }) === false);
+    // Test Kryptos node detection
+    assert('Radar: _isKryptosNode detects "GhostNode" prefix', gr._isKryptosNode({ name: 'GhostNode-abc123' }) === true);
+    assert('Radar: _isKryptosNode detects 0x address', gr._isKryptosNode({ name: '0x1234567890abcdef1234567890abcdef12345678' }) === true);
+    assert('Radar: _isKryptosNode rejects normal name', gr._isKryptosNode({ name: 'iPhone 15' }) === false);
 }
 
 async function testBLEPluginAvailability() {

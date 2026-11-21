@@ -2,25 +2,25 @@
 
 ## What Changed
 
-### [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+### [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
 
 Two new functions added and exposed on the `GhostVault` API:
 
 | Function | Purpose |
 |---|---|
-| [clearVaultState()](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#837-853) | **Logout** — wipes in-memory `vaultIndex`, removes `ghostnet_vault_index` from localStorage, clears session keys via [lockVault()](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#143-149), and resets `VaultKeyManager.key`. Does **NOT** delete server/IPFS files. |
-| [refreshVaultForUser()](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#854-888) | **Login** — fetches the authenticated user's files from `VAULT_API/files/{owner}`, updates in-memory + localStorage index, returns the file list. |
+| [clearVaultState()](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#837-853) | **Logout** — wipes in-memory `vaultIndex`, removes `kryptos_vault_index` from localStorage, clears session keys via [lockVault()](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#143-149), and resets `VaultKeyManager.key`. Does **NOT** delete server/IPFS files. |
+| [refreshVaultForUser()](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#854-888) | **Login** — fetches the authenticated user's files from `VAULT_API/files/{owner}`, updates in-memory + localStorage index, returns the file list. |
 
-```diff:ghostnet-file-vault.js
+```diff:kryptos-file-vault.js
 /**
- * GhostNet File Vault — SECURITY HARDENED
+ * Kryptos File Vault — SECURITY HARDENED
  * Client-Side E2E Encryption & Upload
  *
  * Vulnerabilities found and fixed:
  *
  * [A] CRITICAL — Encryption keys stored in plaintext localStorage.
  *     The AES-256-GCM key was exported as a raw hex string and written
- *     directly to localStorage under 'ghostnet_vault_keys'. localStorage
+ *     directly to localStorage under 'kryptos_vault_keys'. localStorage
  *     is readable by any XSS payload, every browser extension, and is
  *     written to disk in plaintext by the browser. This completely
  *     undermines the "nobody can access the files" guarantee — any XSS
@@ -39,7 +39,7 @@ Two new functions added and exposed on the `GhostVault` API:
  *     any caller who knows an owner ID and fileId can delete any file.
  *     Any caller who knows a fileId can download the encrypted blob.
  *     Fixed: every request includes an X-Auth-Token header via
- *     _secureHeaders(), matching the pattern established in ghostnet-app.js.
+ *     _secureHeaders(), matching the pattern established in kryptos-app.js.
  *
  * [C] HIGH — fileId inserted into fetch URLs without validation.
  *     fetch(`${VAULT_API}/download/${fileId}`) and
@@ -80,10 +80,10 @@ Two new functions added and exposed on the `GhostVault` API:
  *     called. Adjust for your deployment constraints.
  *
  * [G] HIGH — Owner identity read from unverified, writable localStorage.
- *     getOwner() read 'ghostnet_auth_user' from localStorage, parsed it,
+ *     getOwner() read 'kryptos_auth_user' from localStorage, parsed it,
  *     and used user.email as the owner identifier in API requests.
  *     localStorage is writable by any script. An attacker could set
- *     ghostnet_auth_user to impersonate any email address for upload/delete.
+ *     kryptos_auth_user to impersonate any email address for upload/delete.
  *     user.email is also PII transmitted in every API request.
  *     Fixed: owner identity is taken only from sessionStorage (tab-scoped,
  *     not writable cross-origin) using the opaque nodeId — never email.
@@ -124,7 +124,7 @@ Two new functions added and exposed on the `GhostVault` API:
  *     any page the user visits could trigger a cross-site upload or delete.
  *     Fixed: X-Auth-Token header (from [B]) inherently provides CSRF
  *     protection for same-origin fetch since custom headers cannot be
- *     set by cross-origin forms. The pattern matches ghostnet-app.js.
+ *     set by cross-origin forms. The pattern matches kryptos-app.js.
  *
  * [M] LOW — window.GhostVault is overwritable.
  *     Plain IIFE assignment allowed any later script to replace the vault
@@ -136,14 +136,14 @@ Two new functions added and exposed on the `GhostVault` API:
     'use strict';
 
     // ─── Config ──────────────────────────────────────────────────────────────
-    const VAULT_API = 'https://ghostnet-ji-production.up.railway.app/vault';
-    const DB_NAME = 'ghostnet_vault';
+    const VAULT_API = 'https://kryptos-ji-production.up.railway.app/vault';
+    const DB_NAME = 'kryptos_vault';
     const DB_STORE = 'keys';
     const DB_VERSION = 1;
     const MAX_FILE_BYTES = 3 * 1024 * 1024 * 1024;   // 3 GB max ceiling
 
     // ─── Session unlock flag (PIN remembered per-tab) ─────────────────────────
-    const VAULT_SESSION_KEY = 'ghostnet_vault_unlocked';
+    const VAULT_SESSION_KEY = 'kryptos_vault_unlocked';
 
     function isVaultUnlocked() {
         try { return sessionStorage.getItem(VAULT_SESSION_KEY) === 'true'; }
@@ -157,7 +157,7 @@ Two new functions added and exposed on the `GhostVault` API:
     function lockVault() {
         try {
             sessionStorage.removeItem(VAULT_SESSION_KEY);
-            sessionStorage.removeItem('ghostnet_vault_key');
+            sessionStorage.removeItem('kryptos_vault_key');
         } catch { }
     }
 
@@ -165,7 +165,7 @@ Two new functions added and exposed on the `GhostVault` API:
 
     function loadVaultIndex() {
         try {
-            const raw = localStorage.getItem('ghostnet_vault_index');
+            const raw = localStorage.getItem('kryptos_vault_index');
             return raw ? JSON.parse(raw) : [];
         } catch {
             return [];
@@ -184,7 +184,7 @@ Two new functions added and exposed on the `GhostVault` API:
                 chainAnchored: !!f.chainAnchored,
                 txHash: f.txHash || null,
             }));
-            localStorage.setItem('ghostnet_vault_index', JSON.stringify(slim));
+            localStorage.setItem('kryptos_vault_index', JSON.stringify(slim));
         } catch { }
     }
 
@@ -216,7 +216,7 @@ Two new functions added and exposed on the `GhostVault` API:
 
     // [FIX B] Every request carries the session auth token.
     function _getAuthToken() {
-        return sessionStorage.getItem('ghostnet_token') || '';
+        return sessionStorage.getItem('kryptos_token') || '';
     }
 
     function _secureHeaders(extra = {}) {
@@ -231,7 +231,7 @@ Two new functions added and exposed on the `GhostVault` API:
     // [FIX G] Use opaque nodeId from sessionStorage only — never email, never
     //         from writable localStorage.
     function getOwner() {
-        const nodeId = sessionStorage.getItem('ghostnet_node_id');
+        const nodeId = sessionStorage.getItem('kryptos_node_id');
         if (nodeId) return nodeId;
         // Fallback to in-memory app state — still not from writable localStorage.
         return window.app?.identity?.nodeId || window.app?.identity?.id || null;
@@ -872,10 +872,10 @@ Two new functions added and exposed on the `GhostVault` API:
         // Ensure owner identity is available for vault requests.
         // Prefer sessionStorage (tab scoped), otherwise mirror from in-memory identity.
         try {
-            const existing = sessionStorage.getItem('ghostnet_node_id');
+            const existing = sessionStorage.getItem('kryptos_node_id');
             if (!existing) {
                 const nodeId = window.app?.identity?.nodeId || window.app?.identity?.id || null;
-                if (nodeId) sessionStorage.setItem('ghostnet_node_id', nodeId);
+                if (nodeId) sessionStorage.setItem('kryptos_node_id', nodeId);
             }
         } catch {
             // Ignore storage errors; getOwner() will fall back to in-memory identity.
@@ -909,14 +909,14 @@ Two new functions added and exposed on the `GhostVault` API:
 })();
 ===
 /**
- * GhostNet File Vault — SECURITY HARDENED
+ * Kryptos File Vault — SECURITY HARDENED
  * Client-Side E2E Encryption & Upload
  *
  * Vulnerabilities found and fixed:
  *
  * [A] CRITICAL — Encryption keys stored in plaintext localStorage.
  *     The AES-256-GCM key was exported as a raw hex string and written
- *     directly to localStorage under 'ghostnet_vault_keys'. localStorage
+ *     directly to localStorage under 'kryptos_vault_keys'. localStorage
  *     is readable by any XSS payload, every browser extension, and is
  *     written to disk in plaintext by the browser. This completely
  *     undermines the "nobody can access the files" guarantee — any XSS
@@ -935,7 +935,7 @@ Two new functions added and exposed on the `GhostVault` API:
  *     any caller who knows an owner ID and fileId can delete any file.
  *     Any caller who knows a fileId can download the encrypted blob.
  *     Fixed: every request includes an X-Auth-Token header via
- *     _secureHeaders(), matching the pattern established in ghostnet-app.js.
+ *     _secureHeaders(), matching the pattern established in kryptos-app.js.
  *
  * [C] HIGH — fileId inserted into fetch URLs without validation.
  *     fetch(`${VAULT_API}/download/${fileId}`) and
@@ -976,10 +976,10 @@ Two new functions added and exposed on the `GhostVault` API:
  *     called. Adjust for your deployment constraints.
  *
  * [G] HIGH — Owner identity read from unverified, writable localStorage.
- *     getOwner() read 'ghostnet_auth_user' from localStorage, parsed it,
+ *     getOwner() read 'kryptos_auth_user' from localStorage, parsed it,
  *     and used user.email as the owner identifier in API requests.
  *     localStorage is writable by any script. An attacker could set
- *     ghostnet_auth_user to impersonate any email address for upload/delete.
+ *     kryptos_auth_user to impersonate any email address for upload/delete.
  *     user.email is also PII transmitted in every API request.
  *     Fixed: owner identity is taken only from sessionStorage (tab-scoped,
  *     not writable cross-origin) using the opaque nodeId — never email.
@@ -1020,7 +1020,7 @@ Two new functions added and exposed on the `GhostVault` API:
  *     any page the user visits could trigger a cross-site upload or delete.
  *     Fixed: X-Auth-Token header (from [B]) inherently provides CSRF
  *     protection for same-origin fetch since custom headers cannot be
- *     set by cross-origin forms. The pattern matches ghostnet-app.js.
+ *     set by cross-origin forms. The pattern matches kryptos-app.js.
  *
  * [M] LOW — window.GhostVault is overwritable.
  *     Plain IIFE assignment allowed any later script to replace the vault
@@ -1032,14 +1032,14 @@ Two new functions added and exposed on the `GhostVault` API:
     'use strict';
 
     // ─── Config ──────────────────────────────────────────────────────────────
-    const VAULT_API = 'https://ghostnet-ji-production.up.railway.app/vault';
-    const DB_NAME = 'ghostnet_vault';
+    const VAULT_API = 'https://kryptos-ji-production.up.railway.app/vault';
+    const DB_NAME = 'kryptos_vault';
     const DB_STORE = 'keys';
     const DB_VERSION = 1;
     const MAX_FILE_BYTES = 3 * 1024 * 1024 * 1024;   // 3 GB max ceiling
 
     // ─── Session unlock flag (PIN remembered per-tab) ─────────────────────────
-    const VAULT_SESSION_KEY = 'ghostnet_vault_unlocked';
+    const VAULT_SESSION_KEY = 'kryptos_vault_unlocked';
 
     function isVaultUnlocked() {
         try { return sessionStorage.getItem(VAULT_SESSION_KEY) === 'true'; }
@@ -1053,7 +1053,7 @@ Two new functions added and exposed on the `GhostVault` API:
     function lockVault() {
         try {
             sessionStorage.removeItem(VAULT_SESSION_KEY);
-            sessionStorage.removeItem('ghostnet_vault_key');
+            sessionStorage.removeItem('kryptos_vault_key');
         } catch { }
     }
 
@@ -1061,7 +1061,7 @@ Two new functions added and exposed on the `GhostVault` API:
 
     function loadVaultIndex() {
         try {
-            const raw = localStorage.getItem('ghostnet_vault_index');
+            const raw = localStorage.getItem('kryptos_vault_index');
             return raw ? JSON.parse(raw) : [];
         } catch {
             return [];
@@ -1080,7 +1080,7 @@ Two new functions added and exposed on the `GhostVault` API:
                 chainAnchored: !!f.chainAnchored,
                 txHash: f.txHash || null,
             }));
-            localStorage.setItem('ghostnet_vault_index', JSON.stringify(slim));
+            localStorage.setItem('kryptos_vault_index', JSON.stringify(slim));
         } catch { }
     }
 
@@ -1112,7 +1112,7 @@ Two new functions added and exposed on the `GhostVault` API:
 
     // [FIX B] Every request carries the session auth token.
     function _getAuthToken() {
-        return sessionStorage.getItem('ghostnet_token') || '';
+        return sessionStorage.getItem('kryptos_token') || '';
     }
 
     function _secureHeaders(extra = {}) {
@@ -1127,7 +1127,7 @@ Two new functions added and exposed on the `GhostVault` API:
     // [FIX G] Use opaque nodeId from sessionStorage only — never email, never
     //         from writable localStorage.
     function getOwner() {
-        const nodeId = sessionStorage.getItem('ghostnet_node_id');
+        const nodeId = sessionStorage.getItem('kryptos_node_id');
         if (nodeId) return nodeId;
         // Fallback to in-memory app state — still not from writable localStorage.
         return window.app?.identity?.nodeId || window.app?.identity?.id || null;
@@ -1751,7 +1751,7 @@ Two new functions added and exposed on the `GhostVault` API:
         vaultIndex = [];
 
         // 2. Remove localStorage metadata index
-        try { localStorage.removeItem('ghostnet_vault_index'); } catch { }
+        try { localStorage.removeItem('kryptos_vault_index'); } catch { }
 
         // 3. Clear session vault keys & unlock flag
         lockVault();
@@ -1820,10 +1820,10 @@ Two new functions added and exposed on the `GhostVault` API:
         // Ensure owner identity is available for vault requests.
         // Prefer sessionStorage (tab scoped), otherwise mirror from in-memory identity.
         try {
-            const existing = sessionStorage.getItem('ghostnet_node_id');
+            const existing = sessionStorage.getItem('kryptos_node_id');
             if (!existing) {
                 const nodeId = window.app?.identity?.nodeId || window.app?.identity?.id || null;
-                if (nodeId) sessionStorage.setItem('ghostnet_node_id', nodeId);
+                if (nodeId) sessionStorage.setItem('kryptos_node_id', nodeId);
             }
         } catch {
             // Ignore storage errors; getOwner() will fall back to in-memory identity.
@@ -1870,14 +1870,14 @@ Two new functions added and exposed on the `GhostVault` API:
 
 ```diff:ui.js
 /**
- * GhostNet Immersive UI
+ * Kryptos Immersive UI
  * Single-file logic for Visualization, State, and Interaction.
  */
 
 /**
  * GhostCode diagnostic (why it can stick on "Loading..."):
  * - `index.html` renders the badge with literal "Loading..." (`#ghostcode-badge`).
- * - The app stores a node JWT in `sessionStorage.ghostnet_token` via `POST /auth/node`.
+ * - The app stores a node JWT in `sessionStorage.kryptos_token` via `POST /auth/node`.
  * - The UI calls `GET /user/shortcode` expecting a GhostCode back.
  * - Node JWTs originally did not map to an email-auth user, so the server could return 404.
  * - Identity/token availability can lag initial render (race), so one fetch attempt is not enough.
@@ -1897,7 +1897,7 @@ window.AppState = {
 };
 
 // --- CONSTANTS ---
-const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
 
 /**
  * Get auth headers for authenticated API calls.
@@ -1905,9 +1905,9 @@ const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
  */
 function authHeaders() {
     const token =
-        sessionStorage.getItem('ghostnet_token') ||
-        localStorage.getItem('ghostnet_jwt') ||
-        localStorage.getItem('ghostnet_token') ||
+        sessionStorage.getItem('kryptos_token') ||
+        localStorage.getItem('kryptos_jwt') ||
+        localStorage.getItem('kryptos_token') ||
         '';
     return {
         'Content-Type': 'application/json',
@@ -1921,7 +1921,7 @@ function authHeaders() {
  * Show a toast notification for a given duration.
  */
 function showToast(message, durationMs = 2000) {
-    const el = document.getElementById('ghostnet-toast');
+    const el = document.getElementById('kryptos-toast');
     if (!el) return;
     el.textContent = message;
     el.style.opacity = '1';
@@ -2075,7 +2075,7 @@ class MeshNetwork {
 
 const UI = {
     init: () => {
-        console.log("SYSTEM: Booting GhostNet UI...");
+        console.log("SYSTEM: Booting Kryptos UI...");
 
         // 0. Setup Theme
         UI.initTheme();
@@ -2263,7 +2263,7 @@ const UI = {
                 }
                 // Custom toast warning
                 const toast = document.createElement('div');
-                toast.textContent = 'Screenshots are protected in GhostNet';
+                toast.textContent = 'Screenshots are protected in Kryptos';
                 toast.style.position = 'fixed';
                 toast.style.bottom = '20px';
                 toast.style.left = '50%';
@@ -2352,7 +2352,7 @@ const UI = {
     },
 
     initTheme: () => {
-        const stored = localStorage.getItem('ghostnet_theme');
+        const stored = localStorage.getItem('kryptos_theme');
         if (stored === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
             const label = document.getElementById('theme-label');
@@ -2375,12 +2375,12 @@ const UI = {
 
         if (isDark) {
             doc.removeAttribute('data-theme');
-            localStorage.setItem('ghostnet_theme', 'light');
+            localStorage.setItem('kryptos_theme', 'light');
             if (label) label.innerText = 'Dark Mode';
             if (icon) icon.setAttribute('data-lucide', 'moon');
         } else {
             doc.setAttribute('data-theme', 'dark');
-            localStorage.setItem('ghostnet_theme', 'dark');
+            localStorage.setItem('kryptos_theme', 'dark');
             if (label) label.innerText = 'Light Mode';
             if (icon) icon.setAttribute('data-lucide', 'sun');
         }
@@ -2416,9 +2416,9 @@ const UI = {
 
     fetchRealData: async () => {
         try {
-            console.log("🔗 Connecting to GhostNet Bridge...");
+            console.log("🔗 Connecting to Kryptos Bridge...");
 
-            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet', {
+            const res = await fetch('https://kryptos-ji-production.up.railway.app/wallet', {
                 headers: { 'X-Auth-Token': getAuthToken() }
             });
 
@@ -2753,7 +2753,7 @@ const UI = {
         if (errEl) errEl.textContent = '';
 
         // Silent backend validation
-        const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+        const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
         try {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
@@ -2821,7 +2821,7 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`, {
+            const res = await fetch(`https://kryptos-ji-production.up.railway.app/conversations?userId=${userId}`, {
                 headers: { 'X-Auth-Token': getAuthToken() }
             });
             if (res.ok) {
@@ -2963,7 +2963,7 @@ const UI = {
         // Load History
         if (convoId && convoId !== 'new') {
             try {
-                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`, {
+                const res = await fetch(`https://kryptos-ji-production.up.railway.app/history?convoId=${convoId}`, {
                     headers: { 'X-Auth-Token': getAuthToken() }
                 });
                 if (res.ok) {
@@ -3044,7 +3044,7 @@ const UI = {
             'BTC': { color: '#F7931A', gradient: 'linear-gradient(135deg, #F7931A, #e2750a)', darkGlow: 'rgba(247,147,26,0.35)', name: 'Bitcoin' },
             'SOL': { color: '#9945FF', gradient: 'linear-gradient(135deg, #9945FF, #14F195)', darkGlow: 'rgba(153,69,255,0.35)', name: 'Solana' },
             'USDT': { color: '#26A17B', gradient: 'linear-gradient(135deg, #26A17B, #1a7a5c)', darkGlow: 'rgba(38,161,123,0.35)', name: 'Tether' },
-            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'GhostNet' }
+            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'Kryptos' }
         };
 
         let walletAssets = [];
@@ -3052,7 +3052,7 @@ const UI = {
             walletAssets = AppState.wallet;
         } else if (AppState.wallet && AppState.wallet.balance) {
             walletAssets = [
-                { symbol: "AHT", balance: AppState.wallet.balance, chain: "GhostNet" },
+                { symbol: "AHT", balance: AppState.wallet.balance, chain: "Kryptos" },
                 { symbol: "ETH", balance: 0.0, chain: "Sepolia" }
             ];
         }
@@ -3065,7 +3065,7 @@ const UI = {
                 <div class="wlt-portfolio-left">
                     <div class="wlt-portfolio-label">Portfolio Value</div>
                     <div class="wlt-portfolio-total">${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</div>
-                    <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · GhostNet Wallet</div>
+                    <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · Kryptos Wallet</div>
                 </div>
                 <div class="wlt-portfolio-tokens">
                     ${walletAssets.map(a => {
@@ -3251,7 +3251,7 @@ const UI = {
                 const myId = (window.AppState && window.AppState.identity) ? (window.AppState.identity.nodeId || window.AppState.identity.id) : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 try {
-                    const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
+                    const res = await fetch('https://kryptos-ji-production.up.railway.app/message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -3496,13 +3496,13 @@ const UI = {
             const res = await fetch(`${BACKEND_URL}/user/profile`, { headers: authHeaders() });
             if (res.ok) {
                 const user = await res.json();
-                localStorage.setItem('ghostnet_profile_cache', JSON.stringify(user));
+                localStorage.setItem('kryptos_profile_cache', JSON.stringify(user));
                 // Back-compat with older key
-                localStorage.setItem('ghostnet_user', JSON.stringify(user));
+                localStorage.setItem('kryptos_user', JSON.stringify(user));
             }
         } catch { }
 
-        const stored = localStorage.getItem('ghostnet_profile_cache') || localStorage.getItem('ghostnet_user');
+        const stored = localStorage.getItem('kryptos_profile_cache') || localStorage.getItem('kryptos_user');
         if (stored) {
             try {
                 const user = JSON.parse(stored);
@@ -3600,7 +3600,7 @@ const UI = {
                 alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
             } else {
                 alert("Profile saved!");
-                localStorage.setItem("ghostnet_user", JSON.stringify(data.user || data));
+                localStorage.setItem("kryptos_user", JSON.stringify(data.user || data));
                 UI.loadProfile();
             }
         } catch (err) {
@@ -3673,7 +3673,7 @@ const UI = {
             return;
         }
         if (!window.GhostVault) {
-            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
+            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `kryptos-file-vault.js` is reachable.');
             showToast('Vault encryption unavailable — module not loaded');
             setVaultEnabled(false);
             return;
@@ -4103,9 +4103,9 @@ const UI = {
             }
 
             const liveToken =
-                sessionStorage.getItem('ghostnet_token') ||
-                localStorage.getItem('ghostnet_jwt') ||
-                localStorage.getItem('ghostnet_token') ||
+                sessionStorage.getItem('kryptos_token') ||
+                localStorage.getItem('kryptos_jwt') ||
+                localStorage.getItem('kryptos_token') ||
                 '';
 
             if (liveToken) {
@@ -4168,8 +4168,8 @@ const UI = {
         }
         if (navigator.share) {
             navigator.share({
-                text: 'Find me on GhostNet: ' + code,
-                title: 'GhostNet'
+                text: 'Find me on Kryptos: ' + code,
+                title: 'Kryptos'
             }).catch(() => {});
         } else {
             try {
@@ -4259,7 +4259,7 @@ const UI = {
                             resultContainer.textContent = '';
                             resultContainer.style.display = 'block';
                             resultContainer.style.cssText = 'display:block;padding:10px 12px;margin:0 8px 8px 8px;color:var(--text-muted);font-size:0.8rem;text-align:center;';
-                            resultContainer.textContent = 'No GhostNet user found with that code';
+                            resultContainer.textContent = 'No Kryptos user found with that code';
                         } else {
                             resultContainer.style.display = 'none';
                         }
@@ -4281,7 +4281,7 @@ const UI = {
     generateGhostCard: async () => {
         if (!AppState || !AppState.identity || !AppState.identity.nodeId) {
             const toast = document.createElement('div');
-            toast.textContent = 'Connect to GhostNet first to generate your card';
+            toast.textContent = 'Connect to Kryptos first to generate your card';
             toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
@@ -4433,7 +4433,7 @@ const UI = {
 
             ctx.fillStyle = 'rgba(255,255,255,0.4)';
             ctx.font = '10px Arial';
-            ctx.fillText('GhostNet', 80, 190);
+            ctx.fillText('Kryptos', 80, 190);
 
             // Right Side: QR Code
             ctx.fillStyle = '#ffffff';
@@ -4587,7 +4587,7 @@ const UI = {
             try {
                 const tempDiv = document.createElement('div');
                 const expTS = Date.now() + (7 * 24 * 60 * 60 * 1000);
-                const qrData = JSON.stringify({"v":1,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS});
+                const qrData = JSON.stringify({"v":1,"app":"kryptos","nodeId":nodeId,"name":displayName,"exp":expTS});
                 new QRCode(tempDiv, {
                     text: qrData,
                     width: 180,
@@ -4742,7 +4742,7 @@ const UI = {
                     if (code) {
                         try {
                             const data = JSON.parse(code.data);
-                            if (data.v && data.app === 'ghostnet' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
+                            if (data.v && data.app === 'kryptos' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
                                 handleSuccess(data);
                                 return;
                             } else {
@@ -4862,14 +4862,14 @@ window.addEventListener("DOMContentLoaded", () => {
 });
 ===
 /**
- * GhostNet Immersive UI
+ * Kryptos Immersive UI
  * Single-file logic for Visualization, State, and Interaction.
  */
 
 /**
  * GhostCode diagnostic (why it can stick on "Loading..."):
  * - `index.html` renders the badge with literal "Loading..." (`#ghostcode-badge`).
- * - The app stores a node JWT in `sessionStorage.ghostnet_token` via `POST /auth/node`.
+ * - The app stores a node JWT in `sessionStorage.kryptos_token` via `POST /auth/node`.
  * - The UI calls `GET /user/shortcode` expecting a GhostCode back.
  * - Node JWTs originally did not map to an email-auth user, so the server could return 404.
  * - Identity/token availability can lag initial render (race), so one fetch attempt is not enough.
@@ -4889,7 +4889,7 @@ window.AppState = {
 };
 
 // --- CONSTANTS ---
-const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
 
 /**
  * Get auth headers for authenticated API calls.
@@ -4897,9 +4897,9 @@ const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
  */
 function authHeaders() {
     const token =
-        sessionStorage.getItem('ghostnet_token') ||
-        localStorage.getItem('ghostnet_jwt') ||
-        localStorage.getItem('ghostnet_token') ||
+        sessionStorage.getItem('kryptos_token') ||
+        localStorage.getItem('kryptos_jwt') ||
+        localStorage.getItem('kryptos_token') ||
         '';
     return {
         'Content-Type': 'application/json',
@@ -4913,7 +4913,7 @@ function authHeaders() {
  * Show a toast notification for a given duration.
  */
 function showToast(message, durationMs = 2000) {
-    const el = document.getElementById('ghostnet-toast');
+    const el = document.getElementById('kryptos-toast');
     if (!el) return;
     el.textContent = message;
     el.style.opacity = '1';
@@ -5067,7 +5067,7 @@ class MeshNetwork {
 
 const UI = {
     init: () => {
-        console.log("SYSTEM: Booting GhostNet UI...");
+        console.log("SYSTEM: Booting Kryptos UI...");
 
         // 0. Setup Theme
         UI.initTheme();
@@ -5272,7 +5272,7 @@ const UI = {
                 }
                 // Custom toast warning
                 const toast = document.createElement('div');
-                toast.textContent = 'Screenshots are protected in GhostNet';
+                toast.textContent = 'Screenshots are protected in Kryptos';
                 toast.style.position = 'fixed';
                 toast.style.bottom = '20px';
                 toast.style.left = '50%';
@@ -5361,7 +5361,7 @@ const UI = {
     },
 
     initTheme: () => {
-        const stored = localStorage.getItem('ghostnet_theme');
+        const stored = localStorage.getItem('kryptos_theme');
         if (stored === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
             const label = document.getElementById('theme-label');
@@ -5384,12 +5384,12 @@ const UI = {
 
         if (isDark) {
             doc.removeAttribute('data-theme');
-            localStorage.setItem('ghostnet_theme', 'light');
+            localStorage.setItem('kryptos_theme', 'light');
             if (label) label.innerText = 'Dark Mode';
             if (icon) icon.setAttribute('data-lucide', 'moon');
         } else {
             doc.setAttribute('data-theme', 'dark');
-            localStorage.setItem('ghostnet_theme', 'dark');
+            localStorage.setItem('kryptos_theme', 'dark');
             if (label) label.innerText = 'Light Mode';
             if (icon) icon.setAttribute('data-lucide', 'sun');
         }
@@ -5425,9 +5425,9 @@ const UI = {
 
     fetchRealData: async () => {
         try {
-            console.log("🔗 Connecting to GhostNet Bridge...");
+            console.log("🔗 Connecting to Kryptos Bridge...");
 
-            const res = await fetch('https://ghostnet-ji-production.up.railway.app/wallet', {
+            const res = await fetch('https://kryptos-ji-production.up.railway.app/wallet', {
                 headers: { 'X-Auth-Token': getAuthToken() }
             });
 
@@ -5762,7 +5762,7 @@ const UI = {
         if (errEl) errEl.textContent = '';
 
         // Silent backend validation
-        const BACKEND_URL = 'https://ghostnet-ji-production.up.railway.app';
+        const BACKEND_URL = 'https://kryptos-ji-production.up.railway.app';
         try {
             const validateUrl = `${BACKEND_URL}/validate-node/${encodeURIComponent(pubKey)}`;
             console.log(' Validating node:', validateUrl);
@@ -5830,7 +5830,7 @@ const UI = {
 
     loadConversations: async (userId) => {
         try {
-            const res = await fetch(`https://ghostnet-ji-production.up.railway.app/conversations?userId=${userId}`, {
+            const res = await fetch(`https://kryptos-ji-production.up.railway.app/conversations?userId=${userId}`, {
                 headers: { 'X-Auth-Token': getAuthToken() }
             });
             if (res.ok) {
@@ -5972,7 +5972,7 @@ const UI = {
         // Load History
         if (convoId && convoId !== 'new') {
             try {
-                const res = await fetch(`https://ghostnet-ji-production.up.railway.app/history?convoId=${convoId}`, {
+                const res = await fetch(`https://kryptos-ji-production.up.railway.app/history?convoId=${convoId}`, {
                     headers: { 'X-Auth-Token': getAuthToken() }
                 });
                 if (res.ok) {
@@ -6053,7 +6053,7 @@ const UI = {
             'BTC': { color: '#F7931A', gradient: 'linear-gradient(135deg, #F7931A, #e2750a)', darkGlow: 'rgba(247,147,26,0.35)', name: 'Bitcoin' },
             'SOL': { color: '#9945FF', gradient: 'linear-gradient(135deg, #9945FF, #14F195)', darkGlow: 'rgba(153,69,255,0.35)', name: 'Solana' },
             'USDT': { color: '#26A17B', gradient: 'linear-gradient(135deg, #26A17B, #1a7a5c)', darkGlow: 'rgba(38,161,123,0.35)', name: 'Tether' },
-            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'GhostNet' }
+            'AHT': { color: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6, #8b5cf6)', darkGlow: 'rgba(59,130,246,0.35)', name: 'Kryptos' }
         };
 
         let walletAssets = [];
@@ -6061,7 +6061,7 @@ const UI = {
             walletAssets = AppState.wallet;
         } else if (AppState.wallet && AppState.wallet.balance) {
             walletAssets = [
-                { symbol: "AHT", balance: AppState.wallet.balance, chain: "GhostNet" },
+                { symbol: "AHT", balance: AppState.wallet.balance, chain: "Kryptos" },
                 { symbol: "ETH", balance: 0.0, chain: "Sepolia" }
             ];
         }
@@ -6074,7 +6074,7 @@ const UI = {
                 <div class="wlt-portfolio-left">
                     <div class="wlt-portfolio-label">Portfolio Value</div>
                     <div class="wlt-portfolio-total">${totalBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}</div>
-                    <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · GhostNet Wallet</div>
+                    <div class="wlt-portfolio-subtitle">${walletAssets.length} Assets · Kryptos Wallet</div>
                 </div>
                 <div class="wlt-portfolio-tokens">
                     ${walletAssets.map(a => {
@@ -6260,7 +6260,7 @@ const UI = {
                 const myId = (window.AppState && window.AppState.identity) ? (window.AppState.identity.nodeId || window.AppState.identity.id) : 'anonymous';
                 const targetId = (window.app && window.app.chatTarget) || 'broadcast';
                 try {
-                    const res = await fetch('https://ghostnet-ji-production.up.railway.app/message', {
+                    const res = await fetch('https://kryptos-ji-production.up.railway.app/message', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -6505,13 +6505,13 @@ const UI = {
             const res = await fetch(`${BACKEND_URL}/user/profile`, { headers: authHeaders() });
             if (res.ok) {
                 const user = await res.json();
-                localStorage.setItem('ghostnet_profile_cache', JSON.stringify(user));
+                localStorage.setItem('kryptos_profile_cache', JSON.stringify(user));
                 // Back-compat with older key
-                localStorage.setItem('ghostnet_user', JSON.stringify(user));
+                localStorage.setItem('kryptos_user', JSON.stringify(user));
             }
         } catch { }
 
-        const stored = localStorage.getItem('ghostnet_profile_cache') || localStorage.getItem('ghostnet_user');
+        const stored = localStorage.getItem('kryptos_profile_cache') || localStorage.getItem('kryptos_user');
         if (stored) {
             try {
                 const user = JSON.parse(stored);
@@ -6609,7 +6609,7 @@ const UI = {
                 alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
             } else {
                 alert("Profile saved!");
-                localStorage.setItem("ghostnet_user", JSON.stringify(data.user || data));
+                localStorage.setItem("kryptos_user", JSON.stringify(data.user || data));
                 UI.loadProfile();
             }
         } catch (err) {
@@ -6682,7 +6682,7 @@ const UI = {
             return;
         }
         if (!window.GhostVault) {
-            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `ghostnet-file-vault.js` is reachable.');
+            ensureVaultBanner('🔒 Vault encryption module failed to load. Refresh the page, or ensure `kryptos-file-vault.js` is reachable.');
             showToast('Vault encryption unavailable — module not loaded');
             setVaultEnabled(false);
             return;
@@ -7112,9 +7112,9 @@ const UI = {
             }
 
             const liveToken =
-                sessionStorage.getItem('ghostnet_token') ||
-                localStorage.getItem('ghostnet_jwt') ||
-                localStorage.getItem('ghostnet_token') ||
+                sessionStorage.getItem('kryptos_token') ||
+                localStorage.getItem('kryptos_jwt') ||
+                localStorage.getItem('kryptos_token') ||
                 '';
 
             if (liveToken) {
@@ -7177,8 +7177,8 @@ const UI = {
         }
         if (navigator.share) {
             navigator.share({
-                text: 'Find me on GhostNet: ' + code,
-                title: 'GhostNet'
+                text: 'Find me on Kryptos: ' + code,
+                title: 'Kryptos'
             }).catch(() => {});
         } else {
             try {
@@ -7268,7 +7268,7 @@ const UI = {
                             resultContainer.textContent = '';
                             resultContainer.style.display = 'block';
                             resultContainer.style.cssText = 'display:block;padding:10px 12px;margin:0 8px 8px 8px;color:var(--text-muted);font-size:0.8rem;text-align:center;';
-                            resultContainer.textContent = 'No GhostNet user found with that code';
+                            resultContainer.textContent = 'No Kryptos user found with that code';
                         } else {
                             resultContainer.style.display = 'none';
                         }
@@ -7290,7 +7290,7 @@ const UI = {
     generateGhostCard: async () => {
         if (!AppState || !AppState.identity || !AppState.identity.nodeId) {
             const toast = document.createElement('div');
-            toast.textContent = 'Connect to GhostNet first to generate your card';
+            toast.textContent = 'Connect to Kryptos first to generate your card';
             toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#ef4444;color:#fff;padding:10px 20px;border-radius:8px;z-index:100000;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 3000);
@@ -7442,7 +7442,7 @@ const UI = {
 
             ctx.fillStyle = 'rgba(255,255,255,0.4)';
             ctx.font = '10px Arial';
-            ctx.fillText('GhostNet', 80, 190);
+            ctx.fillText('Kryptos', 80, 190);
 
             // Right Side: QR Code
             ctx.fillStyle = '#ffffff';
@@ -7596,7 +7596,7 @@ const UI = {
             try {
                 const tempDiv = document.createElement('div');
                 const expTS = Date.now() + (7 * 24 * 60 * 60 * 1000);
-                const qrData = JSON.stringify({"v":1,"app":"ghostnet","nodeId":nodeId,"name":displayName,"exp":expTS});
+                const qrData = JSON.stringify({"v":1,"app":"kryptos","nodeId":nodeId,"name":displayName,"exp":expTS});
                 new QRCode(tempDiv, {
                     text: qrData,
                     width: 180,
@@ -7751,7 +7751,7 @@ const UI = {
                     if (code) {
                         try {
                             const data = JSON.parse(code.data);
-                            if (data.v && data.app === 'ghostnet' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
+                            if (data.v && data.app === 'kryptos' && /^0x[a-fA-F0-9]{8,64}$/.test(data.nodeId)) {
                                 handleSuccess(data);
                                 return;
                             } else {
@@ -7874,6 +7874,6 @@ window.addEventListener("DOMContentLoaded", () => {
 ## Verification
 
 - ✅ Both files pass `node -c` syntax check (no parse errors)
-- ✅ [clearVaultState](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#837-853) — Only clears local state (in-memory array, localStorage key, session), never calls server DELETE endpoints
-- ✅ [refreshVaultForUser](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#854-888) — Uses same [_secureHeaders()](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#208-214) (auth token) and same owner-based URL pattern as existing [listFiles()](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js#741-781)
+- ✅ [clearVaultState](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#837-853) — Only clears local state (in-memory array, localStorage key, session), never calls server DELETE endpoints
+- ✅ [refreshVaultForUser](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#854-888) — Uses same [_secureHeaders()](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#208-214) (auth token) and same owner-based URL pattern as existing [listFiles()](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js#741-781)
 - ✅ File cards continue to show: filename, size, date, SHA-256 hash, and Stored/Confirmed badge (rendering via existing [vaultRenderFiles](file:///c:/Users/novtw/.gemini/antigravity/ui.js#1947-2108))

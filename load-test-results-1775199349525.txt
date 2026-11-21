@@ -1,6 +1,6 @@
 ╔════════════════════════════════════════════════════════════════╗
-║   GhostNet Backend — API Load Test                            ║
-║   Target: https://ghostnet-ji-production.up.railway.app    ║
+║   Kryptos Backend — API Load Test                            ║
+║   Target: https://kryptos-ji-production.up.railway.app    ║
 ║   Concurrency: 100                                         ║
 ║   Started: 2026-04-03T06:55:46.873Z                        ║
 ╚════════════════════════════════════════════════════════════════╝

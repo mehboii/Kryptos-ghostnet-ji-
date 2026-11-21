@@ -1,5 +1,5 @@
 /**
- * GhostNet Privacy-Respecting Analytics
+ * Kryptos Privacy-Respecting Analytics
  *
  * - No personal data, no IPs, no tracking cookies
  * - Anonymous daily-rotating hashed IDs
@@ -63,7 +63,7 @@ function todayStr() {
 function anonHash(sessionId) {
   const daily = todayStr();
   return createHash('sha256')
-    .update(`${daily}:${sessionId}:ghostnet`)
+    .update(`${daily}:${sessionId}:kryptos`)
     .digest('hex')
     .slice(0, 16);
 }

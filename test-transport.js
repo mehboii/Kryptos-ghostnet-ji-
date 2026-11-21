@@ -1,5 +1,5 @@
 /**
- * GhostNet Transport Test — HARDENED
+ * Kryptos Transport Test — HARDENED
  * =====================================
  * Security fixes applied:
  *
@@ -18,8 +18,8 @@
 
 'use strict';
 
-const GhostTransport = require('./ghostnet-transport');
-const GhostIdentity = require('./ghostnet-identity');
+const GhostTransport = require('./kryptos-transport');
+const GhostIdentity = require('./kryptos-identity');
 
 // ─── [5] TIMEOUT WRAPPER ────────────────────────────────
 

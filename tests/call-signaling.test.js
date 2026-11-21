@@ -1,5 +1,5 @@
 /**
- * Unit tests — GhostNet call signaling schema & validators.
+ * Unit tests — Kryptos call signaling schema & validators.
  *
  * Run: node --test tests/call-signaling.test.js
  *
@@ -10,7 +10,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import '../ghostnet-call-signaling.js';
+import '../kryptos-call-signaling.js';
 
 const Signaling = globalThis.GhostCallSignaling;
 

@@ -1,10 +1,10 @@
-# GhostNet BLE Transport Layer
+# Kryptos BLE Transport Layer
 
-This module (`ghostnet-ble.js`) adds native Bluetooth Mesh capabilities to GhostNet.
+This module (`kryptos-ble.js`) adds native Bluetooth Mesh capabilities to Kryptos.
 
 ## Architecture
 
-- **Browser**: Uses Web Bluetooth API (`navigator.bluetooth`) to scan and connect to GhostNet nodes.
+- **Browser**: Uses Web Bluetooth API (`navigator.bluetooth`) to scan and connect to Kryptos nodes.
 - **Node.js**: Uses `@abandonware/noble` to scan and connect.
 
 ## Usage
@@ -15,7 +15,7 @@ The `TransportManager` in `simulation.js` automatically initializes the BLE laye
 To discover BLE peers:
 1. Go to the **Nodes** tab in the UI.
 2. Click **Scan BLE Mesh**.
-3. Select a matching device (Service UUID: `ghostnet-mesh`).
+3. Select a matching device (Service UUID: `kryptos-mesh`).
 
 ### Auto-Routing
 The `TransportManager` automatically selects the best transport:

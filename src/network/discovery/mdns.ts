@@ -8,7 +8,7 @@ import type { MdnsAnnouncement, PeerEndpoint } from './types.js';
 
 const MDNS_ADDRESS = '224.0.0.251';
 const MDNS_PORT = 5353;
-const SERVICE_NAME = '_ghostnet._udp.local';
+const SERVICE_NAME = '_kryptos._udp.local';
 const ANNOUNCE_INTERVAL_MS = 10_000;
 const CHALLENGE_TIMEOUT_MS = 3_000;
 const NONCE_WINDOW_MS = 15_000;

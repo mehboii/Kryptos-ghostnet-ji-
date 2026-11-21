@@ -1,5 +1,5 @@
 # ============================================
-# GhostNet — Multi-Stage Docker Build
+# Kryptos — Multi-Stage Docker Build
 # ============================================
 # Single image, multiple services via docker-compose
 # Node.js 20 on Alpine for minimal footprint
@@ -25,22 +25,22 @@ RUN npm ci --omit=dev
 # ── Stage 3: Bridge Dependencies ─────────────
 FROM base AS bridge-deps
 
-WORKDIR /app/ghostnet-bridge
-COPY ghostnet-bridge/package.json ghostnet-bridge/package-lock.json* ./
+WORKDIR /app/kryptos-bridge
+COPY kryptos-bridge/package.json kryptos-bridge/package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
 # ── Stage 4: Client Dependencies ─────────────
 FROM base AS client-deps
 
-WORKDIR /app/ghostnet-client
-COPY ghostnet-client/package.json ghostnet-client/package-lock.json* ./
+WORKDIR /app/kryptos-client
+COPY kryptos-client/package.json kryptos-client/package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
 # ── Stage 5: Relay Dependencies ──────────────
 FROM base AS relay-deps
 
-WORKDIR /app/ghostnet-bridge/relay
-COPY ghostnet-bridge/relay/package.json ghostnet-bridge/relay/package-lock.json* ./
+WORKDIR /app/kryptos-bridge/relay
+COPY kryptos-bridge/relay/package.json kryptos-bridge/relay/package-lock.json* ./
 RUN npm ci --omit=dev || npm install --omit=dev
 
 # ── Stage 6: Production Image ────────────────
@@ -58,12 +58,12 @@ COPY --from=root-deps /app/node_modules ./node_modules
 COPY . .
 
 # Remove any existing node_modules from subdirectories (we'll overlay)
-RUN rm -rf ghostnet-bridge/node_modules ghostnet-client/node_modules ghostnet-bridge/relay/node_modules
+RUN rm -rf kryptos-bridge/node_modules kryptos-client/node_modules kryptos-bridge/relay/node_modules
 
 # Copy sub-project node_modules from build stages
-COPY --from=bridge-deps /app/ghostnet-bridge/node_modules ./ghostnet-bridge/node_modules
-COPY --from=client-deps /app/ghostnet-client/node_modules ./ghostnet-client/node_modules
-COPY --from=relay-deps /app/ghostnet-bridge/relay/node_modules ./ghostnet-bridge/relay/node_modules
+COPY --from=bridge-deps /app/kryptos-bridge/node_modules ./kryptos-bridge/node_modules
+COPY --from=client-deps /app/kryptos-client/node_modules ./kryptos-client/node_modules
+COPY --from=relay-deps /app/kryptos-bridge/relay/node_modules ./kryptos-bridge/relay/node_modules
 
 # Remove files that should NOT be in the image
 RUN rm -rf .git .env .env.* *.sqlite logs/* node_modules/.cache
@@ -72,13 +72,13 @@ RUN rm -rf .git .env .env.* *.sqlite logs/* node_modules/.cache
 RUN mkdir -p /app/logs /app/data
 
 # Create a non-root user for security
-RUN addgroup -S ghostnet && adduser -S ghostnet -G ghostnet
-RUN chown -R ghostnet:ghostnet /app
+RUN addgroup -S kryptos && adduser -S kryptos -G kryptos
+RUN chown -R kryptos:kryptos /app
 
-USER ghostnet
+USER kryptos
 
 # Default entrypoint with tini
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # Default command — overridden per service in docker-compose
-CMD ["node", "ghostnet-server.js"]
+CMD ["node", "kryptos-server.js"]

@@ -1,5 +1,5 @@
 /**
- * GhostNet Crypto Identity System — SECURITY HARDENED
+ * Kryptos Crypto Identity System — SECURITY HARDENED
  *
  * Vulnerabilities found and fixed in this pass:
  *
@@ -14,8 +14,8 @@
  *
  * [B] CRITICAL — PIN lockout state (attempt count + locked flag) stored in
  *     writable localStorage. Any script can bypass the lockout with:
- *       localStorage.setItem('ghostnet_locked', 'false')
- *       localStorage.setItem('ghostnet_pin_attempts', '0')
+ *       localStorage.setItem('kryptos_locked', 'false')
+ *       localStorage.setItem('kryptos_pin_attempts', '0')
  *     Fixed: lockout state is tracked in a module-private in-memory variable.
  *     It resets only on page reload, which is acceptable — an attacker who
  *     can reload the page gets 5 more guesses, not unlimited guesses.
@@ -63,14 +63,14 @@ const GhostIdentity = (() => {
     // ─── PRIVATE CONSTANTS ───────────────────────────────────────────────────
     // [FIX G] Storage key names are not exported.
     const _SK = {
-        IDENTITY: 'ghostnet_identity', // [Unified] Stores the full identity object
-        ENCRYPTED_PK: 'ghostnet_enc_pk',
-        PUBLIC_KEY: 'ghostnet_pubkey',
-        ADDRESS: 'ghostnet_address',
-        DISPLAY_NAME: 'ghostnet_display_name',
-        NODE_ID: 'ghostnet_node_id',
+        IDENTITY: 'kryptos_identity', // [Unified] Stores the full identity object
+        ENCRYPTED_PK: 'kryptos_enc_pk',
+        PUBLIC_KEY: 'kryptos_pubkey',
+        ADDRESS: 'kryptos_address',
+        DISPLAY_NAME: 'kryptos_display_name',
+        NODE_ID: 'kryptos_node_id',
         // Session key stored in sessionStorage (tab-scoped, not persisted).
-        SESSION_KEY: 'ghostnet_session_key',
+        SESSION_KEY: 'kryptos_session_key',
     };
 
     // [FIX G] Not exported.
@@ -263,7 +263,7 @@ const GhostIdentity = (() => {
     // ─── CORE: Generate New Identity ─────────────────────────────────────────
     async function generateIdentity(displayName) {
         // Before generating seed phrase always check first
-        const existingIdentityStr = localStorage.getItem('ghostnet_identity');
+        const existingIdentityStr = localStorage.getItem('kryptos_identity');
         if (existingIdentityStr) {
             try {
                 const existingIdentity = JSON.parse(existingIdentityStr);
@@ -387,7 +387,7 @@ const GhostIdentity = (() => {
             address: localStorage.getItem(_SK.ADDRESS),
             displayName: displayName,
             nodeId: nodeId,
-            ghostTag: localStorage.getItem('ghostnet_ghost_tag') || '', // Fallback for legacy
+            ghostTag: localStorage.getItem('kryptos_ghost_tag') || '', // Fallback for legacy
         };
     }
 
@@ -583,7 +583,7 @@ const GhostIdentity = (() => {
 
 // Expose on window so code that checks `window.GhostIdentity` works. It was previously
 // only a bare top-level `const` (global lexical binding, NOT a window property), so every
-// `window.GhostIdentity && ...` guard silently failed — notably ghostnetEnsureAuth, which
+// `window.GhostIdentity && ...` guard silently failed — notably kryptosEnsureAuth, which
 // then skipped fetching the private key and sent UNSIGNED auth → server 401. Exposing it
 // here does not increase exposure (the bare global was already reachable to page scripts).
 if (typeof window !== 'undefined') window.GhostIdentity = GhostIdentity;

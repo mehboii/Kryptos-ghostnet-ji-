@@ -539,8 +539,8 @@ document.addEventListener('DOMContentLoaded', () => {
             box.style.display = 'block';
             box.innerHTML = `
                 <div class="radar-unsupported">
-                    <div class="ru-title">Open in the GhostNet App</div>
-                    <div class="ru-desc">Ghost Radar scans the Bluetooth radio directly, which only works in the installed GhostNet app — not in ${where}. Bluetooth and WiFi scanning need the native app to reach your phone's hardware.</div>
+                    <div class="ru-title">Open in the Kryptos App</div>
+                    <div class="ru-desc">Ghost Radar scans the Bluetooth radio directly, which only works in the installed Kryptos app — not in ${where}. Bluetooth and WiFi scanning need the native app to reach your phone's hardware.</div>
                 </div>`;
             if (board) board.style.display = 'none';
             if (wifiBoard) wifiBoard.style.display = 'none';
@@ -648,7 +648,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const meta = [];
                 if (d.vendor) meta.push(this._esc(d.vendor));
                 if (d.category && (d.name || d.vendor)) meta.push(this._esc(d.category));
-                if (d.isGhostNode) meta.push('GhostNet node');
+                if (d.isGhostNode) meta.push('Kryptos node');
 
                 html += `
                     <div class="radar-device-item ${cls}">

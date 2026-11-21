@@ -1,6 +1,6 @@
 # GhostTag Username System — Task Tracker
 
-## Server (`ghostnet-server.js`)
+## Server (`kryptos-server.js`)
 - [ ] Add `ghosttags.json` data file + load/save helpers
 - [ ] `POST /ghosttag/claim` — case-insensitive uniqueness, binds to nodeId
 - [ ] `GET /ghosttag/check/:tag` — public availability check

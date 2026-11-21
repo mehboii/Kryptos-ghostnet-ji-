@@ -1,4 +1,4 @@
--- GhostNet Supabase Migration 001 — Initial Schema
+-- Kryptos Supabase Migration 001 — Initial Schema
 -- Run this in the Supabase SQL Editor (Dashboard > SQL Editor > New Query)
 -- This replaces messages.json and nodes.json with Postgres tables.
 

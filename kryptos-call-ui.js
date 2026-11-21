@@ -1,0 +1,392 @@
+/**
+ * Kryptos Call UI
+ * ================
+ *
+ * Thin UI controller that wires the GhostCall SDK into the running web app:
+ *   - constructs a GhostCall from the live app (mesh + secp256k1 identity +
+ *     Cloudflare TURN provider + GhostTag resolvers),
+ *   - adds a "Call" button to the chat header,
+ *   - shows an incoming-call prompt, an in-call bar, and plays remote audio.
+ *
+ * Calls are addressed by @GhostTag (Option A): the callee's identity key is
+ * resolved from their GhostTag so the DTLS fingerprint can be verified. It does
+ * NOT change call signaling, the state machine, or fingerprint verification —
+ * it only drives the existing GhostCall API + events.
+ */
+
+(function () {
+    'use strict';
+    if (typeof window === 'undefined') return;
+
+    var _call = null;          // GhostCall instance (constructed once, when unlocked)
+    var _building = null;      // in-flight construction promise
+    var _timer = null;         // in-call elapsed timer
+    var _startedAt = 0;
+
+    // ─── identity / construction ────────────────────────
+
+    function _stored() {
+        try { return window.GhostIdentity && GhostIdentity.getStoredIdentity ? GhostIdentity.getStoredIdentity() : null; }
+        catch (_) { return null; }
+    }
+
+    function _ready() {
+        return !!(window.GhostCall && window.GhostCallIce && window.app && window.app.mesh);
+    }
+
+    // The PIN-derived secp256k1 signing key, or null if the identity is locked.
+    function _getKey() {
+        return (window.GhostIdentity && GhostIdentity.getSessionPrivateKey)
+            ? GhostIdentity.getSessionPrivateKey().catch(function () { return null; })
+            : Promise.resolve(null);
+    }
+
+    // Build the GhostCall once. Requires an UNLOCKED identity (private key) so it
+    // can sign DTLS fingerprints. Constructed early so incoming offers are caught.
+    async function _ensureCall() {
+        if (_call) return _call;
+        if (_building) return _building;
+        if (!_ready()) throw new Error('Call modules or mesh not ready yet.');
+        const stored = _stored();
+        if (!stored || !stored.nodeId || !stored.publicKey) throw new Error('No identity — sign in first.');
+
+        _building = (async function () {
+            const call = new window.GhostCall({
+                mesh: window.app.mesh,
+                // Lazy key: GhostCall is built (and wired to the mesh to RING incoming
+                // calls) without the PIN-derived key; it's only fetched to place/answer.
+                identity: { id: stored.nodeId, publicKey: stored.publicKey, getPrivateKey: _getKey },
+                getIceServers: window.GhostCallIce.createCloudflareIceProvider({}),
+                // Resolve the call target. Contacts are addressed by node id / public
+                // key / address — usable directly as BOTH the mesh routing id (the same
+                // id messages already deliver to) and the verifiable identity. A bare
+                // @GhostTag is resolved via the GhostTag registry as a fallback.
+                resolveGhostTag: async function (arg) {
+                    var s = String(arg || '').trim();
+                    // Address or full public key: use directly (route + verify).
+                    if (/^0x[0-9a-fA-F]{40}$/.test(s) || _PUBKEY_RE.test(s)) {
+                        return { routeId: s, publicKey: s };
+                    }
+                    // nodeId (0x + 64 hex keccak): look its public key up server-side.
+                    if (/^0x[0-9a-fA-F]{64}$/i.test(s) || /^(gn_|node_)/.test(s)) {
+                        var pk = await _lookupNodePublicKey(s);
+                        if (pk) return { routeId: s, publicKey: pk };
+                        throw new Error('Peer has no key on file — they must sign in once so you can verify them');
+                    }
+                    // Bare @GhostTag.
+                    var gt = _ghostTag();
+                    if (!gt) throw new Error('Unrecognized contact id; enter a @GhostTag');
+                    const r = await gt.resolveTag(_normTag(s));
+                    if (!r || r.error || !r.publicKey) throw new Error((r && r.error) || 'GhostTag not found');
+                    return { routeId: r.nodeId || r.id || s, publicKey: r.publicKey };
+                },
+                // Verify an INCOMING caller's key. Prefer independent resolution
+                // (server registry, then GhostTag); fall back to the key in the
+                // (mesh-authenticated) signed offer so calls still work.
+                resolveIdentityKey: async function (peerId, msg) {
+                    var pk = await _lookupNodePublicKey(peerId);
+                    if (pk) return pk;
+                    try {
+                        var gt = _ghostTag();
+                        if (gt) { const r = await gt.resolveTag(_normTag(peerId)); if (r && r.publicKey) return r.publicKey; }
+                    } catch (_) { /* fall through */ }
+                    return (msg && msg.fp && msg.fp.pub) ? msg.fp.pub : null;
+                },
+            });
+            _wireEvents(call);
+            _call = call;
+            _building = null;
+            return call;
+        })();
+        return _building;
+    }
+
+    function _normTag(t) {
+        t = String(t || '').trim();
+        return t.charAt(0) === '@' ? t.slice(1) : t;
+    }
+
+    // GhostTag is defined as a bare top-level `const` in ghosttag.js; depending on
+    // load context it may be reachable via window.GhostTag or the global binding.
+    function _ghostTag() {
+        if (typeof window !== 'undefined' && window.GhostTag) return window.GhostTag;
+        try { return (typeof GhostTag !== 'undefined') ? GhostTag : null; } catch (_) { return null; }
+    }
+
+    function _backend() {
+        return (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http
+            : 'https://kryptos-ji-production.up.railway.app';
+    }
+
+    function _authHeaders() {
+        var token = '';
+        try {
+            var raw = sessionStorage.getItem('kryptos_token') || localStorage.getItem('kryptos_token');
+            if (raw) { try { var p = JSON.parse(raw); token = (p && p.token) ? p.token : raw; } catch (_) { token = raw; } }
+        } catch (_) {}
+        var h = { 'Content-Type': 'application/json' };
+        if (token) h.Authorization = 'Bearer ' + token;
+        return h;
+    }
+
+    var _PUBKEY_RE = /^0x0[234][0-9a-fA-F]{64,128}$/i;
+
+    // Resolve a nodeId (0x+64hex keccak) to its secp256k1 public key via the
+    // existing /validate-node endpoint (the server's registry binds them). Returns
+    // null if the node has no usable key on file (e.g. it never authenticated).
+    async function _lookupNodePublicKey(nodeId) {
+        try {
+            if (!_authHeaders().Authorization && typeof window.kryptosEnsureAuth === 'function') {
+                await window.kryptosEnsureAuth();
+            }
+            var res = await fetch(_backend() + '/validate-node/' + encodeURIComponent(nodeId), { headers: _authHeaders() });
+            if (!res.ok) return null;
+            var data = await res.json();
+            var pk = data && data.publicKey;
+            // Accept only a real pubkey — /validate-node echoes the id back for
+            // unknown 0x ids, which is NOT a usable signing key.
+            return (typeof pk === 'string' && _PUBKEY_RE.test(pk)) ? pk : null;
+        } catch (_) { return null; }
+    }
+
+    // ─── event wiring → UI ──────────────────────────────
+
+    function _wireEvents(call) {
+        call.on('incoming', function (e) { _showIncoming(e); });
+        call.on('ringing', function (e) { _showBar('Calling ' + _peerLabel(e && e.peer) + '…', true); });
+        call.on('connected', function (e) {
+            if (e && e.remoteStream) _attachAudio(e.remoteStream);
+            _startedAt = Date.now();
+            _showBar('Connected', true);
+            _startTimer();
+        });
+        call.on('ended', function (e) {
+            _stopTimer();
+            _detachAudio();
+            _hideIncoming();
+            _toast('Call ended' + (e && e.reason && e.reason !== 'normal' ? ' (' + e.reason + ')' : ''));
+            _hideBar();
+        });
+        call.on('error', function (e) {
+            var code = e && e.code;
+            // 'locked' uses the single debounced unlock prompt (no loop / no nav spam),
+            // and keeps any incoming prompt up so the user can unlock and accept again.
+            if (code === 'locked') { _promptUnlock('continue the call'); return; }
+            _stopTimer(); _hideIncoming(); _hideBar();
+            var msg = (e && e.message) ? e.message : 'Call error';
+            if (code === 'mic-permission') msg = 'Microphone blocked. Grant mic access and try again.';
+            else if (code === 'ice') msg = 'Could not get a relay (TURN) — call not started.';
+            _toast(msg, 5000);
+        });
+    }
+
+    // ─── public actions ─────────────────────────────────
+
+    async function startCall(targetArg) {
+        // Default to the OPEN chat's peer id (what messages already route to), not
+        // the display name. Fall back to a prompt for a node id / @GhostTag.
+        var target = targetArg || _currentTarget();
+        if (!target) {
+            target = window.prompt('Call which contact? Enter their node id / public key or @GhostTag:', '');
+            if (!target) return;
+        }
+        try {
+            var call = await _ensureCall();
+            var pk = await _getKey();
+            if (!pk) { _promptUnlock('start a call'); return; }
+            await call.startCall(String(target).trim());
+            // The in-call bar is shown by the 'ringing' event once the offer is sent,
+            // so a failed resolve doesn't leave a stuck "Calling…" bar.
+        } catch (err) {
+            _hideBar();
+            _toast(err && err.message ? err.message : 'Could not start call', 5000);
+        }
+    }
+
+    // Calls need the PIN-derived signing key. If it's not loaded, show the unlock
+    // screen ONCE so the user can unlock, then they press Call again.
+    //
+    // IMPORTANT: do NOT auto-retry on 'identity:updated'. A previous version did,
+    // and when getSessionPrivateKey() stayed null it re-showed the PIN screen on
+    // every identity event — stacking listeners and trapping the user in an
+    // inescapable PIN loop that looked like a forced logout.
+    var _unlockPromptAt = 0;
+    function _promptUnlock(action) {
+        _toast('Unlock with your PIN to ' + (action || 'continue') + ', then press Call again.', 4500);
+        if (Date.now() - _unlockPromptAt < 3000) return; // debounce — never spam the screen
+        _unlockPromptAt = Date.now();
+        try {
+            var stored = window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored();
+            if (stored && window.IdentityUI && typeof window.IdentityUI.showScreen === 'function') {
+                window.IdentityUI.showScreen('pin');
+            }
+        } catch (_) { /* */ }
+    }
+
+    async function acceptCall() {
+        var pk = await _getKey();
+        if (!pk) { _promptUnlock('answer the call'); return; }
+        try { var call = await _ensureCall(); await call.acceptCall(); _hideIncoming(); _showBar('Connecting…', true); }
+        catch (err) { _toast(err && err.message ? err.message : 'Could not accept', 4000); }
+    }
+
+    function rejectCall() { try { if (_call) _call.rejectCall(); } catch (_) {} _hideIncoming(); }
+    function endCall() { try { if (_call) _call.endCall(); } catch (_) {} _hideBar(); }
+
+    // The open chat's peer id — the same id messages route to (node id / key / address).
+    function _currentTarget() {
+        return (window.app && window.app.chatTarget) ? String(window.app.chatTarget) : null;
+    }
+
+    // Friendly label for the in-call bar: contact name, else a shortened id.
+    function _peerLabel(p) {
+        var name = window.app && window.app.chatContactName;
+        if (name) return String(name);
+        p = String(p || '');
+        return p.length > 16 ? p.slice(0, 8) + '…' + p.slice(-4) : p;
+    }
+
+    // ─── chat-header call button ────────────────────────
+
+    function _mountCallButton() {
+        if (document.getElementById('ghost-call-btn')) return;
+        // The chat header's action group holds the Scan + delete buttons; drop the
+        // Call button right before Scan so it sits with the other header actions.
+        var scan = document.getElementById('btn-ble-scan');
+        if (!scan || !scan.parentNode) return;
+        var btn = document.createElement('button');
+        btn.id = 'ghost-call-btn';
+        btn.className = 'btn-tiny';
+        btn.type = 'button';
+        btn.title = 'Start voice call';
+        btn.style.cssText = 'display:flex;align-items:center;gap:5px;border-radius:20px;';
+        btn.innerHTML = '<i data-lucide="phone" style="width:12px;"></i><span>Call</span>';
+        btn.addEventListener('click', function () { startCall(); });
+        scan.parentNode.insertBefore(btn, scan);
+        if (window.lucide && window.lucide.createIcons) { try { window.lucide.createIcons(); } catch (_) {} }
+    }
+
+    // ─── overlays (built dynamically, no markup edits) ──
+
+    function _bar() {
+        var bar = document.getElementById('ghost-call-bar');
+        if (bar) return bar;
+        bar = document.createElement('div');
+        bar.id = 'ghost-call-bar';
+        bar.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:1000000;'
+            + 'display:none;align-items:center;gap:14px;padding:10px 18px;border-radius:28px;'
+            + 'background:#0b1020;color:#e6edf6;box-shadow:0 6px 24px rgba(0,0,0,.4);font-size:0.9rem;';
+        var label = document.createElement('span');
+        label.id = 'ghost-call-bar-label';
+        var end = document.createElement('button');
+        end.textContent = 'End';
+        end.style.cssText = 'padding:6px 14px;border:none;border-radius:16px;background:#ef4444;color:#fff;'
+            + 'font-weight:600;cursor:pointer;';
+        end.addEventListener('click', endCall);
+        bar.appendChild(label);
+        bar.appendChild(end);
+        document.body.appendChild(bar);
+        return bar;
+    }
+    function _showBar(text, show) {
+        var bar = _bar();
+        document.getElementById('ghost-call-bar-label').textContent = text;
+        bar.style.display = show ? 'flex' : 'none';
+    }
+    function _hideBar() { var bar = document.getElementById('ghost-call-bar'); if (bar) bar.style.display = 'none'; }
+
+    function _startTimer() {
+        _stopTimer();
+        _timer = setInterval(function () {
+            var s = Math.floor((Date.now() - _startedAt) / 1000);
+            var mm = String(Math.floor(s / 60)).padStart(2, '0');
+            var ss = String(s % 60).padStart(2, '0');
+            var l = document.getElementById('ghost-call-bar-label');
+            if (l) l.textContent = 'Connected  ' + mm + ':' + ss;
+        }, 1000);
+    }
+    function _stopTimer() { if (_timer) { clearInterval(_timer); _timer = null; } }
+
+    function _showIncoming(e) {
+        _hideIncoming();
+        var ov = document.createElement('div');
+        ov.id = 'ghost-call-incoming';
+        ov.style.cssText = 'position:fixed;inset:0;z-index:1000001;display:flex;align-items:center;'
+            + 'justify-content:center;background:rgba(2,4,20,.6);';
+        var card = document.createElement('div');
+        card.style.cssText = 'background:#0b1020;color:#e6edf6;padding:24px 28px;border-radius:16px;'
+            + 'text-align:center;min-width:260px;box-shadow:0 10px 40px rgba(0,0,0,.5);';
+        var title = document.createElement('div');
+        title.textContent = 'Incoming call';
+        title.style.cssText = 'font-size:1.05rem;font-weight:700;margin-bottom:6px;';
+        var who = document.createElement('div');
+        who.textContent = 'from ' + ((e && e.from) ? String(e.from).slice(0, 16) : 'unknown');
+        who.style.cssText = 'opacity:.7;font-size:0.82rem;margin-bottom:18px;word-break:break-all;';
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:12px;justify-content:center;';
+        var acc = document.createElement('button');
+        acc.textContent = 'Accept';
+        acc.style.cssText = 'padding:8px 18px;border:none;border-radius:18px;background:#22c55e;color:#fff;font-weight:600;cursor:pointer;';
+        acc.addEventListener('click', acceptCall);
+        var rej = document.createElement('button');
+        rej.textContent = 'Decline';
+        rej.style.cssText = 'padding:8px 18px;border:none;border-radius:18px;background:#ef4444;color:#fff;font-weight:600;cursor:pointer;';
+        rej.addEventListener('click', rejectCall);
+        row.appendChild(acc); row.appendChild(rej);
+        card.appendChild(title); card.appendChild(who); card.appendChild(row);
+        ov.appendChild(card);
+        document.body.appendChild(ov);
+    }
+    function _hideIncoming() { var ov = document.getElementById('ghost-call-incoming'); if (ov) ov.remove(); }
+
+    function _attachAudio(stream) {
+        var a = document.getElementById('ghost-call-audio');
+        if (!a) {
+            a = document.createElement('audio');
+            a.id = 'ghost-call-audio';
+            a.autoplay = true;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+        }
+        a.srcObject = stream;
+        var p = a.play(); if (p && p.catch) p.catch(function () {});
+    }
+    function _detachAudio() {
+        var a = document.getElementById('ghost-call-audio');
+        if (a) { try { a.srcObject = null; } catch (_) {} }
+    }
+
+    function _toast(msg, ms) {
+        if (typeof window.showToast === 'function') { window.showToast(msg, ms || 3000); return; }
+        var t = document.createElement('div');
+        t.textContent = msg;
+        t.style.cssText = 'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:1000002;'
+            + 'background:#0b1020;color:#e6edf6;padding:10px 16px;border-radius:12px;font-size:0.85rem;'
+            + 'box-shadow:0 6px 24px rgba(0,0,0,.4);max-width:80vw;text-align:center;';
+        document.body.appendChild(t);
+        setTimeout(function () { t.remove(); }, ms || 3000);
+    }
+
+    // ─── bootstrap ──────────────────────────────────────
+
+    function _boot() {
+        _mountCallButton();
+        // Re-mount the button whenever the chat view re-renders.
+        var mo = new MutationObserver(function () { _mountCallButton(); });
+        try { mo.observe(document.body, { childList: true, subtree: true }); } catch (_) {}
+        // Construct the call engine once the identity is unlocked so incoming
+        // offers are caught even before the user places a call.
+        function tryBuild() { if (_ready() && _stored()) _ensureCall().catch(function () {}); }
+        window.addEventListener('identity:updated', tryBuild);
+        window.addEventListener('kryptos:auth-ready', tryBuild);
+        setTimeout(tryBuild, 1500);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', _boot);
+    } else {
+        _boot();
+    }
+
+    window.GhostCallUI = { startCall: startCall, acceptCall: acceptCall, rejectCall: rejectCall, endCall: endCall };
+})();

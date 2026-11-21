@@ -1,8 +1,8 @@
 ﻿node : C:\Users\novtw\.gemini
-\antigravity\ghostnet-server.
+\antigravity\kryptos-server.
 js:475
 At line:1 char:1
-+ node -c ghostnet-server.js 
++ node -c kryptos-server.js 
 2>&1 | Out-File -Encoding 
 utf8 error2.log
 + ~~~~~~~~~~~~~~~~~~~~~~~~~~~

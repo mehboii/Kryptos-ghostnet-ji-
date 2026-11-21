@@ -1,5 +1,5 @@
 /**
- * GhostNet Identity Quick Test — HARDENED
+ * Kryptos Identity Quick Test — HARDENED
  * ==========================================
  * Security fixes applied:
  *
@@ -12,7 +12,7 @@
 
 'use strict';
 
-const identity = require('./ghostnet-identity');
+const identity = require('./kryptos-identity');
 
 // ─── [4] TIMEOUT WRAPPER ────────────────────────────────
 

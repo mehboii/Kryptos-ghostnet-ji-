@@ -22,7 +22,7 @@ MESH CONNECTED
 Node Identity
 Cryptographic self-sovereign identity
 Zero-Knowledge
-GhostNet
+Kryptos
 Your decentralized identity lives
                                     on your device. No servers, no passwords, no tracking.
 [14] (616,310)<button class='auth-btn-primary' />

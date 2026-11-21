@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GhostNet Analytics</title>
+<title>Kryptos Analytics</title>
 <style>
   :root {
     --bg: #020428;
@@ -226,9 +226,9 @@ const BACKEND = window.location.origin;
 
 function getToken() {
   try {
-    const raw = sessionStorage.getItem('ghostnet_token')
-              || localStorage.getItem('ghostnet_token')
-              || localStorage.getItem('ghostnet_jwt');
+    const raw = sessionStorage.getItem('kryptos_token')
+              || localStorage.getItem('kryptos_token')
+              || localStorage.getItem('kryptos_jwt');
     if (!raw) return null;
     try { const p = JSON.parse(raw); return p?.token || raw; }
     catch { return raw; }
@@ -240,7 +240,7 @@ let chartInstance = null;
 async function loadDashboard(days = 30) {
   const token = getToken();
   if (!token) {
-    showError('Not authenticated. Please log in to GhostNet first.');
+    showError('Not authenticated. Please log in to Kryptos first.');
     return;
   }
 

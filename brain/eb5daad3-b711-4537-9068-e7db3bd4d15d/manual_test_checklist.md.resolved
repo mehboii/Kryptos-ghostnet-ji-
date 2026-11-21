@@ -1,9 +1,9 @@
-# 🧪 GhostNet Manual Test Checklist — Core Flows
+# 🧪 Kryptos Manual Test Checklist — Core Flows
 
 > **Date:** 2026-04-03  
 > **Tester:** _______________  
 > **Build/Commit:** _______________  
-> **Backend URL:** `https://ghostnet-ji-production.up.railway.app` _or_ `localhost:8080`  
+> **Backend URL:** `https://kryptos-ji-production.up.railway.app` _or_ `localhost:8080`  
 > **Frontend:** Vercel deployment _or_ `index.html` (local)
 
 ---
@@ -57,7 +57,7 @@
 | 2.4 | **⚠️ SAVE SEED PHRASE** | Copy / write down the 12 words exactly | Needed for Phase 8 (recovery). Record here: `________________________` | | |
 | 2.5 | Ed25519 keypair generated | Check identity object in memory (DevTools console) | Object contains `publicKey` (0x-prefixed hex), `address`, `nodeId` (Keccak256 hash, 66 hex chars with 0x prefix). `privateKey` present but NOT persisted yet. | | |
 | 2.6 | NodeId derivation is deterministic | Verify `nodeId` uses length-prefixed canonical input | `nodeId = ethers.id("<pkLen>:<pk>|<nameLen>:<name>")` — collision-safe per [FIX F] | | |
-| 2.7 | Existing identity check | If `ghostnet_identity` already in localStorage, verify generation is skipped | Returns existing identity without overwriting seed | | |
+| 2.7 | Existing identity check | If `kryptos_identity` already in localStorage, verify generation is skipped | Returns existing identity without overwriting seed | | |
 
 ---
 
@@ -70,10 +70,10 @@
 | 3.1 | Enter short PIN | Enter PIN with < 6 characters (e.g., "1234") | Error: "PIN must be at least 6 characters." [FIX E] | | |
 | 3.2 | Enter valid PIN | Enter a 6+ character PIN (e.g., "Gh0st!") | PIN accepted | | |
 | 3.3 | Confirm PIN | Re-enter the same PIN | Confirmation matches | | |
-| 3.4 | Private key encrypted | After PIN set, check `localStorage.getItem('ghostnet_enc_pk')` | Base64-encoded blob present. Structure: salt(16B) + iv(12B) + ciphertext. **No plaintext private key anywhere in storage.** | | |
+| 3.4 | Private key encrypted | After PIN set, check `localStorage.getItem('kryptos_enc_pk')` | Base64-encoded blob present. Structure: salt(16B) + iv(12B) + ciphertext. **No plaintext private key anywhere in storage.** | | |
 | 3.5 | PBKDF2 iteration count | Verify in source or via timing (~0.5-2s for PIN derivation) | 600,000 iterations (OWASP compliant) [FIX D] | | |
-| 3.6 | Identity saved to localStorage | Check `localStorage.getItem('ghostnet_identity')` | JSON object with `encryptedPK`, `publicKey`, `address`, `displayName`, `nodeId`. **No `privateKey` or `mnemonic` field.** | | |
-| 3.7 | Session created | Check `sessionStorage.getItem('ghostnet_session_key')` | Base64-encoded 256-bit session key present (tab-scoped). [FIX A] | | |
+| 3.6 | Identity saved to localStorage | Check `localStorage.getItem('kryptos_identity')` | JSON object with `encryptedPK`, `publicKey`, `address`, `displayName`, `nodeId`. **No `privateKey` or `mnemonic` field.** | | |
+| 3.7 | Session created | Check `sessionStorage.getItem('kryptos_session_key')` | Base64-encoded 256-bit session key present (tab-scoped). [FIX A] | | |
 | 3.8 | Dashboard access | After PIN setup completes | App redirects to main dashboard. GhostCode loads. All tabs accessible. | | |
 | 3.9 | Node registered | Verify `POST /register-node` or `POST /auth/node` was called | Node ID registered on server. Appears in mesh. | | |
 | 3.10 | GhostCode assigned | Check UI or `GET /user/shortcode` | Short alphanumeric code displayed (not "Loading...") | | |
@@ -82,7 +82,7 @@
 
 ## Phase 4 — Send Message
 
-> **Source:** [ghostnet-chat.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-chat.js) · [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-server.js) `POST /message`
+> **Source:** [kryptos-chat.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-chat.js) · [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-server.js) `POST /message`
 
 > [!NOTE]
 > Before this phase, set up **Browser B** by completing Phases 1–3 with a second account. Share GhostCodes or Node IDs between devices to initiate a chat.
@@ -102,7 +102,7 @@
 
 ## Phase 5 — Receive Message
 
-> **Source:** [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-server.js) WebSocket `CHAT_MESSAGE` handler
+> **Source:** [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-server.js) WebSocket `CHAT_MESSAGE` handler
 
 | # | Step | Action | Expected Result | ✅/❌ | Notes |
 |---|------|--------|-----------------|:-----:|-------|
@@ -149,11 +149,11 @@
 | 7.1 | Open Profile/Settings | Navigate to profile or settings area | Logout button visible | | |
 | 7.2 | Click Logout | Click the Logout button | API call: `POST /auth/logout` fires | | |
 | 7.3 | Server-side token invalidation | Check server response | `{ success: true, message: "Logged out. All tokens invalidated." }`. Server logs: `tokenVersion bumped to N+1` | | |
-| 7.4 | JWT cleared from storage | Check `sessionStorage` and `localStorage` | `ghostnet_token` removed. `ghostnet_session_key` removed from sessionStorage. `ghostnet_session_key_blob` removed from localStorage. | | |
+| 7.4 | JWT cleared from storage | Check `sessionStorage` and `localStorage` | `kryptos_token` removed. `kryptos_session_key` removed from sessionStorage. `kryptos_session_key_blob` removed from localStorage. | | |
 | 7.5 | UI reset | Observe the app | Returns to welcome/login screen. No authenticated content visible. | | |
 | 7.6 | Old JWT rejected — HTTP | Manually try `GET /auth/me` with the old JWT | Returns `401 Unauthorized` — tokenVersion mismatch rejects stale token | | |
 | 7.7 | Old JWT rejected — WebSocket | Try to connect WS with old JWT: `/ws?token=<old_jwt>` | WebSocket connection destroyed immediately. `socket.destroy()` called. | | |
-| 7.8 | No residual data leak | Inspect `localStorage` for `ghostnet_*` keys | `ghostnet_identity` and `ghostnet_enc_pk` **may persist** (they hold the encrypted identity, not the session). But session keys are gone — identity cannot be unlocked without PIN. | | |
+| 7.8 | No residual data leak | Inspect `localStorage` for `kryptos_*` keys | `kryptos_identity` and `kryptos_enc_pk` **may persist** (they hold the encrypted identity, not the session). But session keys are gone — identity cannot be unlocked without PIN. | | |
 
 ---
 
@@ -168,7 +168,7 @@
 | 8.3 | Enter correct seed phrase | Enter the 12 words saved from Phase 2 (Step 2.4) | Identity restoration begins. `ethers.Wallet.fromPhrase()` succeeds. | | |
 | 8.4 | Re-enter display name | Enter the same display name used in Phase 2 | Display name accepted | | |
 | 8.5 | Same keys regenerated | Compare `publicKey` and `nodeId` with Phase 2 values | **Exact match.** Same public key, same address, same nodeId (deterministic derivation). | | |
-| 8.6 | Set new PIN | Enter a PIN (same or different from Phase 3) | Private key re-encrypted under new PIN. Stored in `ghostnet_enc_pk`. | | |
+| 8.6 | Set new PIN | Enter a PIN (same or different from Phase 3) | Private key re-encrypted under new PIN. Stored in `kryptos_enc_pk`. | | |
 | 8.7 | Dashboard access restored | After PIN setup | Main dashboard loads. Identity shows same GhostCode / Node ID as before logout. | | |
 | 8.8 | GhostCode resolves | Verify via UI or `GET /user/shortcode` | Returns the same GhostCode assigned in Phase 3 | | |
 | 8.9 | Previous chats accessible | Open the chat with Device B | Encrypted messages from earlier sessions decrypt correctly with the restored keys. | | |
@@ -185,7 +185,7 @@
 | E.1 | Enter wrong PIN 4 times | Attempt to unlock identity with incorrect PIN, 4 times | Errors: "Wrong PIN. N attempts remaining." Counter decrements: 4 → 3 → 2 → 1 | | |
 | E.2 | 5th wrong attempt — lockout | Enter wrong PIN a 5th time | Error: "Too many failed attempts. Identity locked." `_locked = true` | | |
 | E.3 | Verify lockout persists | Try entering the correct PIN | Error: "Identity locked. Please restore from seed phrase." | | |
-| E.4 | Lockout bypass impossible | Open DevTools, try `localStorage.setItem('ghostnet_locked', 'false')` | **No effect.** Lockout is in-memory only. [FIX B] | | |
+| E.4 | Lockout bypass impossible | Open DevTools, try `localStorage.setItem('kryptos_locked', 'false')` | **No effect.** Lockout is in-memory only. [FIX B] | | |
 | E.5 | Recovery after lockout | Restore from seed phrase (repeat Phase 8 steps) | Full recovery succeeds. Lockout state reset on page reload. | | |
 
 ---

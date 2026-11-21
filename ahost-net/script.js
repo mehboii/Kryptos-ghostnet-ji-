@@ -1,5 +1,5 @@
 /**
- * GhostNet Core v3.1 (Ahost Net Integration)
+ * Kryptos Core v3.1 (Ahost Net Integration)
  * Full Feature Restore: Wallet, Messaging, Storage, Visualization
  */
 

@@ -21,7 +21,7 @@ MESH CONNECTED
 	[13] (961,48)<span >Light Mode />
 NODE PROFILE
 Authenticated
-test@ghostnet.io
+test@kryptos.io
 Since 2/22/2026
 Profile Settings
 [14] (591,403)<label class='input-label'>CUSTOM

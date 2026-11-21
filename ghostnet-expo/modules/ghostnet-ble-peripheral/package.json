@@ -1,7 +1,0 @@
-{
-  "name": "ghostnet-ble-peripheral",
-  "version": "0.1.0",
-  "description": "BLE peripheral (advertise + GATT server) for GhostNet Proximity Connect",
-  "main": "index.ts",
-  "private": true
-}

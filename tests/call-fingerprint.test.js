@@ -1,5 +1,5 @@
 /**
- * Unit tests — GhostNet call fingerprint sign/verify (secp256k1).
+ * Unit tests — Kryptos call fingerprint sign/verify (secp256k1).
  *
  * Run: node --test tests/call-fingerprint.test.js
  *
@@ -20,7 +20,7 @@ import ethers from 'ethers';
 // Make ethers visible to the UMD module's resolver before any test runs, then
 // load the module for its side effect (assigns globalThis.GhostCallFingerprint).
 globalThis.ethers = ethers;
-await import('../ghostnet-call-fingerprint.js');
+await import('../kryptos-call-fingerprint.js');
 const FP = globalThis.GhostCallFingerprint;
 
 // ethers v5 (utils.*) and v6 (top-level) both supported.

@@ -1,4 +1,4 @@
-# GhostNet Repair & Mesh Enhancement Walkthrough
+# Kryptos Repair & Mesh Enhancement Walkthrough
 
 I have successfully repaired the `script.js` logic to align with the new "Ahost Net" UI interactons and implemented the requested Bluetooth functionality.
 

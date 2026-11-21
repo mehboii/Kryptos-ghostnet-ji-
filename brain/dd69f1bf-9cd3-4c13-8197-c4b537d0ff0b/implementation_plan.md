@@ -1,4 +1,4 @@
-# GhostNet Functionality Repair & Mesh Enhancement Plan
+# Kryptos Functionality Repair & Mesh Enhancement Plan
 
 ## Goal
 Restore full interactivity to the new "Ahost Net" UI and implement a convincing Bluetooth Mesh experience that simulates multi-hop decentralized communication.
@@ -10,7 +10,7 @@ Restore full interactivity to the new "Ahost Net" UI and implement a convincing 
 ## Proposed Changes
 
 ### Logic Layer (`script.js`)
-#### [MODIFY] [script.js](file:///C:/Users/novtw/.gemini/antigravity/scratch/ghostnet-client/script.js)
+#### [MODIFY] [script.js](file:///C:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/script.js)
 - **DOM Selector Updates**:
     - Update Nav selectors from `.nav-links li` to `.nav-item`.
     - Update Tab selectors from `.tab-content` to `.view-panel`.

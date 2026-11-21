@@ -1,5 +1,5 @@
 {
   "artifactType": "ARTIFACT_TYPE_WALKTHROUGH",
-  "summary": "Walkthrough of vault login/logout implementation showing what was changed in ghostnet-file-vault.js and ui.js, and verification results.",
+  "summary": "Walkthrough of vault login/logout implementation showing what was changed in kryptos-file-vault.js and ui.js, and verification results.",
   "updatedAt": "2026-03-14T13:00:15.300351300Z"
 }
