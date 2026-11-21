@@ -1,4 +1,4 @@
-# ⚡ GhostNet — Encryption Integrity Test Results
+# ⚡ Kryptos — Encryption Integrity Test Results
 
 > **42 / 42 tests passed** — All encryption layers verified ✅  
 > **Duration:** 1.63s | **Date:** 2026-04-03
@@ -7,7 +7,7 @@
 
 ## Test Architecture
 
-The test suite exercises **4 layers** of GhostNet's encryption stack, simulating the full lifecycle:  
+The test suite exercises **4 layers** of Kryptos's encryption stack, simulating the full lifecycle:  
 **Device A sends → Network intercepts → Device B receives → Attacker rejected**
 
 ```mermaid
@@ -98,7 +98,7 @@ graph LR
 | **No Plaintext Leaks** | ✅ Verified | No `body` field in wire payloads, no plaintext in blobs |
 
 > [!IMPORTANT]
-> The current HKDF key derivation uses sorted public keys as IKM (not true ECDH). While this prevents trivial attacks, a production deployment should replace it with real X25519 or secp256k1 ECDH using actual private key material. The integration point is marked in [ghostnet-chat.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-chat.js#L148-L159).
+> The current HKDF key derivation uses sorted public keys as IKM (not true ECDH). While this prevents trivial attacks, a production deployment should replace it with real X25519 or secp256k1 ECDH using actual private key material. The integration point is marked in [kryptos-chat.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-chat.js#L148-L159).
 
 ---
 

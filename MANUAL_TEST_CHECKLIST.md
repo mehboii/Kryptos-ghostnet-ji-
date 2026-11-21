@@ -1,8 +1,8 @@
-# GhostNet Manual Test Checklist
+# Kryptos Manual Test Checklist
 
 > **Last updated:** 2026-04-03
-> **Backend:** `ghostnet-server.js` (port 8080)
-> **Build:** Capacitor Android (`capacitor.config.json` appId: `dev.n11x.ghostnet`)
+> **Backend:** `kryptos-server.js` (port 8080)
+> **Build:** Capacitor Android (`capacitor.config.json` appId: `dev.n11x.kryptos`)
 
 ---
 
@@ -55,7 +55,7 @@ Full end-to-end user journey. Every step must pass.
 | # | Step | Expected Result | Pass/Fail | Notes |
 |---|------|----------------|-----------|-------|
 | 1.4.1 | Tap Logout | Session cleared, token removed from sessionStorage + localStorage | | |
-| 1.4.2 | Verify no auth tokens remain in storage | Manual check: `sessionStorage` and `localStorage` empty of `ghostnet_token` | | |
+| 1.4.2 | Verify no auth tokens remain in storage | Manual check: `sessionStorage` and `localStorage` empty of `kryptos_token` | | |
 | 1.4.3 | Re-open app, choose "Recover with seed phrase" | Seed input screen appears | | |
 | 1.4.4 | Enter correct seed phrase | Identity restored, same nodeId/public key regenerated | | |
 | 1.4.5 | Enter incorrect seed phrase | Rejected with clear error | | |
@@ -129,7 +129,7 @@ Test on **3+ real Android devices**. Log every crash with device model, Android 
 | # | Step | Expected Result | Pass/Fail | Notes |
 |---|------|----------------|-----------|-------|
 | 3.3.1 | Verify PBKDF2 uses 600,000 iterations (check `crypto-identity.js`) | Code confirms 600K | | |
-| 3.3.2 | Verify shared secret uses HKDF (check `ghostnet-chat.js`) | `_deriveSharedSecret()` uses HKDF-SHA-256 | | |
+| 3.3.2 | Verify shared secret uses HKDF (check `kryptos-chat.js`) | `_deriveSharedSecret()` uses HKDF-SHA-256 | | |
 | 3.3.3 | Verify nodeId is full SHA-256 (64 hex chars) | `validateNodeId()` enforces `/^[a-f0-9]{64}$/` | | |
 
 ### 3.4 Storage Security
@@ -246,20 +246,20 @@ Test each tier **actually changes network behavior**, not just UI state.
 for i in $(seq 1 100); do
   curl -s -o /dev/null -w "%{http_code} %{time_total}s\n" \
     -H "Authorization: Bearer $TOKEN" \
-    https://ghostnet-ji-production.up.railway.app/status &
+    https://kryptos-ji-production.up.railway.app/status &
 done
 wait
 
 # WebSocket load test (install wscat: npm i -g wscat)
 for i in $(seq 1 20); do
-  wscat -c "wss://ghostnet-ji-production.up.railway.app?token=$TOKEN" \
+  wscat -c "wss://kryptos-ji-production.up.railway.app?token=$TOKEN" \
     -x '{"type":"HELLO","nodeId":"test'$i'"}' &
 done
 wait
 
 # Recommended: use k6 or artillery for proper load testing
 # npm i -g artillery
-# artillery quick --count 50 --num 100 https://ghostnet-ji-production.up.railway.app/status
+# artillery quick --count 50 --num 100 https://kryptos-ji-production.up.railway.app/status
 ```
 
 ---

@@ -3,10 +3,10 @@ node_modules/
 .npm/
 .vscode/
 
-ghostnet-client/bridge.j.txt
+kryptos-client/bridge.j.txt
 # Sensitive files — never commit
-ghostnet-bridge/cache/console-history.txt
-ghostnet-bridge/cache/*.txt
+kryptos-bridge/cache/console-history.txt
+kryptos-bridge/cache/*.txt
 *.private.key
 *.pem
 *.p12
@@ -27,7 +27,7 @@ installation_id
 vault-data/
 android/
 dist/
-ghostnet-dist/
+kryptos-dist/
 .vercel/
 .env.local
 *.log

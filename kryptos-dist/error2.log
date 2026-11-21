@@ -1,0 +1,27 @@
+﻿node : C:\Users\novtw\.gemini
+\antigravity\kryptos-server.
+js:475
+At line:1 char:1
++ node -c kryptos-server.js 
+2>&1 | Out-File -Encoding 
+utf8 error2.log
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~
+    + CategoryInfo           
+   : NotSpecified: (C:\User  
+  s\novtw\...t-server.js:4   
+ 75:String) [], RemoteExc    
+eption
+    + FullyQualifiedErrorId  
+   : NativeCommandError
+ 
+let messages = [];
+    ^
+
+SyntaxError: Identifier 
+'messages' has already been 
+declared
+    at checkSyntax (node:inte
+rnal/main/check_syntax:74:5)
+
+Node.js v20.20.0

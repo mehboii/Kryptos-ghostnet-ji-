@@ -1,5 +1,5 @@
 /**
- * GhostNet Core v3.1 (Simulation & Transport)
+ * Kryptos Core v3.1 (Simulation & Transport)
  * Merged & Optimized for Antigravity Network (Fixed UI Sync & Chat)
  */
 

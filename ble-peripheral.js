@@ -1,5 +1,5 @@
 /**
- * GhostNet BLE Peripheral — SECURITY HARDENED
+ * Kryptos BLE Peripheral — SECURITY HARDENED
  *
  * Vulnerabilities found and fixed:
  *
@@ -62,16 +62,16 @@ const RATE_WINDOW_MS = 1_000;       // sliding window size (1 s)
 const MAX_ADV_DELAY = 30_000;      // back-off ceiling (30 s)
 
 // [FIX F] Require real public key from environment — fail fast if absent.
-const MY_PUBLIC_KEY = process.env.GHOSTNET_PUBLIC_KEY;
+const MY_PUBLIC_KEY = process.env.KRYPTOS_PUBLIC_KEY;
 if (!MY_PUBLIC_KEY || MY_PUBLIC_KEY.trim().length < 32) {
     console.error(
-        '[FATAL] GHOSTNET_PUBLIC_KEY env var is not set or too short.\n' +
+        '[FATAL] KRYPTOS_PUBLIC_KEY env var is not set or too short.\n' +
         '        Generate a key pair and export the public key before starting.'
     );
     process.exit(1);
 }
 
-const myName = process.env.GHOSTNET_NODE_NAME || 'GhostNode';
+const myName = process.env.KRYPTOS_NODE_NAME || 'GhostNode';
 
 // ─── [FIX A] Allowlist of trusted client addresses ───────────────────────────
 //
@@ -80,7 +80,7 @@ const myName = process.env.GHOSTNET_NODE_NAME || 'GhostNode';
 // An empty set means NO client can write — you must add at least one address.
 //
 const TRUSTED_CLIENTS = new Set(
-    (process.env.GHOSTNET_TRUSTED_CLIENTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+    (process.env.KRYPTOS_TRUSTED_CLIENTS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 );
 
 // ─── Logging helpers ─────────────────────────────────────────────────────────

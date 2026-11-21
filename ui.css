@@ -1,4 +1,4 @@
-/* UI.CSS - GhostNet Futuristic Theme */
+/* UI.CSS - Kryptos Futuristic Theme */
 
 :root {
     --bg-dark: #FFFFFF;
@@ -3813,7 +3813,7 @@ canvas#mesh {
 /* ═══════════════════════════════════════════════════════════════════════════
    ONBOARDING FLOW
    ═══════════════════════════════════════════════════════════════════════════ */
-#ghostnet-onboarding {
+#kryptos-onboarding {
     position: fixed;
     top: 0;
     right: 0;
@@ -3829,7 +3829,7 @@ canvas#mesh {
     transition: opacity 0.5s ease;
 }
 
-#ghostnet-onboarding.fade-out {
+#kryptos-onboarding.fade-out {
     opacity: 0;
     pointer-events: none;
 }
@@ -4151,7 +4151,7 @@ canvas#mesh {
    no impact on any other view. Appended last so it wins the cascade.
    ════════════════════════════════════════════════════════════════════════ */
 
-/* GhostNet brand gradient — reused for sent bubbles, send button, ring. */
+/* Kryptos brand gradient — reused for sent bubbles, send button, ring. */
 :root {
     --ig-gradient: var(--accent-gradient);
     /* match the GHOST NET logo exactly */
@@ -5087,7 +5087,7 @@ a:focus-visible {
     box-shadow: none;
 }
 
-#ghostnet-onboarding {
+#kryptos-onboarding {
     background: #1b2d22;
 }
 
@@ -5356,7 +5356,7 @@ body:has(#glass-effect-toggle:not(:checked)) :is(.sidebar, .appearance-controls 
     -webkit-backdrop-filter: none;
 }
 
-#ghostnet-splash-overlay {
+#kryptos-splash-overlay {
     background: #1b2d22 !important;
 }
 
@@ -5368,7 +5368,7 @@ body:has(#glass-effect-toggle:not(:checked)) :is(.sidebar, .appearance-controls 
     filter: none !important;
 }
 
-#ghostnet-toast {
+#kryptos-toast {
     background: var(--bg-panel) !important;
     color: var(--text-primary) !important;
     border-color: var(--border) !important;
@@ -5463,8 +5463,8 @@ body:has(#glass-effect-toggle:not(:checked)) :is(.sidebar, .appearance-controls 
     color: #fff2e4;
 }
 
-#ghostnet-onboarding,
-#ghostnet-splash-overlay {
+#kryptos-onboarding,
+#kryptos-splash-overlay {
     background: #2a1d19 !important;
 }
 

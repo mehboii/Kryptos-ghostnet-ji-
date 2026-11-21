@@ -1,5 +1,5 @@
 /**
- * GhostNet Core v3.1 — HARDENED
+ * Kryptos Core v3.1 — HARDENED
  * ================================
  * Security fixes applied:
  *
@@ -655,7 +655,7 @@ const app = {
 
     init: async () => {
         try {
-            console.log(' Initializing GhostNet...');
+            console.log(' Initializing Kryptos...');
 
             try {
                 await initWallet();

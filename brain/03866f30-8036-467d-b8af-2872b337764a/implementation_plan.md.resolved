@@ -4,13 +4,13 @@ The goal is to resolve the `InvalidStateError: Failed to execute 'send' on 'WebS
 
 ## Proposed Changes
 
-### ghostnet-mesh.js
+### kryptos-mesh.js
 
-- [MODIFY] [ghostnet-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js)
+- [MODIFY] [kryptos-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js)
   - Add a module-level `messageQueue` array at the top of the file.
   - Add a [safeSend(ws, data)](file:///c:/Users/novtw/.gemini/antigravity/app.js#574-590) helper function that checks `ws.readyState` and queues messages if the state is not `OPEN`.
   - Replace all instances of `this.ws.send()` with [safeSend(this.ws, ...)](file:///c:/Users/novtw/.gemini/antigravity/app.js#574-590).
-  - In the [onopen](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#363-377) callback, flush the `messageQueue` after setting `this.wsReady = true`.
+  - In the [onopen](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#363-377) callback, flush the `messageQueue` after setting `this.wsReady = true`.
 
 ## Verification Plan
 

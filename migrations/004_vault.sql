@@ -1,4 +1,4 @@
--- GhostNet Supabase Migration 004 — Durable file vault
+-- Kryptos Supabase Migration 004 — Durable file vault
 --
 -- Replaces the ephemeral vault-meta.json and vault-keys.json (wiped on every Railway
 -- redeploy) with Postgres tables. The encrypted file BLOBS live in Supabase Storage

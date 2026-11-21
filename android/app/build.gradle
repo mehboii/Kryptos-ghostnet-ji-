@@ -1,10 +1,10 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "dev.n11x.ghostnet"
+    namespace "dev.n11x.kryptos"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "dev.n11x.ghostnet"
+        applicationId "dev.n11x.kryptos"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

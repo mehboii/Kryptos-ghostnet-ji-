@@ -64,7 +64,7 @@ const FAST_OPTS = { memoryCost: 1024, timeCost: 1, parallelism: 1 };
 // ─── TEST SUITE ─────────────────────────────────────────────────────────────
 
 console.log('\n╔══════════════════════════════════════════════════╗');
-console.log('║  GhostNet PIN Auth — Argon2id Test Suite         ║');
+console.log('║  Kryptos PIN Auth — Argon2id Test Suite         ║');
 console.log('╚══════════════════════════════════════════════════╝\n');
 
 console.log('── Core: hashPin + verifyPin ──────────────────────\n');

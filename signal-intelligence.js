@@ -1,6 +1,6 @@
 /**
  * Signal Intelligence Engine
- * Advanced signal classification and threat detection for GhostNet.
+ * Advanced signal classification and threat detection for Kryptos.
  */
 
 class SignalIntelligenceEngine {
@@ -8,7 +8,7 @@ class SignalIntelligenceEngine {
         this.signals = new Map();
         this.classificationHistory = [];
         this.inboundFlags = [];
-        this.ghostNetChannel = 6; // Example default mesh channel
+        this.kryptosChannel = 6; // Example default mesh channel
     }
 
     // Process an raw detected signal object
@@ -45,16 +45,16 @@ class SignalIntelligenceEngine {
 
     _hasHighInterference(signal) {
         // Returns true if signal is causing interference
-        // Check: signal strength below -80 dBm OR channel collision with GhostNet
+        // Check: signal strength below -80 dBm OR channel collision with Kryptos
         return (signal.rssi && signal.rssi < -80) || 
                (signal.channel && this._isChannelCollision(signal.channel));
     }
 
     _isChannelCollision(channel) {
-        // GhostNet typically uses channels 1, 6, 11
+        // Kryptos typically uses channels 1, 6, 11
         // Interference if another strong signal is on same channel
-        const ghostnetChannels = [1, 6, 11];
-        return ghostnetChannels.includes(channel);
+        const kryptosChannels = [1, 6, 11];
+        return kryptosChannels.includes(channel);
     }
 
     _analyzeSignal(device) {
@@ -63,14 +63,14 @@ class SignalIntelligenceEngine {
         if (device.rssi > -50) quality = 'STRONG';
         else if (device.rssi >= -80) quality = 'WEAK';
         
-        // Check for 'OPTIMAL' condition (usable for GhostNet path)
+        // Check for 'OPTIMAL' condition (usable for Kryptos path)
         if (quality === 'STRONG' && !this._hasHighInterference(device) && device.isGhostNode) {
             quality = 'OPTIMAL';
         }
 
         // 2. Interference Flags
         const interferenceFlags = [];
-        if (device.channel === this.ghostNetChannel) {
+        if (device.channel === this.kryptosChannel) {
             interferenceFlags.push('CHANNEL_COLLISION');
         }
         if (device.rssi > -40 && (!device.name || device.name.trim() === '')) {
@@ -115,7 +115,7 @@ class SignalIntelligenceEngine {
         // 4. Device Type Classification
         let type = 'UNKNOWN';
         if (device.isGhostNode) {
-            type = 'GhostNet Node';
+            type = 'Kryptos Node';
             threatScore = 0; // Override threat score for trusted nodes
             threatLevel = 'ALLOWED';
         } else if (threatScore > blockedAt && interferenceFlags.includes('MULTI_CHANNEL_BROADCAST') && interferenceFlags.includes('POTENTIAL_JAMMER')) {

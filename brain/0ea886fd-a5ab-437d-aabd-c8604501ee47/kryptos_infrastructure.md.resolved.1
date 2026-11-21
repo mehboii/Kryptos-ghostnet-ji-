@@ -1,0 +1,161 @@
+# 🌐 Kryptos Infrastructure Orchestrator — Complete Deployment Report
+
+## System Status: ✅ ALL SERVICES ONLINE & VERIFIED
+
+---
+
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Orchestrator["🧠 kryptos-orchestrator.cjs"]
+        ENV["Env Validator"]
+        DEP["Dep Installer"]
+        ECO["Config Manager"]
+        HEALTH["Health Engine"]
+    end
+
+    subgraph PM2["📦 PM2 Process Manager"]
+        ECOFILE["ecosystem.config.cjs"]
+    end
+
+    subgraph Core["⚡ Core Services"]
+        SERVER["kryptos-server<br/>:8080 — API + WS + Auth"]
+        BRIDGE["kryptos-bridge<br/>:3001 — Blockchain"]
+        CLIENT["kryptos-client<br/>:3000 — UI"]
+    end
+
+    subgraph Monitor["🛡️ Monitoring"]
+        WATCHDOG["kryptos-watchdog<br/>Port + HTTP + WS checks<br/>Auto-restart on failure"]
+    end
+
+    subgraph Mesh["🕸️ Browser Mesh Modules"]
+        direction LR
+        IDENTITY["identity"]
+        CHAT["chat"]
+        MESHJS["mesh"]
+        TRANSPORT["transport"]
+        DISCOVERY["discovery"]
+        WEBRTC["webrtc"]
+        REPUTATION["reputation"]
+        BLE["ble"]
+    end
+
+    Orchestrator -->|starts| PM2
+    PM2 -->|manages| Core
+    PM2 -->|manages| Monitor
+    WATCHDOG -.->|monitors| Core
+    SERVER <-->|WebSocket| MESHJS
+    SERVER -->|serves| Mesh
+    BRIDGE -->|RPC| ETH["ETH / BTC / SOL"]
+    SERVER -->|/health/bridge| BRIDGE
+```
+
+## Live Health Verification ✅
+
+| Check | Result | Details |
+|---|---|---|
+| Server HTTP | ✅ `200` | uptime, memory, mode, peer count |
+| Bridge HTTP | ✅ `200` | wallet data from multi-chain bridge |
+| Client HTTP | ✅ `200` | `{"status":"ok","service":"kryptos-client"}` |
+| WebSocket `/ws` | ✅ Connected | Received `{"type":"welcome"}`, clean close |
+| Server → Bridge | ✅ `200` | `{"bridge":"online","port":3001}` |
+| Server Error Log | ✅ Empty | Zero errors |
+| PM2 Restarts | ✅ `0` | All services stable |
+
+## Files Created
+
+| File | Purpose |
+|---|---|
+| [ecosystem.config.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/ecosystem.config.cjs) | PM2 config — 4 processes (server, bridge, client, watchdog) |
+| [kryptos-orchestrator.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-orchestrator.cjs) | 6-step self-healing boot sequence |
+| [kryptos-watchdog.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-watchdog.cjs) | Continuous health monitor with auto-restart |
+| [.env](file:///c:/Users/novtw/.gemini/antigravity/scratch/.env) | Master environment variables |
+| [.gitignore](file:///c:/Users/novtw/.gemini/antigravity/scratch/.gitignore) | Security exclusions |
+
+## Files Modified
+
+| File | Changes |
+|---|---|
+| [package.json](file:///c:/Users/novtw/.gemini/antigravity/scratch/package.json) | Added 14 npm scripts, engine requirement |
+| [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js) | +dotenv, env PORT, rich `/status`, `/health/bridge` |
+| [kryptos-client/server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/server.js) | Port 8080→3000, added `/health` |
+
+## Issues Fixed
+
+> [!WARNING]
+> **Port Conflict**: Server and Client both used port 8080. Client moved to 3000.
+
+> [!IMPORTANT]
+> **ESM/CJS Conflict**: Root uses `"type":"module"` but PM2/orchestrator require CommonJS. Solved with [.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/ecosystem.config.cjs) extensions.
+
+> [!NOTE]
+> **Missing dotenv**: Server had no env loading. Added `import 'dotenv/config'` and configurable PORT.
+
+## Command Reference
+
+### 🚀 Startup
+```bash
+npm start                           # Full orchestrated boot (dev mode)
+npm run start:cloud                 # Cloud: server + bridge only
+npm run start:local                 # Local: all services
+pm2 start ecosystem.config.cjs     # Direct PM2 start
+```
+
+### 📊 Monitoring
+```bash
+npm run check                       # One-shot health check
+npm run watch                       # Continuous watchdog
+npm run status                      # PM2 service status
+pm2 logs                            # Live logs
+pm2 logs kryptos-bridge            # Single service logs
+```
+
+### 🛑 Stop
+```bash
+npm run stop                        # Orchestrated shutdown
+pm2 stop all                        # PM2 stop
+pm2 delete all                      # Full cleanup
+```
+
+### 🔧 Troubleshooting
+```bash
+pm2 restart kryptos-server         # Restart one service
+Get-Content logs/watchdog.log -Tail 20   # Watchdog history
+curl http://localhost:8080/status    # Deep server health
+```
+
+## Runtime Modes
+
+| Mode | Services Started | Use Case |
+|---|---|---|
+| **cloud** | server, bridge | Production deployment |
+| **local** | server, bridge, client | Local development node |
+| **development** | server, bridge, client + verbose | Active development |
+
+## Self-Healing Safeguards
+
+```mermaid
+flowchart LR
+    A["Service Fails"] --> B{"Watchdog Detects<br/>3 consecutive fails"}
+    B -->|Yes| C["PM2 Auto-Restart"]
+    B -->|No| D["Log & Continue<br/>Monitoring"]
+    C --> E{"Service Recovers?"}
+    E -->|Yes| F["✅ Back to Healthy"]
+    E -->|No| G["Max 10 restarts<br/>then flag error"]
+    G --> H["Other services<br/>remain operational"]
+```
+
+- **PM2 layer**: `autorestart: true`, `max_restarts: 10`, `restart_delay: 2-3s`
+- **Watchdog layer**: Port + HTTP + WS checks every 30s, auto-restart after 3 failures
+- **Memory guard**: Services restart if exceeding 200-300MB RSS
+- **Stale peer cleanup**: WebSocket peers pruned after 90s silence
+- **Isolated failures**: Bridge BTC/ETH failures don't crash bridge process
+
+## Security
+
+- 🔒 [.env](file:///c:/Users/novtw/.gemini/antigravity/scratch/.env) excluded from git (private keys, JWT secrets)
+- 🔒 Auth module with bcrypt + JWT already integrated
+- 🔒 Bridge wallet key in env var (not hardcoded in production)
+- 🔒 `node_modules` excluded from deployment
+- 🔒 Auto-generated JWT secret fallback for dev mode

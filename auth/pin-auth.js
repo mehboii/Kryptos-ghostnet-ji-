@@ -1,5 +1,5 @@
 /**
- * GhostNet PIN Authentication Module — Argon2id
+ * Kryptos PIN Authentication Module — Argon2id
  * ══════════════════════════════════════════════
  *
  * Production-ready 6-digit PIN hashing and verification using Argon2id

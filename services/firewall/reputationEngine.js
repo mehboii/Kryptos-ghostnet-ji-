@@ -2,7 +2,7 @@
  * reputationEngine.js — Node Trust Scoring System
  * =================================================
  *
- * Every node that interacts with GhostNet has a trust score between
+ * Every node that interacts with Kryptos has a trust score between
  * minScore (-50) and maxScore (100). The score determines what the
  * firewall allows the node to do:
  *

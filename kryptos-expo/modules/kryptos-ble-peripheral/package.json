@@ -1,0 +1,7 @@
+{
+  "name": "kryptos-ble-peripheral",
+  "version": "0.1.0",
+  "description": "BLE peripheral (advertise + GATT server) for Kryptos Proximity Connect",
+  "main": "index.ts",
+  "private": true
+}

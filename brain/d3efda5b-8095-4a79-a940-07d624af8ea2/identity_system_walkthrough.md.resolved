@@ -1,4 +1,4 @@
-# GhostNet Cryptographic Identity System
+# Kryptos Cryptographic Identity System
 
 ## Architecture
 
@@ -46,13 +46,13 @@ flowchart TD
 
 | Key | Value |
 |---|---|
-| `ghostnet_enc_pk` | AES-256-GCM encrypted private key |
-| `ghostnet_pubkey` | Public key (hex) |
-| `ghostnet_address` | Ethereum-style address |
-| `ghostnet_display_name` | User's chosen name |
-| `ghostnet_node_id` | keccak256(pubkey + name) |
-| `ghostnet_pin_attempts` | Failed PIN counter |
-| `ghostnet_locked` | Lockout flag |
+| `kryptos_enc_pk` | AES-256-GCM encrypted private key |
+| `kryptos_pubkey` | Public key (hex) |
+| `kryptos_address` | Ethereum-style address |
+| `kryptos_display_name` | User's chosen name |
+| `kryptos_node_id` | keccak256(pubkey + name) |
+| `kryptos_pin_attempts` | Failed PIN counter |
+| `kryptos_locked` | Lockout flag |
 
 > [!CAUTION]
 > The raw private key and seed phrase are **NEVER** stored anywhere.

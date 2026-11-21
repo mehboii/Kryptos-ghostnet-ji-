@@ -5,15 +5,15 @@
     <script>
         window.addEventListener('error', function(e) {
             if (e.target.tagName === 'SCRIPT') {
-                console.log('[GhostNet] Script load failed, retrying from cache...');
+                console.log('[Kryptos] Script load failed, retrying from cache...');
                 setTimeout(() => window.location.reload(), 1000);
             }
         }, true);
     </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <link rel="preconnect" href="https://ghostnet-ji-production.up.railway.app">
-    <link rel="dns-prefetch" href="https://ghostnet-ji-production.up.railway.app">
+    <link rel="preconnect" href="https://kryptos-ji-production.up.railway.app">
+    <link rel="dns-prefetch" href="https://kryptos-ji-production.up.railway.app">
 
     <!-- SECURITY: 'unsafe-inline' is required in script-src because the app uses 100+ inline
          onclick handlers that cannot be easily refactored. This weakens CSP protection against XSS.
@@ -23,7 +23,7 @@
         script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://unpkg.com https://cdn.ethers.io;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com;
         font-src 'self' https://fonts.gstatic.com data:;
-        img-src 'self' data: blob: https://ghostnet-ji-production.up.railway.app;
+        img-src 'self' data: blob: https://kryptos-ji-production.up.railway.app;
         connect-src 'self' wss: ws: https:;
         worker-src 'self' blob:;
         object-src 'none';
@@ -36,7 +36,7 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link rel="apple-touch-icon" href="/favicon.ico">
 
-    <title>GhostNet | Decentralized Mesh</title>
+    <title>Kryptos | Decentralized Mesh</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -69,18 +69,18 @@
         crossorigin="anonymous"></script>
 
     <!-- Logic Scripts -->
-    <script src="ghostnet-chat.js"></script>
-    <script src="ghostnet-mesh.js"></script>
-    <script src="ghostnet-file-vault.js"></script>
+    <script src="kryptos-chat.js"></script>
+    <script src="kryptos-mesh.js"></script>
+    <script src="kryptos-file-vault.js"></script>
     <script src="ghosttag.js"></script>
-    <script src="ghostnet-sync.js"></script>
-    <script src="ghostnet-nat.js"></script>
+    <script src="kryptos-sync.js"></script>
+    <script src="kryptos-nat.js"></script>
     <!-- 1:1 encrypted voice calls (signaling over the mesh; iceServers from NAT) -->
-    <script src="ghostnet-call-signaling.js"></script>
-    <script src="ghostnet-call-fingerprint.js"></script>
-    <script src="ghostnet-call-ice.js"></script>
-    <script src="ghostnet-call.js"></script>
-    <script src="ghostnet-call-ui.js"></script>
+    <script src="kryptos-call-signaling.js"></script>
+    <script src="kryptos-call-fingerprint.js"></script>
+    <script src="kryptos-call-ice.js"></script>
+    <script src="kryptos-call.js"></script>
+    <script src="kryptos-call-ui.js"></script>
     <script src="app.js"></script>
     <script src="shieldConfig.js"></script>
     <script src="signal-intelligence.js"></script>
@@ -96,7 +96,7 @@
 
 <body>
     <!-- NATIVE-LIKE SPLASH SCREEN -->
-    <div id="ghostnet-splash-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#020428;z-index:999999;display:flex;justify-content:center;align-items:center;transition:opacity 0.6s ease-out;">
+    <div id="kryptos-splash-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:#020428;z-index:999999;display:flex;justify-content:center;align-items:center;transition:opacity 0.6s ease-out;">
       <style>
         .splash-inner { position: relative; width: 260px; height: 260px; display: flex; justify-content: center; align-items: center; }
         .splash-glow { position: absolute; width: 180px; height: 180px; background: radial-gradient(circle, rgba(88,217,255,0.28) 0%, rgba(88,217,255,0.08) 45%, transparent 75%); border-radius: 50%; filter: blur(18px); opacity: 0; animation: glowIn 1.1s ease-out forwards; }
@@ -124,11 +124,11 @@
     </div>
     <script>
       // Hide the dynamic splash screen smoothly after the app connects/renders
-      window.addEventListener('load', () => { setTimeout(() => { const sp = document.getElementById('ghostnet-splash-overlay'); if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.remove(), 600); } }, 1500); });
+      window.addEventListener('load', () => { setTimeout(() => { const sp = document.getElementById('kryptos-splash-overlay'); if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.remove(), 600); } }, 1500); });
     </script>
 
     <!-- ═══ ONBOARDING FLOW (first-time users only) ═══ -->
-    <div id="ghostnet-onboarding" style="display:none;">
+    <div id="kryptos-onboarding" style="display:none;">
         <!-- Floating particles -->
         <div class="onboard-particles" id="onboard-particles"></div>
 
@@ -199,18 +199,18 @@
     </div>
     <script>
     (() => {
-        const ONBOARDED_KEY = 'ghostnet_onboarded';
+        const ONBOARDED_KEY = 'kryptos_onboarded';
 
         // Only show for first-time users (no identity stored, not onboarded)
         function shouldShowOnboarding() {
             if (localStorage.getItem(ONBOARDED_KEY) === '1') return false;
-            if (localStorage.getItem('ghostnet_identity')) return false;
+            if (localStorage.getItem('kryptos_identity')) return false;
             return true;
         }
 
         if (!shouldShowOnboarding()) return;
 
-        const overlay = document.getElementById('ghostnet-onboarding');
+        const overlay = document.getElementById('kryptos-onboarding');
         overlay.style.display = 'flex';
 
         // Generate particles
@@ -312,7 +312,7 @@
         <aside class="sidebar" id="app-sidebar">
             <div class="brand">
                 <div class="brand-emblem" aria-hidden="true">G<span>·</span></div>
-                <div class="brand-lockup"><strong>ghostnet</strong><small>PRIVATE NETWORK</small></div>
+                <div class="brand-lockup"><strong>kryptos</strong><small>PRIVATE NETWORK</small></div>
             </div>
 
             <!-- PROFILE WIDGET -->
@@ -582,7 +582,7 @@
 
                     <div style="margin-top:24px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:12px; padding:20px; text-align:center;">
                         <h3 style="margin-bottom:12px; color:var(--text-primary);">Relay Status</h3>
-                        <p style="color:var(--text-muted); font-size:0.9rem;">Your node is currently contributing to the GhostNet mesh by silently relaying encrypted traffic for other nodes. This helps maintain network decentralization.</p>
+                        <p style="color:var(--text-muted); font-size:0.9rem;">Your node is currently contributing to the Kryptos mesh by silently relaying encrypted traffic for other nodes. This helps maintain network decentralization.</p>
                         <div style="margin-top:20px; display:flex; justify-content:center; gap:10px;">
                             <div style="width:10px; height:10px; border-radius:50%; background:#10b981; animation: pulse 2s infinite;"></div>
                             <span style="font-size:0.75rem; color:#10b981; font-weight:bold;">MESH CONTRIBUTOR</span>
@@ -667,7 +667,7 @@
                                 </svg>
                             </div>
                             <h2>Your messages</h2>
-                            <p>Private, encrypted conversations across the GhostNet mesh.</p>
+                            <p>Private, encrypted conversations across the Kryptos mesh.</p>
                             <div class="chat-empty-badges">
                                 <span class="chat-empty-badge">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -979,7 +979,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <h2 class="auth-title" style="font-size:1.6rem;">GhostNet</h2>
+                                <h2 class="auth-title" style="font-size:1.6rem;">Kryptos</h2>
                                 <p class="auth-subtitle" style="margin-bottom:28px;">Your decentralized identity lives
                                     on your device. No servers, no passwords, no tracking.</p>
                                 <button class="auth-btn-primary" onclick="IdentityUI.showScreen('name')"
@@ -1046,7 +1046,7 @@
                                     </div>
                                 </div>
                                 <h2 class="auth-title">Choose Your Name</h2>
-                                <p class="auth-subtitle">This is how other users will see you on the GhostNet mesh
+                                <p class="auth-subtitle">This is how other users will see you on the Kryptos mesh
                                     network.</p>
                                 <div class="id-warning-box">
                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f59e0b"
@@ -1196,7 +1196,7 @@
                                 </div>
                                 <h2 class="auth-title">Set Your PIN</h2>
                                 <p class="auth-subtitle">This 6-digit PIN encrypts your private key. You'll need it
-                                    every time you open GhostNet.</p>
+                                    every time you open Kryptos.</p>
                                 <div class="auth-input-group">
                                     <label class="auth-label" style="text-align:center;">CREATE PIN</label>
                                     <div class="pin-inputs" id="pin-set-inputs"></div>
@@ -1263,7 +1263,7 @@
                                     </div>
                                 </div>
                                 <button class="auth-btn-primary" onclick="IdentityUI.enterApp()"
-                                    style="margin-top:20px;">ENTER GHOSTNET</button>
+                                    style="margin-top:20px;">ENTER KRYPTOS</button>
                             </div>
                         </div>
                     </div>
@@ -1646,11 +1646,11 @@
                     }
 
                     // ─── SIGNED AUTH: prove private key ownership ─────────
-                    // Signs a challenge = "ghostnet-auth:" + nodeId + ":" + timestamp
+                    // Signs a challenge = "kryptos-auth:" + nodeId + ":" + timestamp
                     // Server should verify signature matches the claimed publicKey.
                     async function _signedAuthPayload(nodeId, privateKey, publicKey, displayName) {
                         const timestamp = Math.floor(Date.now() / 1000);
-                        const challenge = `ghostnet-auth:${nodeId}:${timestamp}`;
+                        const challenge = `kryptos-auth:${nodeId}:${timestamp}`;
                         const wallet = new ethers.Wallet(privateKey);
                         const signature = await wallet.signMessage(challenge);
                         // displayName is required server-side to re-derive and verify nodeId.
@@ -1662,8 +1662,8 @@
                     // radar, wallet) that finds no valid token independently triggers a
                     // re-unlock — producing the "prompting re-unlock" explosion. We funnel
                     // all of them through one gate: the prompt is shown at most once, and
-                    // a 'ghostnet:auth-required' event is emitted so consumers can pause
-                    // instead of 401-storming. The gate closes (and 'ghostnet:auth-ready'
+                    // a 'kryptos:auth-required' event is emitted so consumers can pause
+                    // instead of 401-storming. The gate closes (and 'kryptos:auth-ready'
                     // fires) the moment a token is obtained in _setAuthToken().
                     let _authGateOpen = false;
                     function _openAuthGate() {
@@ -1672,7 +1672,7 @@
                         // This is a normal lifecycle state (token aged out / fresh tab), not an
                         // error. Log once at info level so it doesn't read as a failure.
                         console.info('[Auth] Re-unlock needed — showing PIN prompt.');
-                        try { window.dispatchEvent(new CustomEvent('ghostnet:auth-required')); } catch (_) {}
+                        try { window.dispatchEvent(new CustomEvent('kryptos:auth-required')); } catch (_) {}
                         try {
                             if (window.GhostIdentity && GhostIdentity.isIdentityStored && GhostIdentity.isIdentityStored()) {
                                 showScreen(GhostIdentity.isLocked() ? 'locked' : 'pin');
@@ -1682,7 +1682,7 @@
 
                     // Authenticate with signed proof (falls back to unsigned if pk unavailable)
                     async function _authenticateNode(nodeId, privateKey, publicKey, displayName) {
-                        const API = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                        const API = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://kryptos-ji-production.up.railway.app';
                         // Only attempt signed auth with a VALID key. A corrupt/missing key
                         // (e.g. "0xnull" from a stale session) must NOT reach ethers.Wallet
                         // (it throws) and unsigned auth is rejected by the server anyway — so
@@ -1690,7 +1690,7 @@
                         const validPk = typeof privateKey === 'string' && /^0x[0-9a-fA-F]{64}$/.test(privateKey);
                         if (!validPk || !publicKey) {
                             // Funnel through the single auth gate: it logs once, prompts once, and
-                            // emits 'ghostnet:auth-required' so consumers pause rather than 401-storm.
+                            // emits 'kryptos:auth-required' so consumers pause rather than 401-storm.
                             _openAuthGate();
                             return null;
                         }
@@ -1714,18 +1714,18 @@
                     const TOKEN_EXPIRY_MS = 3600000; // 1 hour
                     function _setAuthToken(token) {
                         const wrapped = JSON.stringify({ token, expiresAt: Date.now() + TOKEN_EXPIRY_MS });
-                        sessionStorage.setItem('ghostnet_token', wrapped);
+                        sessionStorage.setItem('kryptos_token', wrapped);
                         // Close the auth gate and wake any paused authed consumers.
                         _authGateOpen = false;
-                        try { window.dispatchEvent(new CustomEvent('ghostnet:auth-ready', { detail: { token } })); } catch (_) {}
+                        try { window.dispatchEvent(new CustomEvent('kryptos:auth-ready', { detail: { token } })); } catch (_) {}
                     }
                     function _getAuthToken() {
-                        const raw = sessionStorage.getItem('ghostnet_token');
+                        const raw = sessionStorage.getItem('kryptos_token');
                         if (!raw) return null;
                         try {
                             const parsed = JSON.parse(raw);
                             if (parsed.expiresAt && Date.now() > parsed.expiresAt) {
-                                sessionStorage.removeItem('ghostnet_token');
+                                sessionStorage.removeItem('kryptos_token');
                                 console.debug('[Auth] Session token expired, cleared (will refresh).');
                                 return null;
                             }
@@ -1745,7 +1745,7 @@
                     // each fires its own POST /auth/node, racing duplicate tokens. We memoize the
                     // in-flight promise so concurrent callers share one authentication.
                     let _ensureAuthInFlight = null;
-                    window.ghostnetEnsureAuth = function ensureAuth() {
+                    window.kryptosEnsureAuth = function ensureAuth() {
                         const existing = _getAuthToken();
                         if (existing) return Promise.resolve(existing);
                         if (_ensureAuthInFlight) return _ensureAuthInFlight;
@@ -2001,7 +2001,7 @@
                                     }
                                 } else {
                                     // Fallback if GhostTag module not loaded
-                                    const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                                    const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://kryptos-ji-production.up.railway.app';
                                     const res = await fetch(`${API_URL}/ghosttag/check/${raw}`);
                                     if (res.ok) {
                                         const data = await res.json();
@@ -2171,7 +2171,7 @@
                             const _regToken = _getAuthToken();
                             if (_regToken) {
                                 const storedId = GhostIdentity.getStoredIdentity();
-                                const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                                const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://kryptos-ji-production.up.railway.app';
                                 
                                 // Node Registration
                                 await fetch(`${API_URL}/register-node`, {
@@ -2185,7 +2185,7 @@
                                         displayName: storedId.displayName,
                                         address: storedId.address,
                                         publicKey: storedId.publicKey,
-                                        avatar: localStorage.getItem('ghostnet_avatar_' + storedId.address) || ''
+                                        avatar: localStorage.getItem('kryptos_avatar_' + storedId.address) || ''
                                     })
                                 }).catch(e => console.warn('Node registration failed:', e));
                                 
@@ -2211,9 +2211,9 @@
                                         body: JSON.stringify({ tag: storedId.ghostTag, nodeId: storedId.nodeId, publicKey: storedId.publicKey, displayName: storedId.displayName })
                                     }).catch(e => { console.warn('GhostTag claim network fail:', e); return null; });
                                     if (claimStatus && !claimStatus.ok && claimStatus.status !== 409) {
-                                        localStorage.setItem('ghostnet_pending_tag_claim', 'true');
+                                        localStorage.setItem('kryptos_pending_tag_claim', 'true');
                                     } else if (claimStatus && claimStatus.ok) {
-                                        localStorage.removeItem('ghostnet_pending_tag_claim');
+                                        localStorage.removeItem('kryptos_pending_tag_claim');
                                     }
                                 }
                             } else {
@@ -2227,7 +2227,7 @@
                                         if (r.pending) GhostTag.startSyncWatcher();
                                     });
                                 } else {
-                                    localStorage.setItem('ghostnet_pending_tag_claim', 'true');
+                                    localStorage.setItem('kryptos_pending_tag_claim', 'true');
                                 }
                             }
 
@@ -2313,7 +2313,7 @@
                             // wiped when the tab closes — there is no cross-browser-restart
                             // persistence to gate. Gating this behind "remember" only meant the
                             // in-memory key (wiped on reload) was the sole source of the signing
-                            // key, so a reload left getSessionPrivateKey() null → ghostnetEnsureAuth
+                            // key, so a reload left getSessionPrivateKey() null → kryptosEnsureAuth
                             // bailed with "re-unlock required". Saving unconditionally lets signed
                             // re-auth survive a reload, matching the new-identity onboarding path
                             // which already calls saveSession() unconditionally. Still gone on tab
@@ -2345,7 +2345,7 @@
                             // Re-register node with backend — only if we got a token
                             const _unlockRegToken = _getAuthToken();
                             if (_unlockRegToken) {
-                                fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                fetch('https://kryptos-ji-production.up.railway.app/register-node', {
                                     method: 'POST',
                                     headers: {
                                         'Content-Type': 'application/json',
@@ -2356,7 +2356,7 @@
                                         displayName: stored.displayName,
                                         address: stored.address,
                                         publicKey: stored.publicKey,
-                                        avatar: localStorage.getItem('ghostnet_avatar_' + stored.address) || ''
+                                        avatar: localStorage.getItem('kryptos_avatar_' + stored.address) || ''
                                     })
                                 }).catch(e => console.warn('Node registration failed:', e));
                             }
@@ -2440,7 +2440,7 @@
                         document.getElementById('dash-name').textContent = identity.displayName;
                         document.getElementById('dash-key').textContent = GhostIdentity.shortenKey(identity.address);
 
-                        const avatarData = localStorage.getItem('ghostnet_avatar_' + identity.address);
+                        const avatarData = localStorage.getItem('kryptos_avatar_' + identity.address);
                         const placeholder = document.getElementById('dash-avatar-placeholder');
                         const img = document.getElementById('dash-avatar-img');
                         if (avatarData) {
@@ -2468,7 +2468,7 @@
 
                         const inviteEl = document.getElementById('dash-invite-link');
                         if (inviteEl) {
-                            const inviteUrl = `ghostnet.n11x.dev/invite/@${identity.ghostTag || 'username'}`;
+                            const inviteUrl = `kryptos.n11x.dev/invite/@${identity.ghostTag || 'username'}`;
                             inviteEl.textContent = inviteUrl;
                         }
 
@@ -2510,7 +2510,7 @@
                                 const avatarData = canvas.toDataURL('image/jpeg', 0.8);
                                 const stored = GhostIdentity.getStoredIdentity();
                                 if (stored) {
-                                    localStorage.setItem('ghostnet_avatar_' + stored.address, avatarData);
+                                    localStorage.setItem('kryptos_avatar_' + stored.address, avatarData);
                                     document.getElementById('dash-avatar-img').src = avatarData;
                                     document.getElementById('dash-avatar-img').style.display = 'block';
                                     document.getElementById('dash-avatar-placeholder').style.display = 'none';
@@ -2519,7 +2519,7 @@
                                         window.AppState.identity.avatar = avatarData;
                                     }
 
-                                    fetch('https://ghostnet-ji-production.up.railway.app/register-node', {
+                                    fetch('https://kryptos-ji-production.up.railway.app/register-node', {
                                         method: 'POST',
                                         headers: {
                                             'Content-Type': 'application/json',
@@ -2721,7 +2721,7 @@
                                     window.dispatchEvent(new Event('identity:updated'));
                                     _showDashboard(stored);
                                     _updateSidebar(stored);
-                                    const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://ghostnet-ji-production.up.railway.app';
+                                    const API_URL = (window.BACKEND && window.BACKEND.http) ? window.BACKEND.http : 'https://kryptos-ji-production.up.railway.app';
                                     fetch(`${API_URL}/register-node`, {
                                         method: 'POST',
                                         headers: {
@@ -2733,7 +2733,7 @@
                                             displayName: stored.displayName,
                                             address: stored.address,
                                             publicKey: stored.publicKey,
-                                            avatar: localStorage.getItem('ghostnet_avatar_' + stored.address) || ''
+                                            avatar: localStorage.getItem('kryptos_avatar_' + stored.address) || ''
                                         })
                                     }).catch(e => console.warn('Node registration failed:', e));
                                     
@@ -2766,14 +2766,14 @@
                                         }
                                     } else {
                                         // Fallback: legacy sync logic
-                                        if (localStorage.getItem('ghostnet_pending_tag_claim') === 'true' && stored.ghostTag) {
+                                        if (localStorage.getItem('kryptos_pending_tag_claim') === 'true' && stored.ghostTag) {
                                             fetch(`${API_URL}/ghosttag/claim`, {
                                                 method: 'POST',
                                                 headers: { 'Content-Type': 'application/json', 'X-Auth-Token': _getAuthToken() || '' },
                                                 body: JSON.stringify({ tag: stored.ghostTag, nodeId: stored.nodeId, publicKey: stored.publicKey, displayName: stored.displayName })
                                             }).then(res => {
-                                                if (res.ok) { localStorage.removeItem('ghostnet_pending_tag_claim'); }
-                                                else if (res.status === 409) { localStorage.removeItem('ghostnet_pending_tag_claim'); }
+                                                if (res.ok) { localStorage.removeItem('kryptos_pending_tag_claim'); }
+                                                else if (res.status === 409) { localStorage.removeItem('kryptos_pending_tag_claim'); }
                                             }).catch(e => console.warn('[Sync] Pending GhostTag claim failed:', e));
                                         }
                                     }
@@ -2858,7 +2858,7 @@
     </nav>
 
     <!-- Toast Notification Container -->
-    <div id="ghostnet-toast" style="
+    <div id="kryptos-toast" style="
         position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
         background: #0d1117; border: 1px solid #00f0ff; border-radius: 12px;
         padding: 10px 20px; color: #00f0ff; font-size: 0.85rem; font-weight: 600;
@@ -2876,9 +2876,9 @@
         (() => {
             const control = document.getElementById("glass-effect-toggle");
             if (!control) return;
-            try { control.checked = localStorage.getItem("ghostnet_glass_effect") !== "off"; } catch (_) {}
+            try { control.checked = localStorage.getItem("kryptos_glass_effect") !== "off"; } catch (_) {}
             control.addEventListener("change", () => {
-                try { localStorage.setItem("ghostnet_glass_effect", control.checked ? "on" : "off"); } catch (_) {}
+                try { localStorage.setItem("kryptos_glass_effect", control.checked ? "on" : "off"); } catch (_) {}
             });
         })();
     </script>

@@ -1,5 +1,5 @@
 /**
- * GhostNet Identity Test — HARDENED
+ * Kryptos Identity Test — HARDENED
  * ====================================
  * Security fixes applied:
  *
@@ -16,7 +16,7 @@
 
 'use strict';
 
-const GhostIdentity = require('./ghostnet-identity');
+const GhostIdentity = require('./kryptos-identity');
 
 // ─── [2] TIMEOUT WRAPPER ────────────────────────────────
 // Prevents crypto ops from hanging forever
@@ -131,7 +131,7 @@ function scrubIdentity(id) {
 
         // ── TEST 2: Sign Message ───────────────────────
         console.log('\n[2/5] Signing message...');
-        const msg = 'Hello GhostNet';
+        const msg = 'Hello Kryptos';
         let sig;
         try {
             sig = await withTimeout(

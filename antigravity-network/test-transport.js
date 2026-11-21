@@ -1,5 +1,5 @@
-const GhostTransport = require("./ghostnet-transport");
-const GhostIdentity = require("./ghostnet-identity");
+const GhostTransport = require("./kryptos-transport");
+const GhostIdentity = require("./kryptos-identity");
 
 (async () => {
     try {

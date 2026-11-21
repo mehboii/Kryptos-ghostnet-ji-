@@ -1,7 +1,7 @@
-# GhostNet Message Flow — Complete Rebuild
+# Kryptos Message Flow — Complete Rebuild
 
 ## Root Cause
-The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-chat.js#72-109) function in [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) only sent messages via GhostChat WebSocket encryption and **never called the HTTP POST `/message` endpoint**. This meant:
+The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-chat.js#72-109) function in [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) only sent messages via GhostChat WebSocket encryption and **never called the HTTP POST `/message` endpoint**. This meant:
 - Messages were never stored in the database
 - Offline recipients never received messages
 - Conversations were never created/updated
@@ -9,7 +9,7 @@ The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-ch
 
 ## All Changes Made
 
-### 1. [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-server.js) (4 fixes)
+### 1. [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js) (4 fixes)
 
 **Fix 1.1 — `/validate-node` endpoint**
 - Separated online/offline check from existence check
@@ -30,7 +30,7 @@ The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-ch
 - Added `delivered` status tracking for offline queue
 
 **Fix 1.4 — Pending message delivery on connect**
-- New [deliverPendingMessages()](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-server.js#540-591) function
+- New [deliverPendingMessages()](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js#540-591) function
 - When a user registers via WebSocket, checks DB for undelivered messages
 - Delivers all pending messages instantly via `CHAT_MESSAGE` WS events
 - Also sends `NEW_CONVERSATION` notifications
@@ -39,7 +39,7 @@ The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-ch
 
 ### 2. [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) (2 fixes)
 
-**Fix 2.1 — [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-chat.js#72-109) function (THE CRITICAL FIX)**
+**Fix 2.1 — [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-chat.js#72-109) function (THE CRITICAL FIX)**
 - Old: Sent via GhostChat encryption → WS only, never called HTTP persist
 - New: Always calls [persistMessage()](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js#117-158) (HTTP POST `/message`) as primary path
 - Server handles everything: DB storage, WS real-time delivery, offline queuing
@@ -85,6 +85,6 @@ Creates/updates conversation + saves message to DB
 ```
 
 ## Files Modified
-- [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-server.js) — Server-side message handling
+- [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js) — Server-side message handling
 - [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) — Frontend send flow
 - [ui.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ui.js) — UI validation

@@ -1,8 +1,8 @@
 /**
- * firewallCore.js — GhostNet Firewall Core Engine
+ * firewallCore.js — Kryptos Firewall Core Engine
  * ==================================================
  *
- * Central orchestrator for the entire GhostNet firewall system.
+ * Central orchestrator for the entire Kryptos firewall system.
  * Initializes all layers, routes traffic through the inspection
  * pipeline, and provides a unified public API.
  *

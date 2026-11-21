@@ -1,6 +1,6 @@
 # Task Checklist
 
-- [x] Add `messageQueue` and [safeSend](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#42-49) helper to [ghostnet-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js)
-- [x] Replace `ws.send` calls with [safeSend](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#42-49) in [ghostnet-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js)
-- [x] Implement queue flushing in [onopen](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#373-395) handler
+- [x] Add `messageQueue` and [safeSend](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#42-49) helper to [kryptos-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js)
+- [x] Replace `ws.send` calls with [safeSend](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#42-49) in [kryptos-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js)
+- [x] Implement queue flushing in [onopen](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#373-395) handler
 - [x] Verify fix by checking logs and ensuring no `InvalidStateError` occurs

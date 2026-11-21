@@ -1,5 +1,5 @@
 /**
- * GhostNet Node Identity System — BLAKE3
+ * Kryptos Node Identity System — BLAKE3
  * ═══════════════════════════════════════
  *
  * Deterministic, fast, and cryptographically secure node identity
@@ -23,7 +23,7 @@
  *   • ~6× faster than Keccak-256 on x86.
  *   • Keccak is a sponge construction; BLAKE3 is a Merkle-Damgård
  *     variant with a tree structure — both are secure, BLAKE3 is faster.
- *   • GhostNet previously used ethers.id() (Keccak256). Replacing with
+ *   • Kryptos previously used ethers.id() (Keccak256). Replacing with
  *     BLAKE3 removes the ethers dependency for identity derivation and
  *     improves performance on resource-constrained mobile nodes.
  *
@@ -107,7 +107,7 @@ import crypto from 'crypto';
  *   the same hash in a different protocol. An attacker who controls
  *   identity in protocol A could impersonate the same node in protocol B.
  *
- *   By prepending "GhostNet.NodeIdentity.v1" we ensure that GhostNet
+ *   By prepending "Kryptos.NodeIdentity.v1" we ensure that Kryptos
  *   node IDs are unique to this protocol even if the same key pair is
  *   used elsewhere.
  *
@@ -116,12 +116,12 @@ import crypto from 'crypto';
  *   simple context concatenation which is equally secure for this use
  *   case (the context is a fixed, public, non-secret string).
  */
-const DOMAIN_CONTEXT = 'GhostNet.NodeIdentity.v1';
+const DOMAIN_CONTEXT = 'Kryptos.NodeIdentity.v1';
 const CONTEXT_BYTES = new TextEncoder().encode(DOMAIN_CONTEXT);
 
 /**
  * Node ID prefix for human readability and protocol identification.
- * "gn_" identifies this as a GhostNet node ID at a glance.
+ * "gn_" identifies this as a Kryptos node ID at a glance.
  */
 const NODE_ID_PREFIX = 'gn_';
 
@@ -150,7 +150,7 @@ const NODE_ID_REGEX = /^gn_[0-9a-f]{64}$/;
  *   • One-way: node ID does not reveal the public key.
  *   • Collision-resistant: 2^128 birthday bound (256-bit output).
  *   • Fast: ~1μs per derivation on modern hardware.
- *   • Domain-separated: GhostNet-specific context prevents cross-protocol
+ *   • Domain-separated: Kryptos-specific context prevents cross-protocol
  *     identity reuse attacks.
  *
  * @param {Uint8Array|string} publicKey — 32-byte Ed25519 public key
@@ -182,7 +182,7 @@ function getNodeId(publicKey) {
     //
     // This concatenation is safe because:
     //   1. CONTEXT_BYTES has a fixed, known length (25 bytes for
-    //      "GhostNet.NodeIdentity.v1").
+    //      "Kryptos.NodeIdentity.v1").
     //   2. keyBytes has a fixed, validated length (32 bytes).
     //   3. There is no ambiguity in parsing — no variable-length fields.
     //   4. BLAKE3 is not vulnerable to length-extension attacks.
@@ -345,7 +345,7 @@ function verifyNodeId(claimedNodeId, publicKey) {
 // ─── VALIDATION ─────────────────────────────────────────────────────────────
 
 /**
- * Validate that a string is a well-formed GhostNet node ID.
+ * Validate that a string is a well-formed Kryptos node ID.
  *
  * This does NOT verify that the ID corresponds to a real public key —
  * it only checks the format (prefix + 64 hex chars).

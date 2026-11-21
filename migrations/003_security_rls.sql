@@ -1,4 +1,4 @@
--- GhostNet Supabase Migration 003 — Security hardening (RLS + grants)
+-- Kryptos Supabase Migration 003 — Security hardening (RLS + grants)
 --
 -- THREAT FIXED: messages/conversations/nodes had RLS disabled and the public PostgREST
 -- roles (anon/authenticated) held full CRUD+TRUNCATE. Anyone with the publishable anon

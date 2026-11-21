@@ -1,5 +1,5 @@
 /**
- * GhostNet vendored BLAKE3 (browser global) — GENERATED, DO NOT EDIT BY HAND.
+ * Kryptos vendored BLAKE3 (browser global) — GENERATED, DO NOT EDIT BY HAND.
  * Source: @noble/hashes BLAKE3. Regenerate: node tools/build-blake3-browser.mjs
  * Exposes: window.GhostBlake3 = { blake3, bytesToHex, hexToBytes, utf8ToBytes }
  */

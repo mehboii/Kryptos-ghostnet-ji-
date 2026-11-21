@@ -1,10 +1,10 @@
 # Vault Login/Logout Behavior
 
 ## Tasks
-- [x] Explore codebase: [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js), [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js), [app.js](file:///c:/Users/novtw/.gemini/antigravity/app.js), [ghostnet-identity.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-identity.js)
+- [x] Explore codebase: [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js), [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js), [app.js](file:///c:/Users/novtw/.gemini/antigravity/app.js), [kryptos-identity.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-identity.js)
 - [/] Write implementation plan
-- [ ] Add `clearVaultState()` to [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
-- [ ] Add `refreshVaultForUser()` to [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+- [ ] Add `clearVaultState()` to [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
+- [ ] Add `refreshVaultForUser()` to [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
 - [ ] Update logout handler in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js) to call vault clear + clear UI
 - [ ] Update `identity:updated` listener in [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js) to re-fetch vault files on login
 - [ ] Verify changes via browser testing

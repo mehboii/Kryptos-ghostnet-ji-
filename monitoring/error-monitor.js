@@ -1,5 +1,5 @@
 /**
- * GhostNet Error Monitor
+ * Kryptos Error Monitor
  * ══════════════════════
  *
  * Lightweight, dependency-free error monitoring with Sentry-compatible API.
@@ -217,7 +217,7 @@ function _alert(kind, message) {
 
     if (!webhookUrl) return;
     const payload = JSON.stringify({
-        text: ` GhostNet alert (${kind}): ${message}`,
+        text: ` Kryptos alert (${kind}): ${message}`,
         kind, message, timestamp: new Date(now).toISOString(),
     });
     // Fire-and-forget POST. We use built-in fetch (Node 18+).

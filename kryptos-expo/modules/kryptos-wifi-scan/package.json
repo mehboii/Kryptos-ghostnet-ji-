@@ -1,0 +1,7 @@
+{
+  "name": "kryptos-wifi-scan",
+  "version": "0.1.0",
+  "description": "Android nearby WiFi access-point scan for Kryptos Ghost Radar",
+  "main": "index.ts",
+  "private": true
+}

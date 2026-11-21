@@ -1,5 +1,5 @@
 const fs = require('fs');
-const content = fs.readFileSync('ghostnet-server.js', 'utf8');
+const content = fs.readFileSync('kryptos-server.js', 'utf8');
 try {
   const acorn = require('./node_modules/acorn/dist/acorn.js');
   acorn.parse(content, { ecmaVersion: 2022, sourceType: 'module' });

@@ -1,0 +1,251 @@
+# ============================================
+# Kryptos — Docker Compose Orchestration
+# ============================================
+# Replaces PM2 ecosystem with container-native services.
+#
+# Usage:
+#   docker compose up -d              → start all services
+#   docker compose up -d kryptos-server  → single service
+#   docker compose logs -f            → live tail all logs
+#   docker compose down               → stop everything
+#   docker compose build              → rebuild all images
+#
+# ============================================
+
+services:
+
+  # ══════════════════════════════════════════
+  #  CORE: Main API + WebSocket + Auth
+  # ══════════════════════════════════════════
+  kryptos-server:
+    build: .
+    container_name: kryptos-server
+    command: ["node", "kryptos-server.js"]
+    ports:
+      - "${KRYPTOS_SERVER_PORT:-8080}:8080"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - KRYPTOS_MODE=${KRYPTOS_MODE:-development}
+      - PORT=8080
+      - KRYPTOS_BRIDGE_URL=http://kryptos-bridge:3001
+    volumes:
+      - kryptos-data:/app/data
+      - kryptos-logs:/app/logs
+      - ./messages.json:/app/messages.json
+      - ./conversations.json:/app/conversations.json
+      - ./users.json:/app/users.json
+      - ./auth-users.json:/app/auth-users.json
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - kryptos
+    depends_on:
+      kryptos-messages:
+        condition: service_healthy
+
+  # ══════════════════════════════════════════
+  #  BRIDGE: Multi-chain Blockchain Bridge
+  # ══════════════════════════════════════════
+  kryptos-bridge:
+    build: .
+    container_name: kryptos-bridge
+    command: ["node", "kryptos-bridge/bridge.js"]
+    ports:
+      - "${KRYPTOS_BRIDGE_PORT:-3001}:3001"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3001
+    volumes:
+      - kryptos-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/wallet"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  # ══════════════════════════════════════════
+  #  CLIENT: UI Static File Server
+  # ══════════════════════════════════════════
+  kryptos-client:
+    build: .
+    container_name: kryptos-client
+    command: ["node", "kryptos-client/server.js"]
+    ports:
+      - "${KRYPTOS_CLIENT_PORT:-3000}:3000"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=3000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  # ══════════════════════════════════════════
+  #  MESSAGES: SQLite Persistence Service
+  # ══════════════════════════════════════════
+  kryptos-messages:
+    build: .
+    container_name: kryptos-messages
+    command: ["node", "kryptos-messages/server.js"]
+    ports:
+      - "${KRYPTOS_MESSAGES_PORT:-8090}:8090"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8090
+    volumes:
+      - kryptos-sqlite:/app/kryptos-messages
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8090/users"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  # ══════════════════════════════════════════
+  #  RELAY NODES: Onion Routing Chain
+  # ══════════════════════════════════════════
+  kryptos-relay-1:
+    build: .
+    container_name: kryptos-relay-1
+    command: ["node", "kryptos-bridge/relay/server.js"]
+    ports:
+      - "${KRYPTOS_RELAY_1_PORT:-8081}:8081"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8081
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  kryptos-relay-2:
+    build: .
+    container_name: kryptos-relay-2
+    command: ["node", "kryptos-bridge/relay/server.js"]
+    ports:
+      - "${KRYPTOS_RELAY_2_PORT:-8082}:8082"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8082
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  kryptos-relay-3:
+    build: .
+    container_name: kryptos-relay-3
+    command: ["node", "kryptos-bridge/relay/server.js"]
+    ports:
+      - "${KRYPTOS_RELAY_3_PORT:-8083}:8083"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=8083
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  # ══════════════════════════════════════════
+  #  REGISTRY: Node Discovery
+  # ══════════════════════════════════════════
+  kryptos-registry:
+    build: .
+    container_name: kryptos-registry
+    command: ["node", "kryptos-bridge/registry.js"]
+    ports:
+      - "${KRYPTOS_REGISTRY_PORT:-9000}:9000"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - KRYPTOS_RELAY_NODES=ws://kryptos-server:8080,ws://kryptos-relay-1:8081,ws://kryptos-relay-2:8082,ws://kryptos-relay-3:8083
+    restart: unless-stopped
+    networks:
+      - kryptos
+    depends_on:
+      - kryptos-relay-1
+      - kryptos-relay-2
+      - kryptos-relay-3
+
+  # ══════════════════════════════════════════
+  #  CHAIN: Blockchain Abstraction Layer
+  # ══════════════════════════════════════════
+  kryptos-chain:
+    build: .
+    container_name: kryptos-chain
+    command: ["node", "kryptos-chain/chain-service.js"]
+    ports:
+      - "${KRYPTOS_CHAIN_PORT:-4000}:4000"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - KRYPTOS_CHAIN_PORT=4000
+      - KRYPTOS_CHAIN_PROVIDER=${KRYPTOS_CHAIN_PROVIDER:-evm}
+      - ETH_RPC_URL=${ETH_RPC_URL:-http://127.0.0.1:8545}
+    restart: unless-stopped
+    networks:
+      - kryptos
+
+  # ══════════════════════════════════════════
+  #  VAULT: Encrypted File Storage
+  # ══════════════════════════════════════════
+  kryptos-vault:
+    build: .
+    container_name: kryptos-vault
+    command: ["node", "kryptos-vault/vault-service.js"]
+    ports:
+      - "${KRYPTOS_VAULT_PORT:-4001}:4001"
+    env_file: .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - KRYPTOS_VAULT_PORT=4001
+      - KRYPTOS_CHAIN_URL=http://kryptos-chain:4000
+    volumes:
+      - kryptos-vault:/app/kryptos-vault/vault-data
+    restart: unless-stopped
+    networks:
+      - kryptos
+    depends_on:
+      - kryptos-chain
+
+# ══════════════════════════════════════════
+#  VOLUMES
+# ══════════════════════════════════════════
+volumes:
+  kryptos-data:
+    driver: local
+  kryptos-logs:
+    driver: local
+  kryptos-sqlite:
+    driver: local
+  kryptos-vault:
+    driver: local
+
+# ══════════════════════════════════════════
+#  NETWORKS
+# ══════════════════════════════════════════
+networks:
+  kryptos:
+    driver: bridge
+    name: kryptos-network

@@ -1,0 +1,58 @@
+{
+  "expo": {
+    "name": "Kryptos",
+    "slug": "kryptos",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/kryptos-logo.png",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "android": {
+      "package": "com.kryptos.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.BLUETOOTH_SCAN",
+        "android.permission.BLUETOOTH_ADVERTISE",
+        "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_STATE",
+        "android.permission.NEARBY_WIFI_DEVICES"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/kryptos-logo.png",
+        "backgroundColor": "#0b0e14"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize"
+    },
+    "web": {
+      "favicon": "./assets/kryptos-logo.png"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.kryptos.app",
+      "infoPlist": {
+        "NSBluetoothAlwaysUsageDescription": "Kryptos uses Bluetooth to discover and securely connect to nearby devices in the offline mesh.",
+        "UIBackgroundModes": ["bluetooth-central", "bluetooth-peripheral"]
+      }
+    },
+    "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/kryptos-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0b0e14",
+          "dark": {
+            "image": "./assets/kryptos-logo.png",
+            "backgroundColor": "#0b0e14"
+          }
+        }
+      ],
+      "expo-secure-store",
+      "./plugins/withKryptosBle"
+    ]
+  }
+}

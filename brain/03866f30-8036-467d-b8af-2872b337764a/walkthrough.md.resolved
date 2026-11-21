@@ -4,9 +4,9 @@ I have implemented a fix for the `InvalidStateError` that occurred when attempti
 
 ## Changes Made
 
-### ghostnet-mesh.js
+### kryptos-mesh.js
 
-I introduced a module-level `messageQueue` and a [safeSend](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#42-49) utility function to buffer messages until the connection is ready.
+I introduced a module-level `messageQueue` and a [safeSend](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#42-49) utility function to buffer messages until the connection is ready.
 
 ```javascript
 let messageQueue = [];
@@ -20,8 +20,8 @@ function safeSend(ws, data) {
 }
 ```
 
-- All `ws.send()` calls were replaced with [safeSend(this.ws, ...)](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#42-49).
-- The [onopen](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-mesh.js#373-395) handler now flushes any queued messages:
+- All `ws.send()` calls were replaced with [safeSend(this.ws, ...)](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#42-49).
+- The [onopen](file:///c:/Users/novtw/.gemini/antigravity/kryptos-mesh.js#373-395) handler now flushes any queued messages:
 
 ```javascript
 this.ws.onopen = () => {

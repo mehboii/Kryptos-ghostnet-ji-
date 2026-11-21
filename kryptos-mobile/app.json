@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Kryptos",
+    "slug": "kryptos-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/kryptos-logo.png",
+    "scheme": "kryptos",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "dev.n11x.kryptos"
+    },
+    "android": {
+      "package": "dev.n11x.kryptos",
+      "adaptiveIcon": {
+        "backgroundColor": "#0a0e27",
+        "foregroundImage": "./assets/images/kryptos-logo.png"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/kryptos-logo.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/kryptos-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#0a0e27",
+          "dark": {
+            "image": "./assets/images/kryptos-logo.png",
+            "backgroundColor": "#0a0e27"
+          }
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "06a88dc7-4865-4f50-b283-712a89037a4c"
+      }
+    }
+  }
+}

@@ -1,5 +1,5 @@
 /**
- * Unit tests — GhostNet call ICE/TURN provider.
+ * Unit tests — Kryptos call ICE/TURN provider.
  *
  * Run: node --test tests/call-ice.test.js
  *
@@ -13,7 +13,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import '../ghostnet-call-ice.js';
+import '../kryptos-call-ice.js';
 
 const ICE = globalThis.GhostCallIce;
 

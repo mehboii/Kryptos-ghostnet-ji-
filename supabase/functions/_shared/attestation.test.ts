@@ -47,18 +47,18 @@ class FakeNonceStore implements NonceStore {
 }
 
 const androidConfig: AndroidConfig = {
-  packageName: 'net.ghostnet.app',
+  packageName: 'net.kryptos.app',
   certSha256Digests: ['CERT_DIGEST_A'],
   deviceIntegrityBar: 'MEETS_DEVICE_INTEGRITY',
 };
-const iosConfig: IosConfig = { appId: 'TEAMID.net.ghostnet.app', environment: 'production' };
+const iosConfig: IosConfig = { appId: 'TEAMID.net.kryptos.app', environment: 'production' };
 
 function androidPayload(nonce: string, over: Partial<PlayIntegrityPayload> = {}): PlayIntegrityPayload {
   return {
-    requestDetails: { requestPackageName: 'net.ghostnet.app', nonce },
+    requestDetails: { requestPackageName: 'net.kryptos.app', nonce },
     appIntegrity: {
       appRecognitionVerdict: 'PLAY_RECOGNIZED',
-      packageName: 'net.ghostnet.app',
+      packageName: 'net.kryptos.app',
       certificateSha256Digest: ['CERT_DIGEST_A'],
     },
     deviceIntegrity: { deviceRecognitionVerdict: ['MEETS_DEVICE_INTEGRITY', 'MEETS_BASIC_INTEGRITY'] },
@@ -158,7 +158,7 @@ Deno.test('android FAIL: not PLAY_RECOGNIZED', async () => {
   const store = new FakeNonceStore();
   store.seed('NONCE');
   const payload = androidPayload('NONCE', {
-    appIntegrity: { appRecognitionVerdict: 'UNRECOGNIZED_VERSION', packageName: 'net.ghostnet.app', certificateSha256Digest: ['CERT_DIGEST_A'] },
+    appIntegrity: { appRecognitionVerdict: 'UNRECOGNIZED_VERSION', packageName: 'net.kryptos.app', certificateSha256Digest: ['CERT_DIGEST_A'] },
   });
   const d = deps({ nonce: store, android: makeAndroidVerifier({ ok: true, value: payload }) });
   assertEquals((await gradeAttestation({ platform: 'android', token: 'tok' }, d)).reason, 'android_app_not_play_recognized');

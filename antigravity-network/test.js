@@ -1,4 +1,4 @@
-const identity = require("./ghostnet-identity");
+const identity = require("./kryptos-identity");
 
 (async () => {
     const node = await identity.createIdentity();

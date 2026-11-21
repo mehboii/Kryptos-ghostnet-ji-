@@ -274,7 +274,7 @@ class FirewallSelfDefense {
                     if (!verdict.allowed) {
                         firewallLogger.log(EVENT.CONNECTION_BLOCKED, null, 'block',
                             `Outbound fetch blocked: ${verdict.reason}`, { url: _sanitizeUrl(url) });
-                        return Promise.reject(new Error(`[GhostNet Firewall] Blocked: ${verdict.reason}`));
+                        return Promise.reject(new Error(`[Kryptos Firewall] Blocked: ${verdict.reason}`));
                     }
 
                     return self._originals.fetch(input, init);
@@ -291,7 +291,7 @@ class FirewallSelfDefense {
                     if (!verdict.allowed) {
                         firewallLogger.log(EVENT.CONNECTION_BLOCKED, null, 'block',
                             `Outbound WebSocket blocked: ${verdict.reason}`, { url: _sanitizeUrl(url) });
-                        throw new Error(`[GhostNet Firewall] Blocked: ${verdict.reason}`);
+                        throw new Error(`[Kryptos Firewall] Blocked: ${verdict.reason}`);
                     }
                     return new self._originals.WebSocket(url, protocols);
                 };
@@ -318,7 +318,7 @@ class FirewallSelfDefense {
                         if (!verdict.allowed) {
                             firewallLogger.log(EVENT.CONNECTION_BLOCKED, null, 'block',
                                 `Outbound XHR blocked: ${verdict.reason}`, { url: _sanitizeUrl(url), method });
-                            throw new Error(`[GhostNet Firewall] Blocked: ${verdict.reason}`);
+                            throw new Error(`[Kryptos Firewall] Blocked: ${verdict.reason}`);
                         }
                         return origOpen(method, url, ...args);
                     };

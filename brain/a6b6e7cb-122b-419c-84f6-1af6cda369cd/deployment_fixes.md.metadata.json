@@ -1,5 +1,5 @@
 {
   "artifactType": "ARTIFACT_TYPE_TASK",
-  "summary": "Summary of all backend/deployment fixes applied to bridge.js, ghostnet-server.js, ui.js, and screenshot-protection.js. Includes a complete Railway environment variable reference table with recommended values.",
+  "summary": "Summary of all backend/deployment fixes applied to bridge.js, kryptos-server.js, ui.js, and screenshot-protection.js. Includes a complete Railway environment variable reference table with recommended values.",
   "updatedAt": "2026-03-31T06:02:51.995967Z"
 }

@@ -57,7 +57,7 @@ async function test(name, fn) {
 // ─── TEST SUITE ─────────────────────────────────────────────────────────────
 
 console.log('\n╔══════════════════════════════════════════════════╗');
-console.log('║  GhostNet BLAKE3 Node Identity — Test Suite      ║');
+console.log('║  Kryptos BLAKE3 Node Identity — Test Suite      ║');
 console.log('╚══════════════════════════════════════════════════╝\n');
 
 console.log('── Key pair generation ─────────────────────────────\n');
@@ -158,7 +158,7 @@ console.log('\n── Signing and verification ───────────
 
 await test('Sign and verify round-trip', async () => {
     const identity = generateNodeIdentity();
-    const message = 'Hello, GhostNet mesh!';
+    const message = 'Hello, Kryptos mesh!';
     const signature = signMessage(message, identity.privateKey);
 
     assert.ok(typeof signature === 'string', 'signature is hex string');

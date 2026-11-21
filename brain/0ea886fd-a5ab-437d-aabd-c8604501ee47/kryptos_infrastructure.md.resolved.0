@@ -1,0 +1,161 @@
+# 🌐 Kryptos Infrastructure Orchestrator — Deployment Report
+
+## System Status: ✅ ALL SERVICES ONLINE
+
+---
+
+## Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Orchestrator["🧠 Orchestrator (kryptos-orchestrator.cjs)"]
+        ENV["Environment Validator"]
+        DEP["Dependency Installer"]
+        ECO["Ecosystem Config Manager"]
+        HEALTH["Health Check Engine"]
+        RECOVERY["Auto-Recovery System"]
+    end
+
+    subgraph Core["⚡ Core Services"]
+        SERVER["kryptos-server<br/>:8080 — API + WebSocket"]
+        BRIDGE["kryptos-bridge<br/>:3001 — Blockchain Bridge"]
+        CLIENT["kryptos-client<br/>:3000 — UI Server"]
+    end
+
+    subgraph Mesh["🕸️ Mesh Modules (Browser-side)"]
+        IDENTITY["kryptos-identity"]
+        CHAT["kryptos-chat"]
+        DISCOVERY["kryptos-discovery"]
+        MESHJS["kryptos-mesh"]
+        TRANSPORT["kryptos-transport"]
+        WEBRTC["kryptos-webrtc"]
+        REPUTATION["kryptos-reputation"]
+        BLE["kryptos-ble"]
+    end
+
+    subgraph PM2["📦 PM2 Process Manager"]
+        ECOFILE["ecosystem.config.cjs"]
+    end
+
+    Orchestrator -->|starts| PM2
+    PM2 -->|manages| Core
+    SERVER <-->|WebSocket| MESHJS
+    SERVER -->|serves| Mesh
+    BRIDGE -->|blockchain| ETH["ETH/BTC/SOL"]
+    CLIENT -->|static UI| BROWSER["Browser"]
+    BROWSER --> Mesh
+```
+
+## Services Deployed
+
+| Service | Port | Status | Script | Module Type |
+|---|---|---|---|---|
+| **kryptos-server** | `8080` | 🟢 Online | [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js) | ESM |
+| **kryptos-bridge** | `3001` | 🟢 Online | [kryptos-bridge/bridge.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-bridge/bridge.js) | CommonJS |
+| **kryptos-client** | `3000` | 🟢 Online | [kryptos-client/server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/server.js) | CommonJS |
+
+## Files Created
+
+| File | Purpose |
+|---|---|
+| [ecosystem.config.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/ecosystem.config.cjs) | PM2 process manager configuration |
+| [kryptos-orchestrator.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-orchestrator.cjs) | Self-healing infrastructure orchestrator |
+| [.env](file:///c:/Users/novtw/.gemini/antigravity/scratch/.env) | Master environment variables |
+| [.gitignore](file:///c:/Users/novtw/.gemini/antigravity/scratch/.gitignore) | Git exclusion rules |
+| [package.json](file:///c:/Users/novtw/.gemini/antigravity/scratch/package.json) | Updated with all npm scripts |
+
+## Files Modified
+
+| File | Change |
+|---|---|
+| [kryptos-client/server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-client/server.js) | Fixed port conflict (8080→3000), added `/health` endpoint |
+
+## Key Issues Fixed
+
+> [!WARNING]
+> **Port Conflict Resolved**: Both `kryptos-server` and `kryptos-client` were hardcoded to port 8080. Client moved to port 3000.
+
+> [!IMPORTANT]
+> **ESM/CJS Conflict Handled**: Root [package.json](file:///c:/Users/novtw/.gemini/antigravity/scratch/package.json) has `"type": "module"` but PM2 config and orchestrator require CommonJS. Solved by using [.cjs](file:///c:/Users/novtw/.gemini/antigravity/scratch/ecosystem.config.cjs) extensions for both infrastructure files.
+
+## Commands Reference
+
+### One-Command Startup
+```bash
+npm start                    # Development mode (all services)
+npm run start:cloud          # Cloud mode (server + bridge only)
+npm run start:local          # Local node mode (full mesh)
+```
+
+### PM2 Direct
+```bash
+pm2 start ecosystem.config.cjs          # Start all
+pm2 start ecosystem.config.cjs --only kryptos-server   # Single service
+pm2 list                                # Status table
+pm2 logs                                # Live logs
+pm2 logs kryptos-bridge                # Single service logs
+pm2 restart kryptos-server             # Restart one
+pm2 stop all                            # Stop all
+```
+
+### Orchestrator Commands
+```bash
+node kryptos-orchestrator.cjs                  # Full boot sequence
+node kryptos-orchestrator.cjs --mode=cloud     # Cloud mode
+node kryptos-orchestrator.cjs --health         # Health check only
+node kryptos-orchestrator.cjs --status         # Service status
+node kryptos-orchestrator.cjs --stop           # Stop everything
+```
+
+## Runtime Modes
+
+```mermaid
+graph LR
+    subgraph Cloud["☁️ CLOUD MODE"]
+        CS["kryptos-server"]
+        CB["kryptos-bridge"]
+    end
+
+    subgraph Local["🏠 LOCAL MODE"]
+        LS["kryptos-server"]
+        LB["kryptos-bridge"]
+        LC["kryptos-client"]
+    end
+
+    subgraph Dev["🔧 DEVELOPMENT MODE"]
+        DS["kryptos-server"]
+        DB["kryptos-bridge"]
+        DC["kryptos-client"]
+        DW["+ verbose logging"]
+        DR["+ auto-restart"]
+    end
+```
+
+## Health Check Results
+
+| Check | Status |
+|---|---|
+| Server API (`/status`) | ✅ `200 {"status":"ok"}` |
+| Bridge API (`/wallet`) | ✅ `200` (wallet data returned) |
+| Client UI (`/health`) | ✅ `200 {"status":"ok"}` |
+| Server Error Log | ✅ Empty (no errors) |
+| Bridge BTC RPC | ⚠️ Expected — bitcoind not running locally |
+
+## Failure Handling
+
+The orchestrator implements these safeguards:
+
+1. **Per-service isolation** — Each service runs as independent PM2 process
+2. **Auto-restart** — PM2 configured with `max_restarts: 10`, `restart_delay: 2-3s`
+3. **Memory limits** — Services auto-restart if exceeding 200-300MB
+4. **Graceful degradation** — Bridge BTC failure doesn't crash the bridge
+5. **Health endpoints** — Every service has a verifiable health URL
+6. **Log separation** — Each service writes to its own log file in `logs/`
+7. **Stale cleanup** — Server automatically removes dead WebSocket peers (90s timeout)
+
+## Security Protections
+
+- ⛔ [.env](file:///c:/Users/novtw/.gemini/antigravity/scratch/.env) excluded from git (contains private keys + JWT secrets)
+- ⛔ `node_modules` excluded from deployment
+- 🔐 JWT auth system ready (`auth/` module integrated with server)
+- 🔐 Bridge wallet key in environment variable, not hardcoded

@@ -56,7 +56,7 @@ supabase secrets set ATTEST_SESSION_SECRET="$(openssl rand -base64 48)" --projec
 supabase secrets set ATTEST_SESSION_TTL_SECONDS="900" --project-ref cypmjgbtcfowsqlwkzfu
 
 # ── Android (Play Integrity) ──
-supabase secrets set ANDROID_PACKAGE_NAME="net.ghostnet.app" --project-ref cypmjgbtcfowsqlwkzfu
+supabase secrets set ANDROID_PACKAGE_NAME="net.kryptos.app" --project-ref cypmjgbtcfowsqlwkzfu
 # Comma-separated accepted signing-cert SHA-256 digests, base64url (as Play Integrity reports them):
 supabase secrets set ANDROID_CERT_SHA256="<base64url-sha256-of-signing-cert>" --project-ref cypmjgbtcfowsqlwkzfu
 # Optional bar: MEETS_BASIC_INTEGRITY | MEETS_DEVICE_INTEGRITY (default) | MEETS_STRONG_INTEGRITY
@@ -66,7 +66,7 @@ supabase secrets set GOOGLE_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}
 
 # ── iOS (App Attest) ──
 supabase secrets set IOS_TEAM_ID="ABCDE12345" --project-ref cypmjgbtcfowsqlwkzfu
-supabase secrets set IOS_BUNDLE_ID="net.ghostnet.app" --project-ref cypmjgbtcfowsqlwkzfu
+supabase secrets set IOS_BUNDLE_ID="net.kryptos.app" --project-ref cypmjgbtcfowsqlwkzfu
 supabase secrets set APP_ATTEST_ENV="production" --project-ref cypmjgbtcfowsqlwkzfu   # or "development"
 # Official Apple App Attest Root CA G1 PEM (see step 4 — REQUIRED for iOS):
 supabase secrets set APPLE_APP_ATTEST_ROOT_PEM="$(cat AppleAppAttestRootCA.pem)" --project-ref cypmjgbtcfowsqlwkzfu

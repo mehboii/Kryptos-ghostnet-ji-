@@ -75,13 +75,13 @@ These critical fixes were verified by static grep analysis to confirm they remai
 
 | Fix ID | Severity | Fix Description | File | Status |
 |--------|----------|-----------------|------|--------|
-| **[A]** | CRITICAL | Private key never returned — sealed in closure | `ghostnet-identity.js:202-207` | ✅ Intact |
-| **[B]** | CRITICAL | Private key `extractable: false` | `ghostnet-identity.js:190` | ✅ Intact |
-| **[C]** | HIGH | nodeId = full SHA-256(SPKI) — 256-bit collision resistance | `ghostnet-identity.js:197-199` | ✅ Intact |
+| **[A]** | CRITICAL | Private key never returned — sealed in closure | `kryptos-identity.js:202-207` | ✅ Intact |
+| **[B]** | CRITICAL | Private key `extractable: false` | `kryptos-identity.js:190` | ✅ Intact |
+| **[C]** | HIGH | nodeId = full SHA-256(SPKI) — 256-bit collision resistance | `kryptos-identity.js:197-199` | ✅ Intact |
 | **[D]** | HIGH | PBKDF2 iterations = 600,000 (OWASP 2023) | `crypto-identity.js:79` | ✅ Intact |
 | **[E]** | HIGH | PIN length ≥ 6 chars enforced | `crypto-identity.js:90-92` | ✅ Intact |
 | **[F]** | MEDIUM | nodeId uses length-prefixed canonical encoding (no collision) | `crypto-identity.js:176-180` | ✅ Intact |
-| **[H]** | MEDIUM | `window.GhostIdentity` immutable (`writable: false`) | `ghostnet-identity.js:302` | ✅ Intact |
+| **[H]** | MEDIUM | `window.GhostIdentity` immutable (`writable: false`) | `kryptos-identity.js:302` | ✅ Intact |
 | **[Session]** | CRITICAL | Session key in `sessionStorage` only — never `localStorage` | `crypto-identity.js:396-400` | ✅ Intact |
 | **[Lockout]** | CRITICAL | PIN lockout state in-memory only — not in writable localStorage | `crypto-identity.js:84-85` | ✅ Intact |
 | **[BLAKE3]** | NEW | Node ID via BLAKE3 + Ed25519, domain-separated | `auth/node-identity-blake3.js` | ✅ Intact |

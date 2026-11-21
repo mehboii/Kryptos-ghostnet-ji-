@@ -4,7 +4,7 @@ I have implemented a fix for the `InvalidStateError` that occurred when attempti
 
 ## Changes Made
 
-### ghostnet-mesh.js
+### kryptos-mesh.js
 
 I introduced a module-level `messageQueue` and a `safeSend` utility function to buffer messages until the connection is ready.
 

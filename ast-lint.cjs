@@ -10,7 +10,7 @@ const { ESLint } = require('./node_modules/eslint');
     }
   });
 
-  const results = await eslint.lintFiles(['ghostnet-server.js']);
+  const results = await eslint.lintFiles(['kryptos-server.js']);
   const formatter = await eslint.loadFormatter('stylish');
   console.log(formatter.format(results));
 })().catch(err => {

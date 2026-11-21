@@ -1,5 +1,5 @@
-/* Ghost Shield — GENERATED from ghostnet-expo/src/shield (real ShieldManager).
- * DO NOT EDIT BY HAND. Rebuild: cd ghostnet-expo && npm run build:shield-web
+/* Ghost Shield — GENERATED from kryptos-expo/src/shield (real ShieldManager).
+ * DO NOT EDIT BY HAND. Rebuild: cd kryptos-expo && npm run build:shield-web
  * Capability-honest: web reports BLE/hardware unavailable; the phone (Capacitor)
  * runs hardware features for real. No MAC rotation, no WiFi-probe suppression. */
 "use strict";
@@ -1098,7 +1098,7 @@
   };
 
   // src/shield/ShieldManager.ts
-  var TIER_STORE_KEY = "ghostnet_shield_tier";
+  var TIER_STORE_KEY = "kryptos_shield_tier";
   var ShieldManager = class _ShieldManager {
     constructor(ports, options = {}) {
       this.currentTier = "OFF" /* OFF */;
@@ -1406,7 +1406,7 @@
         return 3;
     }
   }
-  var DEFAULT_BLOCKED_KEY = "ghostnet_shield_blocked_macs";
+  var DEFAULT_BLOCKED_KEY = "kryptos_shield_blocked_macs";
   var GhostShieldFacade = class {
     constructor(manager, platform, mesh, options = {}) {
       this.manager = manager;

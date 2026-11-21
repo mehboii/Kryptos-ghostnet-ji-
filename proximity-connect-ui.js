@@ -171,7 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     </svg>
                 </div>
                 <h2 class="prox-state-title" id="prox-state-title" style="color:var(--text-muted);">Ready to Connect</h2>
-                <p class="prox-state-desc" id="prox-state-desc">Scan for nearby GhostNet devices over Bluetooth. No internet required.</p>
+                <p class="prox-state-desc" id="prox-state-desc">Scan for nearby Kryptos devices over Bluetooth. No internet required.</p>
                 <div class="prox-actions" id="prox-actions">
                     <button class="prox-btn primary" id="prox-btn-scan" onclick="ProximityUI.startScan()">Scan Nearby</button>
                 </div>
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // the bridge — it never constructs the BLE manager, so it cannot trigger
         // a permission prompt or alter the working dev/EAS scan flow.
         _detectEnvironment() {
-            const ble = (typeof window !== 'undefined') ? window.GhostNetBLE : null;
+            const ble = (typeof window !== 'undefined') ? window.KryptosBLE : null;
             // No bridge injected at all → the page is open in a plain web browser.
             if (!ble || !ble.available) return 'web';
             // Bridge present. App.js tags the runtime; default to 'native' if the
@@ -288,9 +288,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         </svg>
                     </div>`;
             }
-            title.textContent = 'Open in the GhostNet App';
+            title.textContent = 'Open in the Kryptos App';
             title.style.color = '#a78bfa';
-            desc.innerHTML = `Proximity Connect discovers nearby devices over Bluetooth, which only works in the installed GhostNet app — not in ${where}.`
+            desc.innerHTML = `Proximity Connect discovers nearby devices over Bluetooth, which only works in the installed Kryptos app — not in ${where}.`
                 + `<span class="prox-env-note">Bluetooth needs the native app to reach your phone’s radio; a browser can’t.</span>`;
             actions.innerHTML = `<button class="prox-btn" id="prox-btn-scan" disabled>Bluetooth unavailable here</button>`;
         },
@@ -307,7 +307,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Init with current identity
             const identity = window.AppState?.identity;
             if (!identity || !identity.nodeId) {
-                this.log('Sign in to GhostNet first', 'error');
+                this.log('Sign in to Kryptos first', 'error');
                 return;
             }
 
@@ -331,7 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.add('scanning');
             document.getElementById('prox-state-title').textContent = 'Scanning...';
             document.getElementById('prox-state-title').style.color = '#a78bfa';
-            document.getElementById('prox-state-desc').textContent = 'Looking for nearby GhostNet devices over Bluetooth...';
+            document.getElementById('prox-state-desc').textContent = 'Looking for nearby Kryptos devices over Bluetooth...';
             document.getElementById('prox-btn-scan').disabled = true;
             document.getElementById('prox-btn-scan').textContent = 'Scanning...';
             document.getElementById('prox-device-section').style.display = 'block';
@@ -376,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.count === 0) {
                 document.getElementById('prox-state-title').textContent = 'No Devices Found';
                 document.getElementById('prox-state-title').style.color = 'var(--text-muted)';
-                document.getElementById('prox-state-desc').textContent = 'Make sure the other device has GhostNet running and Bluetooth enabled.';
+                document.getElementById('prox-state-desc').textContent = 'Make sure the other device has Kryptos running and Bluetooth enabled.';
                 this.log('Scan complete — no devices found');
             } else {
                 document.getElementById('prox-state-title').textContent = result.count + ' Device' + (result.count > 1 ? 's' : '') + ' Found';
@@ -497,7 +497,7 @@ document.addEventListener('DOMContentLoaded', () => {
             card.classList.remove('scanning');
             document.getElementById('prox-state-title').textContent = 'Ready to Connect';
             document.getElementById('prox-state-title').style.color = 'var(--text-muted)';
-            document.getElementById('prox-state-desc').textContent = 'Scan for nearby GhostNet devices over Bluetooth. No internet required.';
+            document.getElementById('prox-state-desc').textContent = 'Scan for nearby Kryptos devices over Bluetooth. No internet required.';
             document.getElementById('prox-state-icon').innerHTML = `
                 <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="1.5" stroke-linecap="round">
                     <path d="M5 12.55a11 11 0 0 1 14.08 0"/>

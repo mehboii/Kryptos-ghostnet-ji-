@@ -5,8 +5,8 @@
 The infinite loop after signout was caused by **three compounding issues**:
 
 ### 1. Token Key Name Mismatch (Critical)
-- **Login** (`index.html`): Stored token in `sessionStorage.setItem('ghostnet_token', token)` only
-- **Auth check** (`ui.js:32`): Read from `localStorage.getItem('ghostnet_token')` FIRST, then `sessionStorage`
+- **Login** (`index.html`): Stored token in `sessionStorage.setItem('kryptos_token', token)` only
+- **Auth check** (`ui.js:32`): Read from `localStorage.getItem('kryptos_token')` FIRST, then `sessionStorage`
 - **After page reload**: `sessionStorage` is cleared → token appears missing even though it was valid
 
 ### 2. `getAuthHeaders()` triggered `clearSession()` on missing token
@@ -26,13 +26,13 @@ The infinite loop after signout was caused by **three compounding issues**:
 
 **Before** (both login paths):
 ```js
-sessionStorage.setItem('ghostnet_token', token);
+sessionStorage.setItem('kryptos_token', token);
 ```
 
 **After**:
 ```js
-sessionStorage.setItem('ghostnet_token', token);
-localStorage.setItem('ghostnet_token', token);
+sessionStorage.setItem('kryptos_token', token);
+localStorage.setItem('kryptos_token', token);
 ```
 
 This ensures the token survives tab reloads and is always findable by `ui.js`.
@@ -44,7 +44,7 @@ This ensures the token survives tab reloads and is always findable by `ui.js`.
 **Before**:
 ```js
 const getAuthHeaders = () => {
-    const token = localStorage.getItem('ghostnet_token') || sessionStorage.getItem('ghostnet_token');
+    const token = localStorage.getItem('kryptos_token') || sessionStorage.getItem('kryptos_token');
     if (!token) {
         console.warn("[Auth] Token missing or expired. Redirecting to login...");
         setTimeout(() => {
@@ -59,9 +59,9 @@ const getAuthHeaders = () => {
 **After**:
 ```js
 function _readToken() {
-    return sessionStorage.getItem('ghostnet_token')
-        || localStorage.getItem('ghostnet_token')
-        || localStorage.getItem('ghostnet_jwt')
+    return sessionStorage.getItem('kryptos_token')
+        || localStorage.getItem('kryptos_token')
+        || localStorage.getItem('kryptos_jwt')
         || '';
 }
 
@@ -133,14 +133,14 @@ Same for `fetchRealData()`, `fetchGhostCode()`, and `loadProfile()` — they all
 **Before**:
 ```js
 fetch('.../register-node', {
-    headers: { 'X-Auth-Token': sessionStorage.getItem('ghostnet_token') || '' },
+    headers: { 'X-Auth-Token': sessionStorage.getItem('kryptos_token') || '' },
     // ...
 });
 ```
 
 **After**:
 ```js
-const _regToken = sessionStorage.getItem('ghostnet_token');
+const _regToken = sessionStorage.getItem('kryptos_token');
 if (_regToken) {
     fetch('.../register-node', {
         headers: { 'Authorization': `Bearer ${_regToken}` },
@@ -175,12 +175,12 @@ The 400 error from `/auth/node` occurs when `nodeId` is `undefined` or doesn't m
 Confirmed the `sessionKeys` list contains only temporary keys:
 ```js
 const sessionKeys = [
-    'ghostnet_token', 'ghostnet_jwt', 'ghostnet_node_id',
-    'ghostnet_vault_unlocked', 'ghostnet_session_key', 'ghostnet_last_convo'
+    'kryptos_token', 'kryptos_jwt', 'kryptos_node_id',
+    'kryptos_vault_unlocked', 'kryptos_session_key', 'kryptos_last_convo'
 ];
 ```
 
-Identity keys (`ghostnet_identity`, `ghostnet_seed_words`, etc.) are ONLY removed when `isDestroy === true` (full identity wipe), never during normal signout.
+Identity keys (`kryptos_identity`, `kryptos_seed_words`, etc.) are ONLY removed when `isDestroy === true` (full identity wipe), never during normal signout.
 
 ---
 

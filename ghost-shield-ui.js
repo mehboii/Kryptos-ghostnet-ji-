@@ -1,6 +1,6 @@
 /**
  * Ghost Shield UI
- * Dynamic injection of the Ghost Shield view into GhostNet.
+ * Dynamic injection of the Ghost Shield view into Kryptos.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -311,7 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. Inject HTML Section
     const section = document.createElement('section');
     section.id = 'view-shield';
-    section.className = 'view-section'; // standard hide/show class in GhostNet
+    section.className = 'view-section'; // standard hide/show class in Kryptos
     section.innerHTML = `
         <div class="home-hero" style="margin-bottom: 24px; padding: 0 24px; margin-top:20px;">
             <div class="home-hero-left">
@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
                     </div>
                     <div class="lvl-title" style="color:#2dd4bf;">STEALTH</div>
-                    <div class="lvl-desc">Silences GhostNet's own broadcasts, enables secure DNS (DoH).</div>
+                    <div class="lvl-desc">Silences Kryptos's own broadcasts, enables secure DNS (DoH).</div>
                 </div>
 
                 <div class="level-card" onclick="GhostShieldUI.activateLevel(2)" id="card-lvl-2">

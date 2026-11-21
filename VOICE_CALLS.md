@@ -1,12 +1,12 @@
-# GhostNet 1:1 Encrypted Voice Calls (Phase 1)
+# Kryptos 1:1 Encrypted Voice Calls (Phase 1)
 
 Identity-authenticated 1:1 audio calls between two GhostTag identities, built
-**entirely on existing GhostNet infrastructure** — no new server, no new socket.
+**entirely on existing Kryptos infrastructure** — no new server, no new socket.
 
 | Concern | Reused component |
 | --- | --- |
-| Signaling transport | `GhostMesh` (`ghostnet-mesh.js`) — `sendToPeer()` / `onMessage` |
-| ICE servers | `GhostNATManager` (`ghostnet-nat.js`) — STUN consensus + TURN relay |
+| Signaling transport | `GhostMesh` (`kryptos-mesh.js`) — `sendToPeer()` / `onMessage` |
+| ICE servers | `GhostNATManager` (`kryptos-nat.js`) — STUN consensus + TURN relay |
 | Identity | GhostTag key (**secp256k1**, the same key used for node auth) |
 | Media | WebRTC `RTCPeerConnection` (browser + Expo WebView) |
 
@@ -14,14 +14,14 @@ Identity-authenticated 1:1 audio calls between two GhostTag identities, built
 
 | File | Role |
 | --- | --- |
-| `ghostnet-call-signaling.js` | Typed message schema + fail-closed validators (`call.offer/answer/ice/hangup`). Pure. |
-| `ghostnet-call-fingerprint.js` | DTLS fingerprint extraction + identity-bound sign/verify (DI core, live secp256k1 impl). Pure. |
-| `ghostnet-call.js` | `GhostCall` — state machine, mesh signaling, media, Opus/DTX shaping. |
+| `kryptos-call-signaling.js` | Typed message schema + fail-closed validators (`call.offer/answer/ice/hangup`). Pure. |
+| `kryptos-call-fingerprint.js` | DTLS fingerprint extraction + identity-bound sign/verify (DI core, live secp256k1 impl). Pure. |
+| `kryptos-call.js` | `GhostCall` — state machine, mesh signaling, media, Opus/DTX shaping. |
 | `tests/call-signaling.test.js` | Schema unit tests. |
 | `tests/call-fingerprint.test.js` | Fingerprint sign/verify tests (tamper = fail closed). |
 
 All three modules are classic UMD scripts: loaded via `<script>` in `index.html`
-(after `ghostnet-nat.js`, before `app.js`) in the browser, and importable under
+(after `kryptos-nat.js`, before `app.js`) in the browser, and importable under
 Node for tests.
 
 ## Call flow
@@ -148,7 +148,7 @@ Cloudflare API token never touches the client.
   Realtime TURN API with `CLOUDFLARE_TURN_KEY_ID` + `CLOUDFLARE_TURN_API_TOKEN`
   (env only) and returns `{ iceServers, ttl }` — a short-lived (1h) username +
   credential. The token/key ID are never sent to the client or logged.
-- **Client:** `ghostnet-call-ice.js` →
+- **Client:** `kryptos-call-ice.js` →
   `GhostCallIce.createCloudflareIceProvider({ stunServers })` returns a
   `getIceServers()` that fetches **fresh creds per call** (at PC creation, on both
   `startCall` and `acceptCall`), keeps your STUN/hole-punching servers first, and

@@ -2,12 +2,12 @@
 Author: Shubh pant <novtwe6@gmail.com>
 Date:   Fri Mar 13 00:07:11 2026 +0530
 
-    fix: remove duplicate BACKEND_URL/authHeaders in ui.js and duplicate messages/requireAuth in ghostnet-server.js
+    fix: remove duplicate BACKEND_URL/authHeaders in ui.js and duplicate messages/requireAuth in kryptos-server.js
 
-diff --git a/ghostnet-server.js b/ghostnet-server.js
+diff --git a/kryptos-server.js b/kryptos-server.js
 index 667ee15..3c3cfff 100644
---- a/ghostnet-server.js
-+++ b/ghostnet-server.js
+--- a/kryptos-server.js
++++ b/kryptos-server.js
 @@ -470,25 +470,7 @@ app.patch('/user/shortcode', requireAuth, (req, res) => {
      }
  });

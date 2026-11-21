@@ -4,7 +4,7 @@ This is a temporary snapshot of the current page's DOM structure. The DOM will c
 <current_dom>
 [0] (95,55)<a class='logo' href='index.html' />
 	[1] (46,55)<div  />
-	[2] (116,55)<span >GhostNet />
+	[2] (116,55)<span >Kryptos />
 [3] (646,55)<a href='index.html#about'>About />
 [4] (744,55)<a href='index.html#how-it-works'>How it Works />
 [5] (860,55)<a href='index.html#developers'>Developers />

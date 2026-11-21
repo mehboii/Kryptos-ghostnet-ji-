@@ -101,13 +101,13 @@ async function sendVerificationEmail(email, code) {
             return { sent: false, preview: null };
         }
 
-        const fromAddr = process.env.SMTP_FROM || '"GhostNet" <noreply@ghostnet.io>';
+        const fromAddr = process.env.SMTP_FROM || '"Kryptos" <noreply@kryptos.io>';
 
         const info = await mailer.sendMail({
             from: fromAddr,
             to: email,
-            subject: ' GhostNet — Verify Your Email',
-            text: `Your GhostNet verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't create a GhostNet account, ignore this email.`,
+            subject: ' Kryptos — Verify Your Email',
+            text: `Your Kryptos verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't create a Kryptos account, ignore this email.`,
             html: `
                 <div style="font-family: 'Inter', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: linear-gradient(135deg, #0f172a, #1e293b); border-radius: 16px; color: #e2e8f0;">
                     <div style="text-align: center; margin-bottom: 24px;">
@@ -123,7 +123,7 @@ async function sendVerificationEmail(email, code) {
                         <p style="color: #64748b; font-size: 12px; margin: 16px 0 0 0;">Expires in 10 minutes</p>
                     </div>
                     <p style="color: #64748b; font-size: 12px; text-align: center; margin: 0;">
-                        If you didn't create a GhostNet account, you can safely ignore this email.
+                        If you didn't create a Kryptos account, you can safely ignore this email.
                     </p>
                 </div>
             `,
@@ -287,7 +287,7 @@ router.post('/verify', verifyLimiter, async (req, res) => {
             token,
             message: result.alreadyVerified
                 ? 'Email was already verified.'
-                : 'Email verified successfully! Welcome to GhostNet.',
+                : 'Email verified successfully! Welcome to Kryptos.',
         });
     } catch (err) {
         console.error('Verify error:', err.message);

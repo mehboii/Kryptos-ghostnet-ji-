@@ -2,8 +2,8 @@
  * Proximity Connect — Offline BLE Discovery + Mutual Identity Auth + Session
  *
  * Runs in the WebView, but the radio lives in React Native. All BLE I/O goes
- * through `window.GhostNetBLE` (injected by App.js, backed by ProximityBLE.js:
- * react-native-ble-plx for the central role + the ghostnet-ble-peripheral native
+ * through `window.KryptosBLE` (injected by App.js, backed by ProximityBLE.js:
+ * react-native-ble-plx for the central role + the kryptos-ble-peripheral native
  * module for advertising + GATT server). The previous version imported
  * `@capacitor-community/bluetooth-le`, which does not exist in this runtime — so
  * it threw on first use and discovery silently failed. It also only ever scanned
@@ -16,7 +16,7 @@
  *   2. CONNECT (central) on selection; negotiate MTU up.
  *   3. AUTHENTICATE (mutual). Ephemeral ECDH (P-256) → shared session key, THEN
  *      a challenge–response where each side signs a FRESH random nonce with its
- *      long-term GhostNet identity key (secp256k1 / ethers) and verifies the
+ *      long-term Kryptos identity key (secp256k1 / ethers) and verifies the
  *      peer's signature against the peer's identity public key. The signed
  *      transcript is bound to BOTH ephemeral public keys, so a man-in-the-middle
  *      who substitutes its own ECDH keys cannot forge a victim's signature.
@@ -26,7 +26,7 @@
  *
  * Crypto notes (see the README "Assumptions / missing APIs" section):
  *   - The repo has NO Ed25519/X25519 (the original spec's wording). The real
- *     GhostNet identity is secp256k1 (ethers wallet, crypto-identity.js), so the
+ *     Kryptos identity is secp256k1 (ethers wallet, crypto-identity.js), so the
  *     identity proof signs with that. Ephemeral key agreement stays P-256 ECDH
  *     via Web Crypto, exactly as the prior version did.
  */
@@ -39,7 +39,7 @@ const PROX_CHAR_PUB_KEY = '67686f73-746e-6574-2d6b-657900000000';
 const PROX_CHAR_DATA    = '67686f73-746e-6574-2d64-617461000000';
 
 const PSEUDONYM_ROTATION_MS = 15 * 60 * 1000;
-const AUTH_TRANSCRIPT_TAG = 'GHOSTNET-PROX-AUTHv1';
+const AUTH_TRANSCRIPT_TAG = 'KRYPTOS-PROX-AUTHv1';
 const SCAN_REPORT_MS = 8000; // first "scanComplete" for the UI; scanning continues
 
 // BLE notifications are capped at MTU-3 bytes and the stack does NOT chunk them,
@@ -86,14 +86,14 @@ class ProximityConnect {
     }
 
     get _ble() {
-        return (typeof window !== 'undefined') ? window.GhostNetBLE : null;
+        return (typeof window !== 'undefined') ? window.KryptosBLE : null;
     }
 
     // ── Init ────────────────────────────────────────────────────
     async init(identity) {
         if (!identity || !identity.nodeId) throw new Error('Identity required');
         if (!this._ble) {
-            throw new Error('Native BLE bridge unavailable. Proximity Connect needs the GhostNet dev/EAS build (not Expo Go / browser).');
+            throw new Error('Native BLE bridge unavailable. Proximity Connect needs the Kryptos dev/EAS build (not Expo Go / browser).');
         }
 
         this.localIdentity = {
@@ -104,7 +104,7 @@ class ProximityConnect {
         if (!this._isRealPublicKey(this.localIdentity.publicKeyHex)) {
             // Identity auth signs/verifies against a real secp256k1 key. Without one
             // we'd fall back to unauthenticated key-agreement — refuse instead.
-            throw new Error('Could not resolve your GhostNet public key — unlock your identity before pairing.');
+            throw new Error('Could not resolve your Kryptos public key — unlock your identity before pairing.');
         }
 
         // Ephemeral ECDH (P-256). Private key non-extractable → never leaves device.
@@ -242,7 +242,7 @@ class ProximityConnect {
             }
         } catch (_) {}
         if (basis && /^0x[0-9a-fA-F]{64}$/.test(basis)) {
-            const seed = new TextEncoder().encode('ghostnet-pseudonym|' + basis);
+            const seed = new TextEncoder().encode('kryptos-pseudonym|' + basis);
             const digest = await crypto.subtle.digest('SHA-256', seed);
             this._pseudonymSecret = new Uint8Array(digest);
         } else {
@@ -583,7 +583,7 @@ class ProximityConnect {
 
     async _signIdentity(nonceHex, ephAHex, ephBHex) {
         const pk = window.GhostIdentity && await window.GhostIdentity.getSessionPrivateKey();
-        if (!pk) throw new Error('Identity locked — unlock GhostNet before pairing');
+        if (!pk) throw new Error('Identity locked — unlock Kryptos before pairing');
         const wallet = new ethers.Wallet(pk);
         return wallet.signMessage(this._authTranscript(nonceHex, ephAHex, ephBHex));
     }
@@ -755,7 +755,7 @@ class ProximityConnect {
         const ikm = await crypto.subtle.importKey('raw', sharedBits, 'HKDF', false, ['deriveKey']);
         const enc = new TextEncoder();
         const encKey = await crypto.subtle.deriveKey(
-            { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('GhostNet-Proximity-v1-enc') },
+            { name: 'HKDF', hash: 'SHA-256', salt, info: enc.encode('Kryptos-Proximity-v1-enc') },
             ikm, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']
         );
         return { encKey };

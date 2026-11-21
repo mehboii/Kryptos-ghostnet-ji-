@@ -28,7 +28,7 @@ vm.runInContext(readFileSync(join(__dirname, 'blake3.browser.js'), 'utf8'), __sa
     { filename: 'blake3.browser.js' });
 const GhostBlake3 = __sandbox.self.GhostBlake3;
 
-// Mirror of crypto-identity.js _deriveNodeIdV2 (browser) and ghostnet-server.js
+// Mirror of crypto-identity.js _deriveNodeIdV2 (browser) and kryptos-server.js
 // _deriveNodeIdV2 (server). Both canonicalise to uncompressed then BLAKE3-hash.
 function deriveV2(publicKey, B) {
     const unc = ethers.utils.computePublicKey(publicKey, false); // "0x04" + 128 hex

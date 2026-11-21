@@ -2,16 +2,16 @@
 
 ## What Changed
 
-### [ghostnet-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+### [kryptos-file-vault.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
 
 Two new functions added and exposed on the `GhostVault` API:
 
 | Function | Purpose |
 |---|---|
-| `clearVaultState()` | **Logout** — wipes in-memory `vaultIndex`, removes `ghostnet_vault_index` from localStorage, clears session keys via `lockVault()`, and resets `VaultKeyManager.key`. Does **NOT** delete server/IPFS files. |
+| `clearVaultState()` | **Logout** — wipes in-memory `vaultIndex`, removes `kryptos_vault_index` from localStorage, clears session keys via `lockVault()`, and resets `VaultKeyManager.key`. Does **NOT** delete server/IPFS files. |
 | `refreshVaultForUser()` | **Login** — fetches the authenticated user's files from `VAULT_API/files/{owner}`, updates in-memory + localStorage index, returns the file list. |
 
-render_diffs(file:///c:/Users/novtw/.gemini/antigravity/ghostnet-file-vault.js)
+render_diffs(file:///c:/Users/novtw/.gemini/antigravity/kryptos-file-vault.js)
 
 ---
 

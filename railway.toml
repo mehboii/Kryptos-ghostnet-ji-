@@ -2,4 +2,4 @@
 builder = "nixpacks"
 
 [deploy]
-startCommand = "node ghostnet-server.js"
+startCommand = "node kryptos-server.js"

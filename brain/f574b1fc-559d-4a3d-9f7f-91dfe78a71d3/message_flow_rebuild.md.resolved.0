@@ -1,11 +1,11 @@
-# GhostNet Message Flow Rebuild Plan
+# Kryptos Message Flow Rebuild Plan
 
 ## Root Cause Analysis
 
 The message sending is broken due to **3 compounding bugs**:
 
 ### Bug 1: [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) sendMessage never persists to backend
-The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-chat.js#72-109) function in [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) (line 163-191) sends via GhostChat encryption through WebSocket, but **never calls [persistMessage()](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js#117-152)** (the HTTP POST to `/message`). This means:
+The [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-chat.js#72-109) function in [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) (line 163-191) sends via GhostChat encryption through WebSocket, but **never calls [persistMessage()](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js#117-152)** (the HTTP POST to `/message`). This means:
 - Messages are only sent via raw WebSocket routing
 - No database persistence happens
 - If recipient is offline, message is **lost forever**
@@ -19,14 +19,14 @@ When a user connects and registers via WebSocket, the server never checks for pe
 
 ## Fix Plan
 
-### 1. Server ([ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-server.js))
+### 1. Server ([kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js))
 - Fix `/validate-node` to only reject truly unregistered nodes (not offline ones)
 - Fix WS `'message'` handler: always store, don't error on offline
 - Add pending message delivery on WebSocket registration
 - Fix `/message` endpoint: don't reject messages to offline but registered nodes
 
 ### 2. Frontend ([app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js)) 
-- Make [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-chat.js#72-109) always call HTTP persistence (`POST /message`)
+- Make [sendMessage](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-chat.js#72-109) always call HTTP persistence (`POST /message`)
 - Remove GhostChat encryption layer from send path (simplify)
 - Keep WS for real-time delivery only (server handles this after HTTP persist)
 
@@ -34,5 +34,5 @@ When a user connects and registers via WebSocket, the server never checks for pe
 - Fix validation error message: "Node not found" only for unregistered 
 - Fix [submitNewChat](file:///c:/Users/novtw/.gemini/antigravity/scratch/ui.js#398-480) to allow chat with offline but registered nodes
 
-### 4. Mesh ([ghostnet-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-mesh.js))
+### 4. Mesh ([kryptos-mesh.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-mesh.js))
 - No changes needed (transport layer is fine)

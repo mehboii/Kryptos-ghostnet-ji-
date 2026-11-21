@@ -1,5 +1,5 @@
 {
   "artifactType": "ARTIFACT_TYPE_IMPLEMENTATION_PLAN",
-  "summary": "Plan to implement vault state clearing on logout (clear localStorage, in-memory index, and UI) and re-fetching vault files on login (via identity:updated event). Changes span ghostnet-file-vault.js (add clearVaultState/refreshVaultForUser) and ui.js (wire logout handler + login listener).",
+  "summary": "Plan to implement vault state clearing on logout (clear localStorage, in-memory index, and UI) and re-fetching vault files on login (via identity:updated event). Changes span kryptos-file-vault.js (add clearVaultState/refreshVaultForUser) and ui.js (wire logout handler + login listener).",
   "updatedAt": "2026-03-14T12:57:53.491200200Z"
 }

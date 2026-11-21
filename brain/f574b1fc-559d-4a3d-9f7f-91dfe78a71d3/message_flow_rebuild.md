@@ -1,4 +1,4 @@
-# GhostNet Message Flow — Complete Rebuild
+# Kryptos Message Flow — Complete Rebuild
 
 ## Root Cause
 The `sendMessage` function in `app.js` only sent messages via GhostChat WebSocket encryption and **never called the HTTP POST `/message` endpoint**. This meant:
@@ -9,7 +9,7 @@ The `sendMessage` function in `app.js` only sent messages via GhostChat WebSocke
 
 ## All Changes Made
 
-### 1. `ghostnet-server.js` (4 fixes)
+### 1. `kryptos-server.js` (4 fixes)
 
 **Fix 1.1 — `/validate-node` endpoint**
 - Separated online/offline check from existence check
@@ -85,6 +85,6 @@ Creates/updates conversation + saves message to DB
 ```
 
 ## Files Modified
-- [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ghostnet-server.js) — Server-side message handling
+- [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/kryptos-server.js) — Server-side message handling
 - [app.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/app.js) — Frontend send flow
 - [ui.js](file:///c:/Users/novtw/.gemini/antigravity/scratch/ui.js) — UI validation

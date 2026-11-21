@@ -15,9 +15,9 @@ import assert from 'node:assert/strict';
 import ethers from 'ethers';
 
 globalThis.ethers = ethers;
-await import('../ghostnet-call-signaling.js');
-await import('../ghostnet-call-fingerprint.js');
-await import('../ghostnet-call.js');
+await import('../kryptos-call-signaling.js');
+await import('../kryptos-call-fingerprint.js');
+await import('../kryptos-call.js');
 const GhostCall = globalThis.GhostCall;
 
 const CALL_ID = '11111111-2222-4333-8444-555566667777';

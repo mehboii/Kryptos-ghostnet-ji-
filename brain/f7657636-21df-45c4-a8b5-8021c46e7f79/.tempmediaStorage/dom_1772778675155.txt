@@ -27,7 +27,7 @@ ALREADY
 [14] (616,131)<button class='auth-btn-primary' />
 	[15] (616,131)<span >Sign In With PIN />
 Choose Your Name
-This is how other users will see you on the GhostNet mesh
+This is how other users will see you on the Kryptos mesh
                                     network.
 This name is permanent and cannot be changed later.
 [16] (616,397)<label class='auth-label'>DISPLAY NAME />

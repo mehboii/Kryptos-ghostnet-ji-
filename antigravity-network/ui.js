@@ -1,5 +1,5 @@
 /**
- * GhostNet Immersive UI
+ * Kryptos Immersive UI
  * Single-file logic for Visualization, State, and Interaction.
  */
 
@@ -126,7 +126,7 @@ class MeshNetwork {
 
 const UI = {
     init: () => {
-        console.log("SYSTEM: Booting GhostNet UI...");
+        console.log("SYSTEM: Booting Kryptos UI...");
 
         // 0. Setup Theme
         UI.initTheme();
@@ -197,7 +197,7 @@ const UI = {
     },
 
     initTheme: () => {
-        const stored = localStorage.getItem('ghostnet_theme');
+        const stored = localStorage.getItem('kryptos_theme');
         if (stored === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
             const label = document.getElementById('theme-label');
@@ -220,12 +220,12 @@ const UI = {
 
         if (isDark) {
             doc.removeAttribute('data-theme');
-            localStorage.setItem('ghostnet_theme', 'light');
+            localStorage.setItem('kryptos_theme', 'light');
             if (label) label.innerText = 'Dark Mode';
             if (icon) icon.setAttribute('data-lucide', 'moon');
         } else {
             doc.setAttribute('data-theme', 'dark');
-            localStorage.setItem('ghostnet_theme', 'dark');
+            localStorage.setItem('kryptos_theme', 'dark');
             if (label) label.innerText = 'Light Mode';
             if (icon) icon.setAttribute('data-lucide', 'sun');
         }
@@ -261,13 +261,13 @@ const UI = {
 
     fetchRealData: async () => {
         try {
-            console.log(" Connecting to GhostNet Bridge...");
+            console.log(" Connecting to Kryptos Bridge...");
 
             // [FIX 19] Use relative URL instead of hardcoded production URL
             // [DAST-F13] Auth via HttpOnly cookie — sent automatically
             const res = await fetch('/wallet', {
                 headers: {
-                    'X-GhostNet-Client': '1',
+                    'X-Kryptos-Client': '1',
                 },
             });
 
@@ -378,7 +378,7 @@ const UI = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-GhostNet-Client': '1',
+                    'X-Kryptos-Client': '1',
                 },
                 body: JSON.stringify({ symbol, to, amount })
             });
@@ -437,7 +437,7 @@ const UI = {
         try {
             const res = await fetch('/conversations', {
                 headers: {
-                    'X-GhostNet-Client': '1',
+                    'X-Kryptos-Client': '1',
                 },
             });
             if (res.ok) {
@@ -546,7 +546,7 @@ const UI = {
                 // [FIX 25] Include auth headers on history fetch
                 const res = await fetch(`/history?convoId=${encodeURIComponent(convoId)}`, {
                     headers: {
-                        'X-GhostNet-Client': '1',
+                        'X-Kryptos-Client': '1',
                     },
                 });
                 if (res.ok) {
@@ -638,7 +638,7 @@ const UI = {
             walletAssets = AppState.wallet;
         } else if (AppState.wallet && AppState.wallet.balance) {
             walletAssets = [
-                { symbol: "AHT", balance: AppState.wallet.balance, chain: "GhostNet" },
+                { symbol: "AHT", balance: AppState.wallet.balance, chain: "Kryptos" },
                 { symbol: "ETH", balance: 0.0, chain: "Sepolia" }
             ];
         }
@@ -822,7 +822,7 @@ const UI = {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-GhostNet-Client': '1',
+                            'X-Kryptos-Client': '1',
                         },
                         body: JSON.stringify({
                             receiverId: targetId,
@@ -902,7 +902,7 @@ const UI = {
     },
 
     loadProfile: () => {
-        const stored = localStorage.getItem('ghostnet_user');
+        const stored = localStorage.getItem('kryptos_user');
         if (stored) {
             try {
                 const user = JSON.parse(stored);
@@ -988,7 +988,7 @@ const UI = {
             method: "POST",
             headers: {
                 "Content-Type": "application/json",
-                "X-GhostNet-Client": "1",
+                "X-Kryptos-Client": "1",
             },
             body: JSON.stringify({
                 username: addr,
@@ -1001,7 +1001,7 @@ const UI = {
                     alert(data.error + "\\nSuggestions:\\n" + (data.suggestions ? data.suggestions.join("\\n") : ""));
                 } else {
                     alert("User created!");
-                    localStorage.setItem("ghostnet_user", JSON.stringify(data.user));
+                    localStorage.setItem("kryptos_user", JSON.stringify(data.user));
                     UI.loadProfile();
                 }
             })

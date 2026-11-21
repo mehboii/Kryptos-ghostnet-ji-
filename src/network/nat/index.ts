@@ -56,7 +56,7 @@ export class NatTraversal extends EventEmitter<NatTraversalEvents> {
     this.privateKey = privateKey;
     this.publicKey = ed25519.getPublicKey(privateKey);
 
-    this.turnServers = options?.turnServers ?? [{ host: 'turn.ghostnet.local', port: 3478 }];
+    this.turnServers = options?.turnServers ?? [{ host: 'turn.kryptos.local', port: 3478 }];
     this.stun = new StunClient();
     this.validator = new StunValidator();
     this.turn = new TurnClient(options?.relayTier ?? 'ghost');

@@ -1,5 +1,5 @@
 /**
- * firewallConfig.js — All configurable constants for the GhostNet Firewall
+ * firewallConfig.js — All configurable constants for the Kryptos Firewall
  * =========================================================================
  *
  * Every tunable value in the firewall system lives here. No magic numbers
@@ -185,7 +185,7 @@ export const LOGGER = Object.freeze({
     /** Number of rotated log files to keep */
     maxLogFiles: 2,
     /** Storage key prefix */
-    storagePrefix: 'ghostnet_fw_',
+    storagePrefix: 'kryptos_fw_',
 });
 
 // ─── Ghost Shield Integration ───────────────────────────────────────────────

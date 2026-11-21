@@ -37,7 +37,7 @@ flowchart TD
 | File | Action | Purpose |
 |------|--------|---------|
 | [ghosttag.js](file:///c:/Users/novtw/.gemini/antigravity/ghosttag.js) | **Created** | Complete client-side GhostTag module with offline-first sync |
-| [ghostnet-server.js](file:///c:/Users/novtw/.gemini/antigravity/ghostnet-server.js) | **Modified** | Added `ghosttag.js` and `ghostnet-sync.js` to static file allowlist |
+| [kryptos-server.js](file:///c:/Users/novtw/.gemini/antigravity/kryptos-server.js) | **Modified** | Added `ghosttag.js` and `kryptos-sync.js` to static file allowlist |
 | [index.html](file:///c:/Users/novtw/.gemini/antigravity/index.html) | **Modified** | Integrated GhostTag module into IdentityUI (load script, claim, check, destroy, sync) |
 | [ui.js](file:///c:/Users/novtw/.gemini/antigravity/ui.js) | **Modified** | Added GhostTag cleanup to `clearSession(destroy=true)` |
 
@@ -60,9 +60,9 @@ flowchart TD
 
 ### 4. Offline Registration & Sync
 - If server is unreachable during claim:
-  - Tag is saved locally in `ghostnet_ghost_tag`
-  - Full claim data stored in `ghostnet_pending_tag_claim_data`
-  - Flag `ghostnet_pending_tag_claim` set to `'true'`
+  - Tag is saved locally in `kryptos_ghost_tag`
+  - Full claim data stored in `kryptos_pending_tag_claim_data`
+  - Flag `kryptos_pending_tag_claim` set to `'true'`
 - **Sync watcher** runs every 15s checking for connectivity
 - Listens to `online`/`offline` browser events for instant sync on reconnect
 - On successful sync: clears pending data, dispatches `ghosttag:sync` event
@@ -98,7 +98,7 @@ GhostTag.getSyncConflict()          // → conflict data or null
 GhostTag.clearSyncConflict()        // clears conflict
 
 // Helpers
-GhostTag.getInviteLink(tag?)        // → 'ghostnet.n11x.dev/invite/@username'
+GhostTag.getInviteLink(tag?)        // → 'kryptos.n11x.dev/invite/@username'
 GhostTag.getShareText(tag?)         // → shareable text with link
 GhostTag.validate(tag)              // → { valid, tag?, error? }
 GhostTag.normalize(tag)             // → 'username' (lowercase, trimmed)
