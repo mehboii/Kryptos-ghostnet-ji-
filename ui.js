@@ -1102,8 +1102,7 @@ const UI = {
 
         if (typeof lucide !== 'undefined') lucide.createIcons();
 
-        // Re-render UI pieces that might have raw js state bindings on mode swaps
-        UI.render();
+        // Theme colors are CSS-driven; preserve the current views and their state.
     },
 
     mockData: () => {
