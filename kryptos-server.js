@@ -465,7 +465,11 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://unpkg.com", "https://cdn.ethers.io"],
+            upgradeInsecureRequests: ['local', 'development'].includes(KRYPTOS_MODE) ? null : [],
+            // The local HTML app uses inline bootstrap code and event handlers.
+            // Local and development modes serve the same inline HTML application.
+            scriptSrc: ["'self'", ...(['local', 'development'].includes(KRYPTOS_MODE) ? ["'unsafe-inline'"] : []), "https://cdnjs.cloudflare.com", "https://unpkg.com", "https://cdn.ethers.io"],
+            scriptSrcAttr: ['local', 'development'].includes(KRYPTOS_MODE) ? ["'unsafe-inline'"] : ["'none'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdnjs.cloudflare.com", "https://fonts.googleapis.com"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "blob:"],
@@ -529,7 +533,6 @@ const globalLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Too many requests' },
 });
-app.use(globalLimiter);
 
 // [23] Body size cap
 app.use((req, res, next) => {
@@ -539,6 +542,16 @@ app.use((req, res, next) => {
 
 // [21] Serve only public/ subdirectory, not the whole CWD
 const PUBLIC_DIR = path.join(__dirname, 'public');
+
+app.get('/assets/lucide.min.js', (req, res) => {
+    res.sendFile(path.join(__dirname, 'assets', 'lucide.min.js'));
+});
+
+app.get('/assets/kryptos-logo.png', (req, res) => {
+    res.sendFile(path.join(__dirname, 'assets', 'kryptos-logo.png'), {
+        headers: { 'Cache-Control': 'no-cache, must-revalidate' }
+    });
+});
 
 // Serve a minimal, explicit asset allowlist (keeps [21] protections without requiring
 // a public/ folder to exist in every deployment environment).
@@ -557,6 +570,25 @@ const ALLOWED_STATIC_FILES = new Set([
     'qrcode.min.js',
     'ghosttag.js',
     'kryptos-sync.js',
+    'kryptos-nat.js',
+    'kryptos-call-signaling.js',
+    'kryptos-call-fingerprint.js',
+    'kryptos-call-ice.js',
+    'kryptos-call.js',
+    'kryptos-call-ui.js',
+    'shieldConfig.js',
+    'signal-intelligence.js',
+    'ghost-radar.js',
+    'ghost-shield.js',
+    'signalIntel.js',
+    'ghost-shield-ui.js',
+    'ghost-radar-ui.js',
+    'mesh-hardening.js',
+    'proximity-connect.js',
+    'proximity-connect-ui.js',
+    'blake3.browser.js',
+    'ethers.umd.min.js',
+    'screenshot-protection.js',
 ]);
 
 app.get('/:asset', (req, res, next) => {
@@ -578,6 +610,9 @@ app.get('/:asset', (req, res, next) => {
 if (fs.existsSync(PUBLIC_DIR)) {
     app.use(express.static(PUBLIC_DIR));
 }
+
+// Static assets do not consume the API request budget on page reloads.
+app.use(globalLimiter);
 
 // Auth routes (have their own stricter rate limit inside authRouter)
 app.use('/auth', authRouter);

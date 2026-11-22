@@ -4,14 +4,14 @@
 <head>
     <script>
         window.addEventListener('error', function(e) {
-            if (e.target.tagName === 'SCRIPT') {
-                console.log('[Kryptos] Script load failed, retrying from cache...');
-                setTimeout(() => window.location.reload(), 1000);
+            if (e.target && e.target.tagName === 'SCRIPT') {
+                // A failed optional CDN must not restart the app or discard edits.
+                console.warn('[Kryptos] Script unavailable:', e.target.src);
             }
         }, true);
     </script>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
     <link rel="preconnect" href="https://kryptos-ji-production.up.railway.app">
     <link rel="dns-prefetch" href="https://kryptos-ji-production.up.railway.app">
 
@@ -63,10 +63,7 @@
             document.head.appendChild(script);
         }
     </script>
-    <script
-        src="https://unpkg.com/lucide@0.344.0"
-        integrity="sha384-tTkFttkBclaU1cloKwOi9xk3pbao3VZxTjLNBt8iFABWDBQibbAbWpVmO28zMuxq"
-        crossorigin="anonymous"></script>
+    <script src="assets/lucide.min.js"></script>
 
     <!-- Logic Scripts -->
     <script src="kryptos-chat.js"></script>
@@ -108,23 +105,19 @@
       </style>
       <div class="splash-inner">
         <div class="splash-glow"></div>
-        <svg class="splash-logo" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M256 70C206 88 162 99 140 112V231C140 328 193 391 256 438C319 391 372 328 372 231V112C350 99 306 88 256 70Z" fill="url(#shieldGradient)"/>
-          <path d="M258 127C215 127 192 160 192 215V309C192 309 219 296 241 280C258 328 284 347 284 347C319 311 330 270 330 217C330 161 302 127 258 127Z" fill="#03062E"/>
-          <path class="eye-left" d="M228 196C236 189 248 191 255 199C248 206 235 207 228 196Z" fill="white"/>
-          <path class="eye-right" d="M284 199C291 191 303 189 311 196C304 207 291 206 284 199Z" fill="white"/>
-          <defs>
-            <linearGradient id="shieldGradient" x1="140" y1="70" x2="372" y2="438" gradientUnits="userSpaceOnUse">
-              <stop stop-color="#F4F4F6"/>
-              <stop offset="1" stop-color="#58D9FF"/>
-            </linearGradient>
-          </defs>
-        </svg>
+        <img class="splash-logo" src="assets/kryptos-logo.png" alt="Kryptos" width="180" height="180" fetchpriority="high">
       </div>
     </div>
     <script>
-      // Hide the dynamic splash screen smoothly after the app connects/renders
-      window.addEventListener('load', () => { setTimeout(() => { const sp = document.getElementById('kryptos-splash-overlay'); if (sp) { sp.style.opacity = '0'; setTimeout(() => sp.remove(), 600); } }, 1500); });
+      // The workspace is ready at DOMContentLoaded; fonts/images/network requests
+      // must not keep its loading overlay open indefinitely.
+      document.addEventListener('DOMContentLoaded', () => {
+        const splash = document.getElementById('kryptos-splash-overlay');
+        if (!splash) return;
+        const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        splash.style.opacity = '0';
+        setTimeout(() => splash.remove(), reducedMotion ? 0 : 180);
+      }, { once: true });
     </script>
 
     <!-- ═══ ONBOARDING FLOW (first-time users only) ═══ -->
@@ -311,7 +304,7 @@
         <!-- SIDEBAR -->
         <aside class="sidebar" id="app-sidebar">
             <div class="brand">
-                <div class="brand-emblem" aria-hidden="true">G<span>·</span></div>
+                <div class="brand-emblem" aria-hidden="true"><img src="assets/kryptos-logo.png" alt="" width="40" height="40" style="display:block;width:100%;height:100%;object-fit:contain;border-radius:inherit;"></div>
                 <div class="brand-lockup"><strong>kryptos</strong><small>PRIVATE NETWORK</small></div>
             </div>
 
@@ -968,14 +961,9 @@
                             <div class="auth-card-orb"></div>
                             <div class="auth-card" style="text-align:center;">
                                 <div style="margin-bottom:24px;">
-                                    <div class="id-logo-ring">
+                                    <div class="id-logo-ring" style="animation:none;">
                                         <div class="id-logo-inner">
-                                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-                                                stroke="var(--accent)" stroke-width="1.5">
-                                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                                                <path d="M12 8v4" />
-                                                <circle cx="12" cy="16" r="0.5" fill="var(--accent)" />
-                                            </svg>
+                                            <img src="assets/kryptos-logo.png" alt="Kryptos" width="48" height="48" style="object-fit:contain;border-radius:12px;">
                                         </div>
                                     </div>
                                 </div>
@@ -2871,7 +2859,7 @@
     <script src="qrcode.min.js"></script>
     <script src="screenshot-protection.js"></script>
     <script src="ui.js"></script>
-    <script>lucide.createIcons();</script>
+    <script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
     <script>
         (() => {
             const control = document.getElementById("glass-effect-toggle");
