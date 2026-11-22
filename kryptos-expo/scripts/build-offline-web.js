@@ -117,12 +117,15 @@ function transformScript(name, text) {
 }
 
 let html = read(path.join(repoRoot, 'index.html'));
+// Embed branding so the bundled WebView can display it without network access.
+const logoDataUrl = 'data:image/png;base64,' + fs.readFileSync(path.join(repoRoot, 'assets/kryptos-logo.png')).toString('base64');
+html = html.replaceAll('src="assets/kryptos-logo.png"', `src="${logoDataUrl}"`);
 const uiCss = read(path.join(repoRoot, 'ui.css'));
 const ethersLocal = read(path.join(repoRoot, 'ethers.umd.min.js'));
 const offlineBridge = read(path.join(srcRoot, 'offline-bridge.js'));
 // Prefer the real Lucide icon library (bundled offline). Fall back to the
 // placeholder stub only if the package isn't installed.
-const lucideRealPath = path.join(expoRoot, 'node_modules', 'lucide', 'dist', 'umd', 'lucide.js');
+const lucideRealPath = path.join(repoRoot, 'assets', 'lucide.min.js');
 const lucideLib = fs.existsSync(lucideRealPath)
   ? read(lucideRealPath)
   : read(path.join(srcRoot, 'lucide-stub.js'));
@@ -139,8 +142,8 @@ html = html.replace(/<link rel="icon" type="image\/x-icon" href="\/favicon\.ico"
 html = html.replace(/<link rel="apple-touch-icon" href="\/favicon\.ico">\s*/g, '');
 if (!ONLINE) {
   html = html.replace(
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">\n    <meta name="kryptos-offline" content="true">'
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">\n    <meta name="kryptos-offline" content="true">'
   );
 }
 html = html.replace(
@@ -155,7 +158,7 @@ html = html.replace(
 );
 
 html = html.replace(
-  /<!-- Core Libraries -->[\s\S]*?<script\s+src="https:\/\/unpkg\.com\/lucide@0\.344\.0"[\s\S]*?<\/script>/,
+  /<!-- Core Libraries -->[\s\S]*?<script\s+src="assets\/lucide\.min\.js"[\s\S]*?<\/script>/,
   () => {
     const libs = [
       '<!-- Core Libraries (bundled) -->',
